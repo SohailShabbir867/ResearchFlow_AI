@@ -21,6 +21,8 @@ def split_text(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
 
         start = max(end - chunk_overlap, start + 1)
 
+    return chunks
+
 
 def load_pdf(file_path: str) -> str:
     reader = PdfReader(file_path)

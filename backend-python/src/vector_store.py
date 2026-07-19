@@ -42,7 +42,7 @@ def store_chunks(embedded_chunks: list[dict]):
     for chunk in embedded_chunks:
         points.append(
             PointStruct(
-                id=str(uuid.uuid4()),
+                id=uuid.uuid4(),  # UUID object (not str) — Qdrant requires this
                 vector=chunk["embedding"],
                 payload={
                     "text": chunk["text"],

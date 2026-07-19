@@ -18,7 +18,7 @@ router.post("/ask", async (req, res) => {
     const response = await axios.post(
       `${PYTHON_RAG_URL}/query`,
       { question: question.trim(), top_k: 5 },
-      { timeout: 60000 }  // 60s — Ollama can be slow on first run
+      { timeout: 120000 }  // 120s — VPS Ollama may have network latency
     );
 
     return res.json({
@@ -37,7 +37,14 @@ router.post("/ask", async (req, res) => {
     // Timeout
     if (err.code === "ECONNABORTED") {
       return res.status(504).json({
-        error: "RAG service timed out. Ollama may still be loading the model."
+        error: "RAG service timed out. Check VPS Ollama connection and OLLAMA_URL in backend-python/.env"
+      });
+    }
+
+    // VPS Ollama unreachable (propagated from Python as 503)
+    if (err.response?.status === 503) {
+      return res.status(503).json({
+        error: err.response.data?.detail || "Cannot reach Ollama on VPS. Check OLLAMA_URL in backend-python/.env"
       });
     }
 
