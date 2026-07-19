@@ -66,14 +66,14 @@ def search(query_vector: list[float], top_k: int = 5) -> list[dict]:
     """Search Qdrant for the most similar chunks to the query vector."""
     client = get_client()
 
-    results = client.search(
+    results = client.query_points(
         collection_name=COLLECTION_NAME,
-        query_vector=query_vector,
+        query=query_vector,
         limit=top_k
     )
 
     matches = []
-    for r in results:
+    for r in results.points:
         matches.append({
             "text": r.payload["text"],
             "source": r.payload["source"],
