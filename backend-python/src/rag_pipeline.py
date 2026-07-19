@@ -21,10 +21,10 @@ def build_prompt(question: str, context_chunks: list[dict]) -> str:
     """Build a short, focused prompt for fast inference."""
     context_text = ""
     for i, chunk in enumerate(context_chunks):
-        text = chunk['text'][:400]   # keep context concise
+        text = chunk['text']   # Do not truncate chunks to preserve sentence integrity
         context_text += f"[Source {i+1}: {chunk['source']}]\n{text}\n\n"
 
-    return f"""You are a medical research assistant. Answer briefly using ONLY the context below.
+    return f"""You are a research assistant. Answer briefly using ONLY the context below.
 If the answer is not in the context, say 'I don't have enough information.'
 
 Context:
@@ -59,7 +59,7 @@ def call_ollama(prompt: str) -> str:
     return response.json()["message"]["content"]
 
 
-def answer(question: str, top_k: int = 3) -> dict:
+def answer(question: str, top_k: int = 5) -> dict:
     """
     Full RAG pipeline:
     1. Embed the question using nomic-embed-text on VPS

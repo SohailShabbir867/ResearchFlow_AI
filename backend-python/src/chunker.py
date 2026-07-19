@@ -1,25 +1,35 @@
 from pathlib import Path
 from pypdf import PdfReader
 
-CHUNK_SIZE = 500
-CHUNK_OVERLAP = 50
+CHUNK_SIZE = 1200
+CHUNK_OVERLAP = 200
 
 
 def split_text(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
     chunks = []
-    start = 0
-    text = text.strip()
+    words = text.split()
+    current_chunk = []
+    current_length = 0
 
-    while start < len(text):
-        end = start + chunk_size
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
+    for word in words:
+        current_chunk.append(word)
+        current_length += len(word) + 1  # +1 for space
 
-        if end >= len(text):
-            break
+        if current_length >= chunk_size:
+            chunks.append(" ".join(current_chunk))
+            # Keep overlap words
+            overlap_words = []
+            overlap_len = 0
+            for w in reversed(current_chunk):
+                overlap_words.insert(0, w)
+                overlap_len += len(w) + 1
+                if overlap_len >= chunk_overlap:
+                    break
+            current_chunk = overlap_words
+            current_length = overlap_len
 
-        start = max(end - chunk_overlap, start + 1)
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
 
     return chunks
 
