@@ -15,9 +15,16 @@ def get_client() -> QdrantClient:
     return QdrantClient(url=QDRANT_URL)
 
 
-def create_collection():
-    """Create the Qdrant collection if it does not exist."""
+def create_collection(recreate: bool = False):
+    """Create the Qdrant collection, optionally recreating it."""
     client = get_client()
+    
+    if recreate:
+        try:
+            client.delete_collection(collection_name=COLLECTION_NAME)
+        except Exception:
+            pass
+
     existing = [c.name for c in client.get_collections().collections]
 
     if COLLECTION_NAME not in existing:
@@ -33,10 +40,10 @@ def create_collection():
         print(f"Collection '{COLLECTION_NAME}' already exists.")
 
 
-def store_chunks(embedded_chunks: list[dict]):
+def store_chunks(embedded_chunks: list[dict], recreate: bool = True):
     """Store all embedded chunks into Qdrant."""
     client = get_client()
-    create_collection()
+    create_collection(recreate=recreate)
 
     points = []
     for chunk in embedded_chunks:

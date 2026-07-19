@@ -5,3 +5,4 @@ uvicorn[standard]
 pypdf
 python-dotenv
 pydantic
+groq
