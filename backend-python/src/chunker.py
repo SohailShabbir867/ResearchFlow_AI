@@ -1,9 +1,25 @@
 from pathlib import Path
 from pypdf import PdfReader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
+
+
+def split_text(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
+    chunks = []
+    start = 0
+    text = text.strip()
+
+    while start < len(text):
+        end = start + chunk_size
+        chunk = text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+
+        if end >= len(text):
+            break
+
+        start = max(end - chunk_overlap, start + 1)
 
 
 def load_pdf(file_path: str) -> str:
@@ -31,12 +47,7 @@ def load_document(file_path: str) -> str:
 
 
 def chunk_text(text: str, source_name: str) -> list[dict]:
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP,
-        separators=["\n\n", "\n", ".", " "]
-    )
-    chunks = splitter.split_text(text)
+    chunks = split_text(text, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
 
     result = []
     for i, chunk in enumerate(chunks):
