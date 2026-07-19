@@ -15,22 +15,21 @@ def build_prompt(question: str, context_chunks: list[dict]) -> str:
     """Build the prompt by injecting retrieved chunks as context."""
     context_text = ""
     for i, chunk in enumerate(context_chunks):
-        context_text += f"[Source {i+1}: {chunk['source']}]\n{chunk['text']}\n\n"
+        # Truncate each chunk to 400 chars to keep prompt short for faster CPU inference
+        text = chunk['text'][:400]
+        context_text += f"[Source {i+1}: {chunk['source']}]\n{text}\n\n"
 
-    prompt = f"""You are a medical research assistant. 
-Answer the question below using ONLY the provided context.
-If the answer is not in the context, say "I don't have enough information."
+    prompt = f"""You are a medical research assistant. Answer briefly using ONLY the context below.
+If the answer is not in the context, say 'I don't have enough information.'
 
 Context:
 {context_text}
-
 Question: {question}
-
-Answer:"""
+Answer (2-3 sentences max):"""
     return prompt
 
 
-def answer(question: str, top_k: int = 5) -> dict:
+def answer(question: str, top_k: int = 3) -> dict:
     """
     Full RAG pipeline:
     1. Embed the question
@@ -63,7 +62,7 @@ def answer(question: str, top_k: int = 5) -> dict:
         "stream": False
     }
 
-    response = requests.post(url, json=payload, timeout=120)
+    response = requests.post(url, json=payload, timeout=300)  # 5 min for CPU-only inference
     response.raise_for_status()
     data = response.json()
 
