@@ -6,3 +6,7 @@ pypdf
 python-dotenv
 pydantic
 groq
+fastembed
+rank-bm25
+tqdm
+python-docx
