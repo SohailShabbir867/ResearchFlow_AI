@@ -25,25 +25,34 @@ RERANKER_TOP_K = int(os.getenv("RERANKER_TOP_K", "5"))
 
 
 def build_prompt(question: str, context_chunks: list[dict]) -> str:
-    """Build a detailed prompt with reranked context for the 70b model."""
+    """Build a structured prompt that produces clean, well-formatted answers."""
     context_text = ""
     for i, chunk in enumerate(context_chunks):
-        source = chunk.get('source', 'unknown')
-        pages = chunk.get('pages', [])
-        page_info = f" (p.{','.join(map(str, pages))})" if pages else ""
-        context_text += f"[Source {i+1}: {source}{page_info}]\n{chunk['text']}\n\n"
+        context_text += f"[Document {i+1}]\n{chunk['text']}\n\n"
 
-    return f"""You are an expert research assistant with access to a document knowledge base.
-Answer the question thoroughly using ONLY the context provided below.
-If the context contains relevant information, provide a detailed, well-structured answer.
-If the answer is not in the context, say "I don't have enough information in the indexed documents."
-Always cite which source document(s) your answer comes from.
+    return f"""You are an expert medical research assistant. Your job is to give clear, accurate, and well-structured answers based on the provided documents.
 
-Context:
+STRICT FORMATTING RULES — follow these every time:
+1. Use MARKDOWN formatting: headings (##, ###), bullet points (-), numbered lists (1. 2. 3.), bold (**text**), and paragraphs.
+2. Choose the format that best suits the content:
+   - For definitions or explanations → use a paragraph with a heading
+   - For lists of symptoms, causes, medicines, or criteria → use bullet points (-)
+   - For step-by-step processes or stages → use a numbered list
+   - For complex topics → use ## heading with ### subheadings and bullets under each
+3. DO NOT include any source citations, file names, page numbers, or references like "[Source 1]" or "(p.1)" anywhere in your answer. The answer must read as clean, professional text.
+4. DO NOT say "according to the context" or "based on the provided documents". Just answer directly.
+5. If the answer is not in the documents, say: "This information is not available in the indexed documents."
+6. Always end with a concise **Summary** section if the answer has multiple parts.
+
+---
+
+Context Documents:
 {context_text}
+---
+
 Question: {question}
 
-Answer:"""
+Answer (use proper markdown headings, bullet points, and structure):"""
 
 
 def call_groq(prompt: str, max_retries: int = 3) -> str:

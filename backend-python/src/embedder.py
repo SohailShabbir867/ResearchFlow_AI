@@ -10,7 +10,7 @@ from fastembed import TextEmbedding
 load_dotenv()
 
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-ai/nomic-embed-text-v1.5")
-EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "256"))
+EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "32"))  # Safe for 8GB RAM
 
 # Lazy-load model (downloads ~140MB on first run, cached after that)
 _model = None
@@ -42,28 +42,26 @@ def get_embedding(text: str, is_query: bool = True) -> list[float]:
 def embed_chunks(chunks: list[dict]) -> list[dict]:
     """
     Batch-embed all chunks locally using FastEmbed ONNX.
-    50-100x faster than sequential HTTP calls to Ollama on VPS.
+    Streams one batch at a time to stay within 8GB RAM limits.
     """
     from tqdm import tqdm
 
     model = _get_model()
-    texts = ["search_document: " + c["text"] for c in chunks]
+    total = len(chunks)
 
-    print(f"Embedding {len(chunks)} chunks locally using {EMBED_MODEL}...")
-    print(f"  Batch size: {EMBED_BATCH_SIZE}")
+    print(f"Embedding {total} chunks locally using {EMBED_MODEL}...")
+    print(f"  Batch size: {EMBED_BATCH_SIZE} (RAM-safe for 8GB)")
 
-    # FastEmbed handles batching internally via generator
-    all_embeddings = list(
-        tqdm(
-            model.embed(texts, batch_size=EMBED_BATCH_SIZE),
-            total=len(texts),
-            desc="  Embedding",
-            unit="chunk"
-        )
-    )
+    # Process in explicit batches to avoid OOM — stream one batch at a time
+    for start in tqdm(range(0, total, EMBED_BATCH_SIZE), desc="  Embedding", unit="batch"):
+        batch = chunks[start: start + EMBED_BATCH_SIZE]
+        texts = ["search_document: " + c["text"] for c in batch]
 
-    for i, chunk in enumerate(chunks):
-        chunk["embedding"] = all_embeddings[i].tolist()
+        # embed() returns a generator — consume immediately, don't buffer all
+        embeddings = list(model.embed(texts, batch_size=EMBED_BATCH_SIZE))
 
-    print(f"Embedding complete. {len(chunks)} chunks embedded locally.")
+        for i, chunk in enumerate(batch):
+            chunk["embedding"] = embeddings[i].tolist()
+
+    print(f"Embedding complete. {total} chunks embedded.")
     return chunks

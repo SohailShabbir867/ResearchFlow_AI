@@ -28,6 +28,8 @@ def _get_reranker():
 def rerank(query: str, chunks: list[dict], top_k: int = None) -> list[dict]:
     """
     Re-score and re-rank chunks against the query using a cross-encoder.
+    fastembed reranker.rerank() returns a flat list of floats in the same
+    order as the input texts (one score per chunk, no index/score dict).
     Returns the top_k most relevant chunks, sorted by reranker score.
     """
     if top_k is None:
@@ -36,28 +38,16 @@ def rerank(query: str, chunks: list[dict], top_k: int = None) -> list[dict]:
     if not chunks:
         return []
 
-    # If fewer chunks than top_k, return all (still reranked)
-    if len(chunks) <= top_k:
-        reranker = _get_reranker()
-        pairs = [(query, c["text"]) for c in chunks]
-        scores = list(reranker.rerank(query, [c["text"] for c in chunks]))
-
-        for i, score_obj in enumerate(scores):
-            chunks[score_obj["index"]]["rerank_score"] = round(float(score_obj["score"]), 4)
-
-        return sorted(chunks, key=lambda x: x.get("rerank_score", 0), reverse=True)
-
     reranker = _get_reranker()
-
-    # Rerank all candidates
     texts = [c["text"] for c in chunks]
+
+    # fastembed returns list of floats, one per input text, in original order
     scores = list(reranker.rerank(query, texts))
 
-    # Attach scores to chunks
-    for score_obj in scores:
-        idx = score_obj["index"]
-        chunks[idx]["rerank_score"] = round(float(score_obj["score"]), 4)
+    # Attach scores to each chunk by position
+    for i, score in enumerate(scores):
+        chunks[i]["rerank_score"] = round(float(score), 4)
 
-    # Sort by rerank score and return top_k
+    # Sort by rerank score descending and return top_k
     ranked = sorted(chunks, key=lambda x: x.get("rerank_score", 0), reverse=True)
     return ranked[:top_k]

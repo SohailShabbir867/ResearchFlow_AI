@@ -1,0 +1,9 @@
+[
+  {
+    "id": "notif_1",
+    "title": "Welcome to MedResearch AI",
+    "message": "Your RAG pipeline with Groq (llama-3.3-70b-versatile) & FastEmbed hybrid search is ready.",
+    "type": "system",
+    "createdAt": "2026-07-20T18:52:45.308Z"
+  }
+]

@@ -1,0 +1,18 @@
+[
+  {
+    "id": "usr_admin",
+    "name": "Dr. Admin",
+    "email": "admin@medresearch.ai",
+    "passwordHash": "$2b$10$8ekm3ytK97tOn7bhO.BKneRYzotJdEVSyBsaQlgm6HjgKPkbbtnMq",
+    "role": "admin",
+    "createdAt": "2026-07-20T18:52:45.275Z"
+  },
+  {
+    "id": "usr_demo",
+    "name": "Sohail Shabbir",
+    "email": "sohail@medresearch.ai",
+    "passwordHash": "$2b$10$JZgwOF0VPlM5FuNi5Zmn..zRi/ridvJFb2i52tq93jVon8OGl4Rh6",
+    "role": "user",
+    "createdAt": "2026-07-20T18:52:45.285Z"
+  }
+]
