@@ -134,149 +134,157 @@ export default function ChatBox() {
     <div className="flex flex-col h-full bg-gray-50/50">
 
       {/* ── Messages area ── */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
+      <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="max-w-3xl mx-auto w-full space-y-6">
 
-        {/* Empty state */}
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary-dark
-                            flex items-center justify-center shadow-lg shadow-primary/20">
-              <span className="text-3xl">🔬</span>
-            </div>
-            <div>
-              <p className="text-gray-700 font-semibold text-base">Medical Research Assistant</p>
-              <p className="text-gray-400 text-sm mt-1 flex flex-col gap-0.5">
-                <span>Ask any question — answers come from your indexed documents</span>
-                <span className="text-xs text-primary/70 font-semibold">Saved locally to MongoDB</span>
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-2 mt-2 w-full max-w-sm">
-              {["What is Chronic Kidney Disease?", "List diabetes medications", "Explain heart disease risk factors"].map((q) => (
-                <button
-                  key={q}
-                  onClick={() => { setInput(q); }}
-                  className="text-left text-xs text-gray-500 bg-white border border-gray-200 rounded-xl
-                             px-4 py-2.5 hover:border-primary hover:text-primary transition-colors"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Message list */}
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-
-            {/* AI avatar */}
-            {msg.role === "assistant" && (
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-primary-dark
-                              flex items-center justify-center shrink-0 shadow-sm mt-1">
-                <span className="text-white text-xs font-bold">AI</span>
+          {/* Empty state */}
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary-dark
+                              flex items-center justify-center shadow-lg shadow-primary/20">
+                <span className="text-3xl">🔬</span>
               </div>
-            )}
+              <div>
+                <p className="text-gray-700 font-semibold text-base">Medical Research Assistant</p>
+                <p className="text-gray-400 text-sm mt-1 flex flex-col gap-0.5">
+                  <span>Ask any question — answers come from your indexed documents</span>
+                  <span className="text-xs text-primary/70 font-semibold">Saved locally to MongoDB</span>
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-2 mt-2 w-full max-w-sm">
+                {["What is Chronic Kidney Disease?", "List diabetes medications", "Explain heart disease risk factors"].map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => { setInput(q); }}
+                    className="text-left text-xs text-gray-500 bg-white border border-gray-200 rounded-xl
+                               px-4 py-2.5 hover:border-primary hover:text-primary transition-colors"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
-            <div className={`max-w-2xl ${msg.role === "user" ? "max-w-sm" : "w-full"}`}>
-              {/* Bubble */}
-              <div className={`rounded-2xl px-5 py-4 ${
-                msg.role === "user"
-                  ? "bg-gradient-to-br from-primary to-primary-dark text-white rounded-tr-sm shadow-md shadow-primary/20"
-                  : "bg-white border border-gray-100 rounded-tl-sm shadow-sm"
-              }`}>
-                {msg.role === "user" ? (
-                  <p className="text-sm leading-relaxed">{msg.text}</p>
-                ) : (
-                  <div className="prose-sm max-w-none">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={mdComponents}
-                    >
-                      {msg.text}
-                    </ReactMarkdown>
+          {/* Message list */}
+          {messages.map((msg, i) => (
+            <div key={i} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+
+              {/* AI avatar */}
+              {msg.role === "assistant" && (
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-primary-dark
+                                flex items-center justify-center shrink-0 shadow-sm mt-1">
+                  <span className="text-white text-xs font-bold">AI</span>
+                </div>
+              )}
+
+              <div className={`max-w-2xl ${msg.role === "user" ? "max-w-md" : "w-full"}`}>
+                {/* Bubble */}
+                <div className={`rounded-2xl px-5 py-4 ${
+                  msg.role === "user"
+                    ? "bg-gradient-to-br from-primary to-primary-dark text-white rounded-tr-sm shadow-md shadow-primary/20"
+                    : "bg-white border border-gray-100 rounded-tl-sm shadow-sm"
+                }`}>
+                  {msg.role === "user" ? (
+                    <p className="text-sm leading-relaxed">{msg.text}</p>
+                  ) : (
+                    <div className="prose-sm max-w-none">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={mdComponents}
+                      >
+                        {msg.text}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                </div>
+
+                {/* Sources */}
+                {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2 px-1">
+                    <span className="text-xs text-gray-400 self-center">Sources:</span>
+                    {msg.sources.map((src, j) => (
+                      <SourceBadge key={j} source={src} />
+                    ))}
                   </div>
                 )}
               </div>
 
-              {/* Sources */}
-              {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2 px-1">
-                  <span className="text-xs text-gray-400 self-center">Sources:</span>
-                  {msg.sources.map((src, j) => (
-                    <SourceBadge key={j} source={src} />
-                  ))}
+              {/* User avatar */}
+              {msg.role === "user" && (
+                <div className="w-8 h-8 rounded-xl bg-gray-200 flex items-center justify-center shrink-0 mt-1">
+                  <span className="text-gray-600 text-xs font-bold">You</span>
                 </div>
               )}
             </div>
+          ))}
 
-            {/* User avatar */}
-            {msg.role === "user" && (
-              <div className="w-8 h-8 rounded-xl bg-gray-200 flex items-center justify-center shrink-0 mt-1">
-                <span className="text-gray-600 text-xs font-bold">You</span>
+          {/* Loading */}
+          {loading && (
+            <div className="flex gap-3 justify-start">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-primary-dark
+                              flex items-center justify-center shrink-0 shadow-sm">
+                <span className="text-white text-xs font-bold">AI</span>
               </div>
-            )}
-          </div>
-        ))}
-
-        {/* Loading */}
-        {loading && (
-          <div className="flex gap-3 justify-start">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-primary-dark
-                            flex items-center justify-center shrink-0 shadow-sm">
-              <span className="text-white text-xs font-bold">AI</span>
+              <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm">
+                <TypingDots />
+              </div>
             </div>
-            <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm">
-              <TypingDots />
-            </div>
-          </div>
-        )}
+          )}
 
-        {/* Error */}
-        {error && (
-          <div className="flex justify-center">
-            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center gap-2">
-              <span className="text-red-400">⚠️</span>
-              <p className="text-xs text-red-600">{error}</p>
+          {/* Error */}
+          {error && (
+            <div className="flex justify-center">
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center gap-2">
+                <span className="text-red-400">⚠️</span>
+                <p className="text-xs text-red-600">{error}</p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <div ref={bottomRef} />
+          <div ref={bottomRef} />
+        </div>
       </div>
 
       {/* ── Input bar ── */}
-      <div className="border-t border-gray-100 bg-white px-4 py-3">
-        <div className="flex gap-3 items-end">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask a medical research question… (Enter to send, Shift+Enter for newline)"
-            rows={2}
-            className="flex-1 resize-none border border-gray-200 rounded-xl px-4 py-2.5 text-sm
-                       focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10
-                       transition-all placeholder-gray-400 bg-gray-50 focus:bg-white"
-          />
-          <button
-            onClick={handleSubmit}
-            disabled={loading || !input.trim()}
-            className="shrink-0 bg-gradient-to-br from-primary to-primary-dark text-white
-                       px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md shadow-primary/25
-                       hover:shadow-lg hover:shadow-primary/30 hover:scale-[1.02]
-                       disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100
-                       transition-all duration-200 flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-            </svg>
-            Send
-          </button>
+      <div className="border-t border-gray-100 bg-white px-4 py-4">
+        <div className="max-w-3xl mx-auto w-full">
+          <div className="flex gap-3 items-end">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask a medical research question… (Enter to send, Shift+Enter for newline)"
+              rows={2}
+              className="flex-1 resize-none border border-gray-200 rounded-xl px-4 py-2.5 text-sm
+                         focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10
+                         transition-all placeholder-gray-400 bg-gray-50 focus:bg-white"
+            />
+            <button
+              onClick={handleSubmit}
+              disabled={loading || !input.trim()}
+              className="shrink-0 bg-gradient-to-br from-primary to-primary-dark text-white
+                         px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md shadow-primary/25
+                         hover:shadow-lg hover:shadow-primary/30 hover:scale-[1.02]
+                         disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100
+                         transition-all duration-200 flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+              Send
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-2 pl-1 flex justify-between items-center">
+            <span>
+              Powered by Groq LLaMA 3.3 70B &middot; Local RAG &middot; <span className="text-primary font-medium">Hybrid Search</span>
+            </span>
+            <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-500 font-mono">
+              Gemini Style Layout
+            </span>
+          </p>
         </div>
-        <p className="text-xs text-gray-400 mt-1.5 pl-1">
-          Powered by Groq LLaMA 3.3 70B · Local RAG · {" "}
-          <span className="text-primary font-medium">Hybrid Search</span>
-        </p>
       </div>
     </div>
   );
