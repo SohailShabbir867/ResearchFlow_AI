@@ -1,190 +1,255 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 
-// Fetch list of all chat sessions
-export const fetchChats = createAsyncThunk(
-  "research/fetchChats",
-  async (_, { rejectWithValue }) => {
-    try {
-      const res = await axios.get("/api/research/chats");
-      return res.data;
-    } catch (err) {
-      return rejectWithValue(
-        err.response?.data?.error || "Failed to load previous chats."
-      );
-    }
-  }
-);
+const API = "/api/research";
 
-// Create a new chat session
-export const createChat = createAsyncThunk(
-  "research/createChat",
-  async (title, { rejectWithValue }) => {
-    try {
-      const res = await axios.post("/api/research/chats", { title });
-      return res.data;
-    } catch (err) {
-      return rejectWithValue(
-        err.response?.data?.error || "Failed to start a new chat."
-      );
-    }
-  }
-);
+// ─── Thunks ──────────────────────────────────────────────────────────────────
 
-// Load details/messages of a specific chat session
-export const fetchChatDetails = createAsyncThunk(
-  "research/fetchChatDetails",
-  async (chatId, { rejectWithValue }) => {
-    try {
-      const res = await axios.get(`/api/research/chats/${chatId}`);
-      return res.data;
-    } catch (err) {
-      return rejectWithValue(
-        err.response?.data?.error || "Failed to load chat conversation."
-      );
-    }
+export const fetchChats = createAsyncThunk("research/fetchChats", async (_, { rejectWithValue }) => {
+  try {
+    const res = await axios.get(`${API}/chats`);
+    return res.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.error || "Failed to load chats.");
   }
-);
+});
 
-// Delete a chat session
-export const deleteChat = createAsyncThunk(
-  "research/deleteChat",
-  async (chatId, { rejectWithValue }) => {
-    try {
-      const res = await axios.delete(`/api/research/chats/${chatId}`);
-      return res.data; // { message, id }
-    } catch (err) {
-      return rejectWithValue(
-        err.response?.data?.error || "Failed to delete chat session."
-      );
-    }
+export const createChat = createAsyncThunk("research/createChat", async (title, { rejectWithValue }) => {
+  try {
+    const res = await axios.post(`${API}/chats`, { title });
+    return res.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.error || "Failed to create chat.");
   }
-);
+});
 
-// Ask question inside an active chat session
+export const loadChat = createAsyncThunk("research/loadChat", async (chatId, { rejectWithValue }) => {
+  try {
+    const res = await axios.get(`${API}/chats/${chatId}`);
+    return res.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.error || "Failed to load chat.");
+  }
+});
+
+export const deleteChat = createAsyncThunk("research/deleteChat", async (chatId, { rejectWithValue }) => {
+  try {
+    await axios.delete(`${API}/chats/${chatId}`);
+    return chatId;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.error || "Failed to delete chat.");
+  }
+});
+
 export const askQuestion = createAsyncThunk(
   "research/askQuestion",
   async ({ chatId, question }, { rejectWithValue }) => {
     try {
-      const res = await axios.post(`/api/research/chats/${chatId}/ask`, { question });
-      return res.data; // Returns updated Chat object
+      const res = await axios.post(`${API}/chats/${chatId}/ask`, { question }, { timeout: 120000 });
+      return res.data;
     } catch (err) {
-      return rejectWithValue(
-        err.response?.data?.error || "Server error. Is Node.js running?"
-      );
+      return rejectWithValue(err.response?.data?.error || "Server error.");
     }
   }
 );
 
+// ─── Streaming thunk (Fix #5) ─────────────────────────────────────────────────
+// Uses fetch() + ReadableStream to consume SSE tokens one by one.
+// Dispatches appendStreamToken on each token, then finalizeStream with sources.
+
+export const askQuestionStream = (question) => async (dispatch) => {
+  // Push user message immediately
+  dispatch(pushUserMessage(question));
+  // Open a blank assistant message to stream into
+  dispatch(openAssistantMessage());
+
+  try {
+    const response = await fetch(`http://localhost:8000/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, top_k: 5 })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.detail || "Stream request failed");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const text = decoder.decode(value, { stream: true });
+      // SSE lines: "data: {...}\n\n"
+      const lines = text.split("\n").filter(l => l.startsWith("data: "));
+
+      for (const line of lines) {
+        try {
+          const payload = JSON.parse(line.replace("data: ", ""));
+
+          if (payload.error) {
+            dispatch(streamError(payload.error));
+            return;
+          }
+
+          if (payload.done) {
+            dispatch(finalizeStream(payload.sources || []));
+            return;
+          }
+
+          if (payload.token) {
+            dispatch(appendStreamToken(payload.token));
+          }
+        } catch {
+          // Ignore malformed lines
+        }
+      }
+    }
+  } catch (err) {
+    dispatch(streamError(err.message || "Streaming failed."));
+  }
+};
+
+// ─── Slice ───────────────────────────────────────────────────────────────────
+
 const researchSlice = createSlice({
   name: "research",
   initialState: {
-    chats: [],           // List of previous chats
-    currentChatId: null, // Active chat session ID
-    messages: [],        // Messages in active session
+    // Sidebar
+    chatList: [],
+    chatListLoading: false,
+
+    // Active chat
+    currentChatId: null,
+    messages: [],        // { role, text, sources? }
     loading: false,
-    error: null,
+    streaming: false,    // true while stream is active
+    error: null
   },
+
   reducers: {
     clearMessages(state) {
       state.messages = [];
       state.error = null;
+      state.currentChatId = null;
     },
+
     setCurrentChatId(state, action) {
       state.currentChatId = action.payload;
+    },
+
+    // Streaming reducers
+    pushUserMessage(state, action) {
+      state.messages.push({ role: "user", text: action.payload });
+      state.streaming = true;
+      state.error = null;
+    },
+
+    openAssistantMessage(state) {
+      // Add empty assistant message — tokens will be appended here
+      state.messages.push({ role: "assistant", text: "", sources: [] });
+    },
+
+    appendStreamToken(state, action) {
+      const last = state.messages[state.messages.length - 1];
+      if (last && last.role === "assistant") {
+        last.text += action.payload;
+      }
+    },
+
+    finalizeStream(state, action) {
+      const last = state.messages[state.messages.length - 1];
+      if (last && last.role === "assistant") {
+        last.sources = action.payload;
+      }
+      state.streaming = false;
+    },
+
+    streamError(state, action) {
+      state.streaming = false;
+      state.error = action.payload;
+      // Remove the empty assistant placeholder
+      const last = state.messages[state.messages.length - 1];
+      if (last && last.role === "assistant" && last.text === "") {
+        state.messages.pop();
+      }
     }
   },
+
   extraReducers: (builder) => {
+    // fetchChats
     builder
-      // Fetch Chats
-      .addCase(fetchChats.pending, (state) => {
-        state.error = null;
-      })
+      .addCase(fetchChats.pending, (state) => { state.chatListLoading = true; })
       .addCase(fetchChats.fulfilled, (state, action) => {
-        state.chats = action.payload;
-        // If there is no active chat but we have previous chats, set current to the first one
-        if (!state.currentChatId && action.payload.length > 0) {
-          state.currentChatId = action.payload[0]._id;
-        }
+        state.chatListLoading = false;
+        state.chatList = action.payload;
       })
-      .addCase(fetchChats.rejected, (state, action) => {
-        state.error = action.payload;
-      })
+      .addCase(fetchChats.rejected, (state) => { state.chatListLoading = false; });
 
-      // Create Chat
-      .addCase(createChat.fulfilled, (state, action) => {
-        state.chats.unshift({
-          _id: action.payload._id,
-          title: action.payload.title,
-          updatedAt: action.payload.updatedAt,
-          createdAt: action.payload.createdAt,
-          lastMessage: ""
-        });
-        state.currentChatId = action.payload._id;
+    // createChat
+    builder.addCase(createChat.fulfilled, (state, action) => {
+      state.chatList.unshift(action.payload);
+      state.currentChatId = action.payload._id;
+      state.messages = [];
+    });
+
+    // loadChat
+    builder.addCase(loadChat.fulfilled, (state, action) => {
+      state.currentChatId = action.payload._id;
+      state.messages = action.payload.messages.map(m => ({
+        role: m.role,
+        text: m.text,
+        sources: m.sources || []
+      }));
+    });
+
+    // deleteChat
+    builder.addCase(deleteChat.fulfilled, (state, action) => {
+      state.chatList = state.chatList.filter(c => c._id !== action.payload);
+      if (state.currentChatId === action.payload) {
+        state.currentChatId = null;
         state.messages = [];
-        state.error = null;
-      })
+      }
+    });
 
-      // Fetch Chat Details
-      .addCase(fetchChatDetails.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchChatDetails.fulfilled, (state, action) => {
-        state.loading = false;
-        state.messages = action.payload.messages || [];
-        state.currentChatId = action.payload._id;
-      })
-      .addCase(fetchChatDetails.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload;
-      })
-
-      // Delete Chat
-      .addCase(deleteChat.fulfilled, (state, action) => {
-        state.chats = state.chats.filter(c => c._id !== action.payload.id);
-        if (state.currentChatId === action.payload.id) {
-          if (state.chats.length > 0) {
-            state.currentChatId = state.chats[0]._id;
-          } else {
-            state.currentChatId = null;
-            state.messages = [];
-          }
-        }
-      })
-
-      // Ask Question
+    // askQuestion (standard)
+    builder
       .addCase(askQuestion.pending, (state, action) => {
         state.loading = true;
         state.error = null;
-        state.messages.push({
-          role: "user",
-          text: action.meta.arg.question,
-          timestamp: new Date().toISOString()
-        });
+        state.messages.push({ role: "user", text: action.meta.arg.question });
       })
       .addCase(askQuestion.fulfilled, (state, action) => {
         state.loading = false;
-        // The endpoint returns the updated chat object
-        state.messages = action.payload.messages;
-        
-        // Update the title and lastMessage of the chat in the sidebar list
-        const idx = state.chats.findIndex(c => c._id === action.payload._id);
-        if (idx !== -1) {
-          state.chats[idx].title = action.payload.title;
-          state.chats[idx].lastMessage = action.payload.messages[action.payload.messages.length - 1]?.text || "";
-          state.chats[idx].updatedAt = action.payload.updatedAt;
-          
-          // Re-sort chats list by updatedAt
-          state.chats.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-        }
+        const msgs = action.payload.messages;
+        // Replace local messages with the server-saved version
+        state.messages = msgs.map(m => ({
+          role: m.role,
+          text: m.text,
+          sources: m.sources || []
+        }));
+        // Update chat title in sidebar
+        const idx = state.chatList.findIndex(c => c._id === action.payload._id);
+        if (idx !== -1) state.chatList[idx].title = action.payload.title;
       })
       .addCase(askQuestion.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });
-  },
+  }
 });
 
-export const { clearMessages, setCurrentChatId } = researchSlice.actions;
+export const {
+  clearMessages,
+  setCurrentChatId,
+  pushUserMessage,
+  openAssistantMessage,
+  appendStreamToken,
+  finalizeStream,
+  streamError
+} = researchSlice.actions;
+
 export default researchSlice.reducer;

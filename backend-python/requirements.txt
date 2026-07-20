@@ -10,3 +10,5 @@ fastembed
 rank-bm25
 tqdm
 python-docx
+tiktoken
+python-multipart
