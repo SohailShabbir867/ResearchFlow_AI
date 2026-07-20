@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const mongoose = require("mongoose");
 
 dotenv.config();
 
@@ -8,6 +9,16 @@ const researchRoutes = require("./routes/research");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/medresearch";
+
+// Connect to MongoDB
+mongoose
+  .connect(MONGO_URI)
+  .then(() => console.log("Connected to MongoDB successfully!"))
+  .catch((err) => {
+    console.error("MongoDB connection error:", err.message);
+    console.log("Please ensure MongoDB is installed and running locally on your system.");
+  });
 
 // Middlewares
 app.use(cors({
@@ -27,7 +38,12 @@ app.use("/api/research", researchRoutes);
 
 // Health check
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", service: "medresearch-node", port: PORT });
+  res.json({
+    status: "ok",
+    service: "medresearch-node",
+    port: PORT,
+    mongodb: mongoose.connection.readyState === 1 ? "connected" : "disconnected"
+  });
 });
 
 // 404 handler

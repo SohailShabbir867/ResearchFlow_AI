@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { askQuestion, clearMessages } from "../store/researchSlice.js";
+import { askQuestion, createChat } from "../store/researchSlice.js";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -96,7 +96,7 @@ function SourceBadge({ source }) {
 /* ── Main ChatBox ───────────────────────────────────────────── */
 export default function ChatBox() {
   const dispatch = useDispatch();
-  const { messages, loading, error } = useSelector((s) => s.research);
+  const { currentChatId, messages, loading, error } = useSelector((s) => s.research);
   const [input, setInput] = useState("");
   const bottomRef = useRef(null);
 
@@ -104,9 +104,22 @@ export default function ChatBox() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!input.trim() || loading) return;
-    dispatch(askQuestion(input.trim()));
+
+    let activeChatId = currentChatId;
+
+    // If no active chat session, create one first in MongoDB
+    if (!activeChatId) {
+      const resultAction = await dispatch(createChat("New Chat"));
+      if (createChat.fulfilled.match(resultAction)) {
+        activeChatId = resultAction.payload._id;
+      } else {
+        return; // failed to create chat
+      }
+    }
+
+    dispatch(askQuestion({ chatId: activeChatId, question: input.trim() }));
     setInput("");
   };
 
@@ -132,7 +145,10 @@ export default function ChatBox() {
             </div>
             <div>
               <p className="text-gray-700 font-semibold text-base">Medical Research Assistant</p>
-              <p className="text-gray-400 text-sm mt-1">Ask any question — answers come from your indexed documents</p>
+              <p className="text-gray-400 text-sm mt-1 flex flex-col gap-0.5">
+                <span>Ask any question — answers come from your indexed documents</span>
+                <span className="text-xs text-primary/70 font-semibold">Saved locally to MongoDB</span>
+              </p>
             </div>
             <div className="grid grid-cols-1 gap-2 mt-2 w-full max-w-sm">
               {["What is Chronic Kidney Disease?", "List diabetes medications", "Explain heart disease risk factors"].map((q) => (
