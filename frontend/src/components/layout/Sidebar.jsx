@@ -13,6 +13,7 @@ import {
   Settings,
   Clock,
   X,
+  ShieldCheck,
 } from "lucide-react";
 import { createChat, deleteChat, loadChat, clearMessages } from "../../store/researchSlice.js";
 import { logoutUser } from "../../store/authSlice.js";
@@ -182,6 +183,32 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
           <Library className="w-4 h-4 shrink-0" />
           {!collapsed && <span>Document Library</span>}
         </button>
+
+        {/* Admin Panel — only visible to admin users */}
+        {user?.role === "admin" && (
+          <>
+            {!collapsed && (
+              <div className="mx-1 my-1.5 h-px" style={{ background: "linear-gradient(to right, transparent, rgba(226,27,112,0.3), transparent)" }} />
+            )}
+            <button
+              onClick={() => { navigate("/admin"); if (onMobileClose) onMobileClose(); }}
+              className={isActive("/admin") ? "sidebar-item-active w-full" : "sidebar-item w-full"}
+              title="Admin Dashboard"
+            >
+              <ShieldCheck className="w-4 h-4 shrink-0 text-[#E21B70]" />
+              {!collapsed && (
+                <span className="flex-1 text-left">
+                  Admin Panel
+                </span>
+              )}
+              {!collapsed && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(226,27,112,0.15)", color: "#E21B70", border: "1px solid rgba(226,27,112,0.3)" }}>
+                  ADMIN
+                </span>
+              )}
+            </button>
+          </>
+        )}
       </div>
 
       {/* ── Chat History ── */}
