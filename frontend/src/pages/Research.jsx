@@ -16,7 +16,8 @@ import {
   ThumbsDown,
   AlertTriangle,
   Sparkles,
-  FolderOpen
+  FolderOpen,
+  Menu
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -88,6 +89,7 @@ export default function Research() {
   const navigate = useNavigate();
   // Sidebar State
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hoveredChatId, setHoveredChatId] = useState(null);
 
   // Chat Data & Active Conversation
@@ -213,11 +215,19 @@ export default function Research() {
   return (
     <div className="flex h-screen w-full bg-[#0F0A1E] font-sans antialiased text-gray-100 overflow-hidden selection:bg-[#E21B70]/30 selection:text-white">
       
+      {/* Mobile Sidebar Backdrop Overlay */}
+      {mobileMenuOpen && (
+        <div 
+          onClick={() => setMobileMenuOpen(false)}
+          className="fixed inset-0 bg-black/70 backdrop-blur-xs z-40 lg:hidden"
+        />
+      )}
+
       {/* ── LEFT SIDEBAR (280px, dark #0A0614) ── */}
       <aside 
-        className={`bg-[#0A0614] border-r border-white/10 flex flex-col justify-between transition-all duration-300 z-30 shrink-0 ${
-          sidebarCollapsed ? "w-16" : "w-[280px]"
-        }`}
+        className={`bg-[#0A0614] border-r border-white/10 flex flex-col justify-between transition-all duration-300 z-50 shrink-0 fixed lg:static inset-y-0 left-0 ${
+          mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        } ${sidebarCollapsed ? "w-16" : "w-[280px]"}`}
       >
         {/* Top Header */}
         <div className="p-4 flex items-center justify-between border-b border-white/5">
@@ -377,8 +387,17 @@ export default function Research() {
       <main className="flex-1 flex flex-col h-full bg-[#0F0A1E] relative overflow-hidden">
         
         {/* Top Header Bar */}
-        <header className="h-16 px-6 border-b border-white/10 bg-[#0F0A1E]/80 backdrop-blur-md flex items-center justify-between shrink-0 z-20">
+        <header className="h-16 px-4 sm:px-6 border-b border-white/10 bg-[#0F0A1E]/80 backdrop-blur-md flex items-center justify-between shrink-0 z-20">
           <div className="flex items-center gap-3">
+            {/* Mobile Hamburger Menu Button */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="lg:hidden p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+              title="Open sidebar menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
             <h1 className="text-base font-bold text-white tracking-tight">
               Research Chat
             </h1>

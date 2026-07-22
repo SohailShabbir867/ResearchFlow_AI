@@ -20,7 +20,8 @@ import {
   Save, 
   FolderOpen,
   Camera,
-  X
+  X,
+  Menu
 } from "lucide-react";
 
 export default function UserProfile() {
@@ -28,6 +29,7 @@ export default function UserProfile() {
 
   // Sidebar State
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Profile Form State
   const [fullName, setFullName] = useState("Dr. Sohail Shabbir");
@@ -107,11 +109,19 @@ export default function UserProfile() {
   return (
     <div className="flex h-screen w-full bg-[#0F0A1E] font-sans antialiased text-gray-100 overflow-hidden selection:bg-[#E21B70]/30 selection:text-white">
       
+      {/* Mobile Sidebar Backdrop Overlay */}
+      {mobileMenuOpen && (
+        <div 
+          onClick={() => setMobileMenuOpen(false)}
+          className="fixed inset-0 bg-black/70 backdrop-blur-xs z-40 lg:hidden"
+        />
+      )}
+
       {/* ── LEFT SIDEBAR (Research Chat Sidebar style) ── */}
       <aside 
-        className={`bg-[#0A0614] border-r border-white/10 flex flex-col justify-between transition-all duration-300 z-30 shrink-0 ${
-          sidebarCollapsed ? "w-16" : "w-[280px]"
-        }`}
+        className={`bg-[#0A0614] border-r border-white/10 flex flex-col justify-between transition-all duration-300 z-50 shrink-0 fixed lg:static inset-y-0 left-0 ${
+          mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        } ${sidebarCollapsed ? "w-16" : "w-[280px]"}`}
       >
         {/* Top Header */}
         <div className="p-4 flex items-center justify-between border-b border-white/5">
@@ -204,9 +214,18 @@ export default function UserProfile() {
           
           {/* Page Header */}
           <div className="flex items-center justify-between">
-            <h1 className="text-[24px] font-bold text-white tracking-tight">
-              User Profile
-            </h1>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="lg:hidden p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white transition-colors"
+                title="Open menu"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <h1 className="text-[24px] font-bold text-white tracking-tight">
+                User Profile
+              </h1>
+            </div>
             <button
               onClick={() => navigate("/")}
               className="px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-gray-400 hover:text-white transition-colors flex items-center gap-1.5"

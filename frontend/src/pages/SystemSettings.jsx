@@ -19,7 +19,8 @@ import {
   CheckCircle2,
   Sparkles,
   Minus,
-  Plus
+  Plus,
+  Menu
 } from "lucide-react";
 
 export default function SystemSettings() {
@@ -27,6 +28,7 @@ export default function SystemSettings() {
 
   // Navigation State
   const [activeNav, setActiveNav] = useState("Settings");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Guardrail Configuration State
   const [threshold, setThreshold] = useState(-2.0); // Strict zone default
@@ -81,8 +83,18 @@ export default function SystemSettings() {
   return (
     <div className="flex h-screen w-full bg-[#0F0A1E] font-sans antialiased text-gray-100 overflow-hidden selection:bg-[#E21B70]/30 selection:text-white">
       
+      {/* Mobile Sidebar Backdrop Overlay */}
+      {mobileMenuOpen && (
+        <div 
+          onClick={() => setMobileMenuOpen(false)}
+          className="fixed inset-0 bg-black/70 backdrop-blur-xs z-40 lg:hidden"
+        />
+      )}
+
       {/* ── LEFT ADMIN SIDEBAR (256px, darkest #0A0614) ── */}
-      <aside className="w-64 bg-[#0A0614] border-r border-white/10 flex flex-col justify-between h-screen shrink-0 z-30">
+      <aside className={`w-64 bg-[#0A0614] border-r border-white/10 flex flex-col justify-between h-screen shrink-0 z-50 fixed lg:static inset-y-0 left-0 transition-transform duration-300 ${
+        mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      }`}>
         
         <div>
           {/* Logo + Admin Panel Tag */}
@@ -171,13 +183,22 @@ export default function SystemSettings() {
         <div className="max-w-[900px] w-full mx-auto space-y-8">
 
           {/* Page Header */}
-          <div>
-            <h1 className="text-[24px] font-bold text-white tracking-tight">
-              System Settings
-            </h1>
-            <p className="text-gray-400 text-sm mt-1">
-              Configure AI guardrails, rate limits, and LLM parameters
-            </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="lg:hidden p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white transition-colors"
+              title="Open menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-[24px] font-bold text-white tracking-tight">
+                System Settings
+              </h1>
+              <p className="text-gray-400 text-sm mt-1">
+                Configure AI guardrails, rate limits, and LLM parameters
+              </p>
+            </div>
           </div>
 
 

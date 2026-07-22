@@ -18,7 +18,8 @@ import {
   Calendar,
   Layers,
   ShieldCheck,
-  BookOpen
+  BookOpen,
+  Menu
 } from "lucide-react";
 
 // Mock Medical Documents Dataset
@@ -110,6 +111,7 @@ export default function Documents() {
 
   // Component State Management
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [viewMode, setViewMode] = useState("grid"); // "grid" or "list"
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSpecialty, setSelectedSpecialty] = useState("All Specialties");
@@ -187,11 +189,19 @@ export default function Documents() {
   return (
     <div className="flex h-screen w-full bg-[#0F0A1E] font-sans antialiased text-gray-100 overflow-hidden selection:bg-[#E21B70]/30 selection:text-white">
       
+      {/* Mobile Sidebar Backdrop Overlay */}
+      {mobileMenuOpen && (
+        <div 
+          onClick={() => setMobileMenuOpen(false)}
+          className="fixed inset-0 bg-black/70 backdrop-blur-xs z-40 lg:hidden"
+        />
+      )}
+
       {/* ── LEFT SIDEBAR (280px, dark #0A0614) ── */}
       <aside 
-        className={`bg-[#0A0614] border-r border-white/10 flex flex-col justify-between transition-all duration-300 z-30 shrink-0 ${
-          sidebarCollapsed ? "w-16" : "w-[280px]"
-        }`}
+        className={`bg-[#0A0614] border-r border-white/10 flex flex-col justify-between transition-all duration-300 z-50 shrink-0 fixed lg:static inset-y-0 left-0 ${
+          mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        } ${sidebarCollapsed ? "w-16" : "w-[280px]"}`}
       >
         {/* Top Header */}
         <div className="p-4 flex items-center justify-between border-b border-white/5">
@@ -278,13 +288,22 @@ export default function Documents() {
         
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-[24px] font-bold text-white tracking-tight">
-              Document Library
-            </h1>
-            <p className="text-gray-400 text-sm mt-1">
-              47 documents indexed — last updated Jul 12, 2025
-            </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="lg:hidden p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white transition-colors"
+              title="Open menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-[24px] font-bold text-white tracking-tight">
+                Document Library
+              </h1>
+              <p className="text-gray-400 text-sm mt-1">
+                47 documents indexed — last updated Jul 12, 2025
+              </p>
+            </div>
           </div>
 
           {/* Top-Right: Grid / List View Toggle Buttons */}
