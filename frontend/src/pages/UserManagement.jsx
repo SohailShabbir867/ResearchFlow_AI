@@ -25,6 +25,7 @@ import {
   Stethoscope,
   Menu
 } from "lucide-react";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 // Mock Users Dataset matching visual spec
 const INITIAL_USERS = [
@@ -321,14 +322,18 @@ export default function UserManagement() {
             </div>
           </div>
 
-          {/* Top-Right: + Add User Button */}
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="h-11 px-5 rounded-xl bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white font-semibold text-sm flex items-center gap-2 shadow-md shadow-[#E21B70]/25 hover:opacity-95 active:scale-[0.98] transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Add User</span>
-          </button>
+          {/* Top-Right: ThemeToggle + Add User Button */}
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="h-11 px-5 rounded-xl bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white font-semibold text-sm flex items-center gap-2 shadow-md shadow-[#E21B70]/25 hover:opacity-95 active:scale-[0.98] transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>Add User</span>
+            </button>
+          </div>
         </div>
 
 

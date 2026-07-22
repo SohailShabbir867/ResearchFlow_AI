@@ -23,6 +23,7 @@ import {
   Tag,
   Menu
 } from "lucide-react";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 // Mock Uploaded Documents Dataset
 const INITIAL_DOCUMENTS = [
@@ -339,21 +340,27 @@ export default function DocumentManager() {
       <main className="flex-1 flex flex-col h-full bg-[#0F0A1E] relative overflow-y-auto p-6 lg:p-8">
         
         {/* Page Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="lg:hidden p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white transition-colors"
-            title="Open menu"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-          <div>
-            <h1 className="text-[24px] font-bold text-white tracking-tight">
-              Document Manager
-            </h1>
-            <p className="text-gray-400 text-sm mt-1">
-              {docs.length} documents · {totalChunks.toLocaleString()} total chunks
-            </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="lg:hidden p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white transition-colors"
+              title="Open menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-[24px] font-bold text-white tracking-tight">
+                Document Manager
+              </h1>
+              <p className="text-gray-400 text-sm mt-1">
+                {docs.length} documents · {totalChunks.toLocaleString()} total chunks
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
           </div>
         </div>
 

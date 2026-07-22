@@ -12,6 +12,7 @@ import {
   CheckCircle2
 } from "lucide-react";
 import axios from "axios";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -108,14 +109,17 @@ export default function Login() {
         {/* Subtle SVG Grid Pattern Overlay */}
         <div className="absolute inset-0 bg-[radial-gradient(#rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:24px_24px] opacity-40 pointer-events-none" />
 
-        {/* Top Header / Logo */}
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center shadow-[0_0_20px_rgba(226,27,112,0.4)] text-white">
-            <Microscope className="w-6 h-6 stroke-[2.2]" />
+        {/* Top Header / Logo + Theme Toggle */}
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center shadow-[0_0_20px_rgba(226,27,112,0.4)] text-white">
+              <Microscope className="w-6 h-6 stroke-[2.2]" />
+            </div>
+            <span className="text-white font-bold text-xl tracking-tight">
+              MedResearch AI
+            </span>
           </div>
-          <span className="text-white font-bold text-xl tracking-tight">
-            MedResearch AI
-          </span>
+          <ThemeToggle />
         </div>
 
         {/* Hero Section & Features */}

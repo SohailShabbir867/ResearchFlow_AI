@@ -21,6 +21,7 @@ import {
   BookOpen,
   Menu
 } from "lucide-react";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 // Mock Medical Documents Dataset
 const MOCK_DOCUMENTS = [
@@ -306,8 +307,10 @@ export default function Documents() {
             </div>
           </div>
 
-          {/* Top-Right: Grid / List View Toggle Buttons */}
-          <div className="flex items-center gap-2 bg-white/5 border border-white/10 p-1 rounded-xl">
+          {/* Top-Right: Grid / List View Toggle & Theme Toggle Buttons */}
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <div className="flex items-center gap-2 bg-white/5 border border-white/10 p-1 rounded-xl">
             <button
               onClick={() => setViewMode("grid")}
               className={`p-2 rounded-lg text-xs font-medium transition-all ${
@@ -332,6 +335,7 @@ export default function Documents() {
             </button>
           </div>
         </div>
+      </div>
 
         {/* Filter Bar */}
         <div className="flex flex-col md:flex-row items-center gap-4 mb-8">

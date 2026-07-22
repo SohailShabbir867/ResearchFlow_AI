@@ -23,6 +23,7 @@ import {
   X,
   Menu
 } from "lucide-react";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 export default function UserProfile() {
   const navigate = useNavigate();
@@ -226,13 +227,16 @@ export default function UserProfile() {
                 User Profile
               </h1>
             </div>
-            <button
-              onClick={() => navigate("/")}
-              className="px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-gray-400 hover:text-white transition-colors flex items-center gap-1.5"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to Chat</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <ThemeToggle />
+              <button
+                onClick={() => navigate("/")}
+                className="px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-gray-400 hover:text-white transition-colors flex items-center gap-1.5"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Chat</span>
+              </button>
+            </div>
           </div>
 
 

@@ -21,6 +21,7 @@ import {
   Zap,
   Menu
 } from "lucide-react";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 const INITIAL_SERVICES = [
   {
@@ -250,6 +251,8 @@ export default function SystemHealth() {
           </div>
 
           <div className="flex items-center gap-3">
+            <ThemeToggle />
+
             <button
               onClick={toggleQdrantStatus}
               className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-colors"

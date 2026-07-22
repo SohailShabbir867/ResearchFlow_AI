@@ -20,6 +20,7 @@ import {
   Menu
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 const SUGGESTIONS = [
   "What is Type 2 diabetes?",
@@ -409,6 +410,8 @@ export default function Research() {
           </div>
 
           <div className="flex items-center gap-3">
+            <ThemeToggle />
+
             <button
               onClick={() => {
                 if (activeChatId) {

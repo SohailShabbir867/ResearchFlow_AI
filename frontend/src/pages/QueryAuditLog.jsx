@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Menu
 } from "lucide-react";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 // Mock Query Audit Log Dataset matching visual prompt
 const MOCK_QUERY_LOGS = [
@@ -293,14 +294,18 @@ export default function QueryAuditLog() {
             </div>
           </div>
 
-          {/* Top-Right: Export CSV Secondary Button */}
-          <button
-            onClick={handleExportCSV}
-            className="h-10 px-4 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10 hover:border-white/20 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-sm"
-          >
-            <Download className="w-4 h-4 text-[#E21B70]" />
-            <span>Export CSV</span>
-          </button>
+          {/* Top-Right: Export CSV Secondary Button & Theme Toggle */}
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+
+            <button
+              onClick={handleExportCSV}
+              className="h-10 px-4 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10 hover:border-white/20 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-sm"
+            >
+              <Download className="w-4 h-4 text-[#E21B70]" />
+              <span>Export CSV</span>
+            </button>
+          </div>
         </div>
 
 

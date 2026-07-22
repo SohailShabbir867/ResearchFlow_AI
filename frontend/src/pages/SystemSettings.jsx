@@ -22,6 +22,7 @@ import {
   Plus,
   Menu
 } from "lucide-react";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 export default function SystemSettings() {
   const navigate = useNavigate();
@@ -183,21 +184,27 @@ export default function SystemSettings() {
         <div className="max-w-[900px] w-full mx-auto space-y-8">
 
           {/* Page Header */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white transition-colors"
-              title="Open menu"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-[24px] font-bold text-white tracking-tight">
-                System Settings
-              </h1>
-              <p className="text-gray-400 text-sm mt-1">
-                Configure AI guardrails, rate limits, and LLM parameters
-              </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="lg:hidden p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white transition-colors"
+                title="Open menu"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <div>
+                <h1 className="text-[24px] font-bold text-white tracking-tight">
+                  System Settings
+                </h1>
+                <p className="text-gray-400 text-sm mt-1">
+                  Configure AI guardrails, rate limits, and LLM parameters
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <ThemeToggle />
             </div>
           </div>
 

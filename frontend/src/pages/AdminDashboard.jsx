@@ -21,6 +21,7 @@ import {
   RefreshCw,
   Menu
 } from "lucide-react";
+import ThemeToggle from "../components/ThemeToggle.jsx";
 
 const RECENT_ACTIVITIES = [
   {
@@ -233,8 +234,10 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Top-Right Operational Badge */}
+          {/* Top-Right Operational Badge & Theme Toggle */}
           <div className="flex items-center gap-3">
+            <ThemeToggle />
+
             <button
               onClick={handleRefresh}
               className="p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white transition-colors"
