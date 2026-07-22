@@ -1,12 +1,14 @@
 import { configureStore } from "@reduxjs/toolkit";
+import authReducer from "./authSlice.js";
 import researchReducer from "./researchSlice.js";
 
 export const store = configureStore({
   reducer: {
-    research: researchReducer
+    auth: authReducer,
+    research: researchReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
-      serializableCheck: false
-    })
+      serializableCheck: false,
+    }),
 });

@@ -1,37 +1,65 @@
-import { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
+import { X } from "lucide-react";
 
 export default function Modal({ open, onClose, title, children, width = "max-w-lg" }) {
+  const overlayRef = useRef();
+
+  // Close on Escape key
   useEffect(() => {
-    const handler = e => { if (e.key === "Escape") onClose(); };
-    if (open) document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    if (!open) return;
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, [open, onClose]);
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-           onClick={onClose}/>
-
-      {/* Panel */}
-      <div className={`relative w-full ${width} glass-card shadow-modal
-                       animate-fade-in rounded-2xl overflow-hidden`}>
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+    >
+      <div
+        className={`modal-content ${width} w-full animate-fade-in`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5
-                        border-b border-white/5">
-          <h2 className="text-base font-bold text-white">{title}</h2>
-          <button onClick={onClose}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center
-                             text-gray-400 hover:text-white hover:bg-white/10
-                             transition-colors text-xl leading-none">
-            ×
-          </button>
-        </div>
+        {title && (
+          <div
+            className="flex items-center justify-between px-6 py-4"
+            style={{ borderBottom: "1px solid var(--border-color)" }}
+          >
+            <h2
+              id="modal-title"
+              className="text-base font-bold"
+              style={{ color: "var(--text-heading)" }}
+            >
+              {title}
+            </h2>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg transition-colors"
+              style={{ color: "var(--text-muted)", background: "var(--bg-elevated)" }}
+              aria-label="Close modal"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Body */}
-        <div className="px-6 py-5">{children}</div>
+        <div className="px-6 py-5">
+          {children}
+        </div>
       </div>
     </div>
   );

@@ -1,2 +1,1 @@
-import SystemHealth from "../SystemHealth.jsx";
-export default SystemHealth;
+export { default } from "../SystemHealth.jsx";

@@ -1,30 +1,35 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { 
-  Microscope, 
-  ShieldCheck, 
-  Zap, 
-  FileText, 
-  Eye, 
-  EyeOff, 
-  AlertCircle, 
+import { useNavigate, useLocation } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+import {
+  Microscope,
+  ShieldCheck,
+  Zap,
+  FileText,
+  Eye,
+  EyeOff,
+  AlertCircle,
   ArrowRight,
-  CheckCircle2
+  CheckCircle2,
 } from "lucide-react";
-import axios from "axios";
+import { loginUser, clearAuthError } from "../store/authSlice.js";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
 export default function Login() {
-  const navigate = useNavigate();
-  
-  // State management
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const navigate   = useNavigate();
+  const location   = useLocation();
+  const dispatch   = useDispatch();
+
+  const { loading, error: authError } = useSelector(s => s.auth);
+
+  const [email, setEmail]           = useState("");
+  const [password, setPassword]     = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [localError, setLocalError] = useState("");
   const [emailError, setEmailError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  const from = location.state?.from?.pathname || "/";
 
   const validateEmail = (val) => {
     if (!val) return "Email address is required";
@@ -35,94 +40,56 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
-    setError("");
+    setLocalError("");
     setEmailError("");
     setSuccessMsg("");
+    dispatch(clearAuthError());
 
     const err = validateEmail(email);
-    if (err) {
-      setEmailError(err);
-      return;
+    if (err) { setEmailError(err); return; }
+    if (!password) { setLocalError("Please enter your password."); return; }
+
+    const result = await dispatch(loginUser({ email, password }));
+
+    if (loginUser.fulfilled.match(result)) {
+      setSuccessMsg("Signed in successfully! Redirecting…");
+      setTimeout(() => navigate(from, { replace: true }), 800);
     }
-
-    if (!password) {
-      setError("Please enter your password.");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      // Attempt login against backend API if available, or simulate fallback for showcase
-      try {
-        const response = await axios.post("/api/auth/login", { email, password });
-        if (response.data?.token) {
-          localStorage.setItem("token", response.data.token);
-        }
-      } catch (apiErr) {
-        // If API fails or backend isn't running, provide realistic response based on inputs
-        if (apiErr.response?.data?.error) {
-          throw new Error(apiErr.response.data.error);
-        }
-        // Demo fallback validation: test error trigger if invalid password
-        if (password.length < 6) {
-          throw new Error("Invalid credentials. Password must be at least 6 characters.");
-        }
-      }
-
-      setSuccessMsg("Signed in successfully! Redirecting to research workspace...");
-      setTimeout(() => {
-        navigate("/");
-      }, 1200);
-
-    } catch (err) {
-      setError(err.message || "Incorrect email or password. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    // authError is set in Redux state if rejected
   };
 
+  const displayError = localError || authError;
+
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-[#0A0614] font-sans antialiased selection:bg-[#E21B70]/30 selection:text-white">
-      
-      {/* ── LEFT PANEL (50% width on Desktop) ── */}
-      <div 
-        className="w-full lg:w-1/2 min-h-[480px] lg:min-h-screen bg-[#0A0614] relative p-8 lg:p-14 flex flex-col justify-between overflow-hidden border-b lg:border-b-0 lg:border-r border-white/10"
+    <div
+      className="min-h-screen w-full flex flex-col lg:flex-row font-sans antialiased"
+      style={{ background: "var(--bg-page)" }}
+    >
+      {/* ── LEFT PANEL ── */}
+      <div
+        className="w-full lg:w-1/2 min-h-[420px] lg:min-h-screen relative p-8 lg:p-14 flex flex-col justify-between overflow-hidden"
         style={{
-          background: "radial-gradient(circle at 25% 25%, rgba(226, 27, 112, 0.22) 0%, rgba(10, 6, 20, 1) 75%)"
+          background: "radial-gradient(circle at 25% 25%, rgba(226,27,112,0.22) 0%, #0A0614 75%)",
+          borderRight: "1px solid rgba(255,255,255,0.08)",
         }}
       >
-        {/* Decorative Blurred Pink Glow Blobs in background corners */}
-        <div 
-          className="absolute -top-20 -left-20 w-80 h-80 rounded-full bg-[#E21B70]/20 blur-[100px] pointer-events-none" 
-          aria-hidden="true" 
-        />
-        <div 
-          className="absolute -bottom-20 -right-20 w-96 h-96 rounded-full bg-[#E21B70]/15 blur-[120px] pointer-events-none" 
-          aria-hidden="true" 
-        />
-        <div 
-          className="absolute top-1/2 left-1/3 w-64 h-64 rounded-full bg-[#3A0519]/40 blur-[80px] pointer-events-none" 
-          aria-hidden="true" 
-        />
+        {/* Glow blobs */}
+        <div className="absolute -top-20 -left-20 w-80 h-80 rounded-full bg-[#E21B70]/20 blur-[100px] pointer-events-none" aria-hidden />
+        <div className="absolute -bottom-20 -right-20 w-96 h-96 rounded-full bg-[#E21B70]/15 blur-[120px] pointer-events-none" aria-hidden />
+        <div className="absolute top-1/2 left-1/3 w-64 h-64 rounded-full bg-[#3A0519]/40 blur-[80px] pointer-events-none" aria-hidden />
 
-        {/* Subtle SVG Grid Pattern Overlay */}
-        <div className="absolute inset-0 bg-[radial-gradient(#rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:24px_24px] opacity-40 pointer-events-none" />
-
-        {/* Top Header / Logo + Theme Toggle */}
+        {/* Logo + theme toggle */}
         <div className="relative z-10 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center shadow-[0_0_20px_rgba(226,27,112,0.4)] text-white">
-              <Microscope className="w-6 h-6 stroke-[2.2]" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center shadow-[0_0_20px_rgba(226,27,112,0.4)]">
+              <Microscope className="w-6 h-6 text-white stroke-[2.2]" />
             </div>
-            <span className="text-white font-bold text-xl tracking-tight">
-              MedResearch AI
-            </span>
+            <span className="text-white font-bold text-xl tracking-tight">MedResearch AI</span>
           </div>
           <ThemeToggle />
         </div>
 
-        {/* Hero Section & Features */}
+        {/* Hero */}
         <div className="relative z-10 my-10 lg:my-0 max-w-xl">
           <h1 className="text-[36px] sm:text-[40px] font-bold text-white leading-[1.15] tracking-tight mb-4">
             AI-Powered<br />
@@ -130,76 +97,57 @@ export default function Login() {
               Medical Research
             </span>
           </h1>
-          
           <p className="text-gray-400 text-base sm:text-lg mb-8 leading-relaxed">
             Ask clinical questions. Get answers from your documents.
           </p>
 
-          {/* 3 Feature Rows in Glass Cards */}
           <div className="space-y-3.5">
-            {/* Feature 1 */}
-            <div className="flex items-start gap-4 p-3.5 rounded-xl bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.10)] backdrop-blur-md hover:bg-[rgba(255,255,255,0.08)] transition-all duration-200 group">
-              <div className="w-10 h-10 rounded-lg bg-[#E21B70]/15 border border-[#E21B70]/30 flex items-center justify-center text-[#E21B70] shrink-0 group-hover:scale-105 transition-transform">
-                <ShieldCheck className="w-5 h-5" />
+            {[
+              { icon: ShieldCheck, title: "Document Security & Compliance",   desc: "HIPAA-compliant document locking protecting all sensitive clinical files." },
+              { icon: Zap,         title: "Lightning Fast Retrieval",          desc: "Sub-second vector query responses across large medical paper libraries."  },
+              { icon: FileText,    title: "Verifiable Citations",              desc: "Every insight is directly cited and linked to exact source excerpts."      },
+            ].map(({ icon: Icon, title, desc }) => (
+              <div key={title} className="flex items-start gap-4 p-3.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/[0.08] transition-all group">
+                <div className="w-10 h-10 rounded-lg bg-[#E21B70]/15 border border-[#E21B70]/30 flex items-center justify-center text-[#E21B70] shrink-0 group-hover:scale-105 transition-transform">
+                  <Icon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-white font-semibold text-sm">{title}</h2>
+                  <p className="text-gray-400 text-xs mt-0.5 leading-normal">{desc}</p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-white font-semibold text-sm">Document Security & Compliance</h2>
-                <p className="text-gray-400 text-xs mt-0.5 leading-normal">HIPAA-compliant document lock protecting all sensitive clinical files.</p>
-              </div>
-            </div>
-
-            {/* Feature 2 */}
-            <div className="flex items-start gap-4 p-3.5 rounded-xl bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.10)] backdrop-blur-md hover:bg-[rgba(255,255,255,0.08)] transition-all duration-200 group">
-              <div className="w-10 h-10 rounded-lg bg-[#E21B70]/15 border border-[#E21B70]/30 flex items-center justify-center text-[#E21B70] shrink-0 group-hover:scale-105 transition-transform">
-                <Zap className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-white font-semibold text-sm">Lightning Fast Retrieval</h2>
-                <p className="text-gray-400 text-xs mt-0.5 leading-normal">Sub-second vector query responses across large medical paper libraries.</p>
-              </div>
-            </div>
-
-            {/* Feature 3 */}
-            <div className="flex items-start gap-4 p-3.5 rounded-xl bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.10)] backdrop-blur-md hover:bg-[rgba(255,255,255,0.08)] transition-all duration-200 group">
-              <div className="w-10 h-10 rounded-lg bg-[#E21B70]/15 border border-[#E21B70]/30 flex items-center justify-center text-[#E21B70] shrink-0 group-hover:scale-105 transition-transform">
-                <FileText className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-white font-semibold text-sm">Verifiable Citations</h2>
-                <p className="text-gray-400 text-xs mt-0.5 leading-normal">Every insight is directly cited and linked to exact source excerpts.</p>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
 
-        {/* Bottom Footer Text */}
+        {/* Footer */}
         <div className="relative z-10 pt-4">
           <p className="text-xs text-gray-500 font-medium tracking-wide">
-            Powered by <span className="text-gray-400 font-semibold">Qdrant</span> · <span className="text-gray-400 font-semibold">FastEmbed</span> · <span className="text-gray-400 font-semibold">Groq LLaMA 3.3 70B</span>
+            Powered by <span className="text-gray-400 font-semibold">Qdrant</span> ·{" "}
+            <span className="text-gray-400 font-semibold">FastEmbed</span> ·{" "}
+            <span className="text-gray-400 font-semibold">Groq LLaMA 3.3 70B</span>
           </p>
         </div>
       </div>
 
-
-      {/* ── RIGHT PANEL (50% width on Desktop) ── */}
-      <div className="w-full lg:w-1/2 min-h-screen bg-[#FFFFFF] flex flex-col justify-center items-center p-6 sm:p-12 lg:p-16">
+      {/* ── RIGHT PANEL ── */}
+      <div
+        className="w-full lg:w-1/2 min-h-screen flex flex-col justify-center items-center p-6 sm:p-12 lg:p-16"
+        style={{ background: "#FFFFFF" }}
+      >
         <div className="w-full max-w-[420px] mx-auto">
 
-          {/* Form Header */}
+          {/* Heading */}
           <div className="mb-8">
-            <h2 className="text-3xl font-bold text-gray-900 tracking-tight">
-              Welcome back
-            </h2>
-            <p className="text-gray-500 text-sm mt-1.5">
-              Sign in to your account to continue
-            </p>
+            <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Welcome back</h2>
+            <p className="text-gray-500 text-sm mt-1.5">Sign in to your account to continue</p>
           </div>
 
           {/* Error Banner */}
-          {error && (
+          {displayError && (
             <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-3 animate-fade-in">
               <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-              <div className="flex-1 font-medium">{error}</div>
+              <div className="flex-1 font-medium">{displayError}</div>
             </div>
           )}
 
@@ -211,30 +159,30 @@ export default function Login() {
             </div>
           )}
 
-          {/* Login Form */}
+          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-            
-            {/* Email Field */}
+
+            {/* Email */}
             <div>
-              <label 
-                htmlFor="email-input" 
-                className="block text-sm font-medium text-gray-700 mb-1.5"
-              >
+              <label htmlFor="email-input" className="block text-sm font-medium text-gray-700 mb-1.5">
                 Email address
               </label>
               <input
                 id="email-input"
                 type="email"
                 required
+                autoComplete="email"
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
                   if (emailError) setEmailError("");
+                  if (localError) setLocalError("");
+                  dispatch(clearAuthError());
                 }}
                 placeholder="doctor@hospital.com"
                 className={`w-full h-11 px-4 text-gray-900 bg-white text-sm rounded-[10px] border transition-all duration-200 outline-none ${
-                  emailError 
-                    ? "border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100" 
+                  emailError
+                    ? "border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100"
                     : "border-gray-300 focus:border-[#E21B70] focus:ring-2 focus:ring-[#E21B70]/20"
                 }`}
               />
@@ -245,21 +193,15 @@ export default function Login() {
               )}
             </div>
 
-            {/* Password Field */}
+            {/* Password */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label 
-                  htmlFor="password-input" 
-                  className="block text-sm font-medium text-gray-700"
-                >
+                <label htmlFor="password-input" className="block text-sm font-medium text-gray-700">
                   Password
                 </label>
                 <a
-                  href="#forgot-password"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    alert("Password reset instructions have been sent to your administrator.");
-                  }}
+                  href="#forgot"
+                  onClick={(e) => { e.preventDefault(); alert("Contact your administrator to reset your password."); }}
                   className="text-xs font-semibold text-[#E21B70] hover:text-[#A53860] hover:underline transition-colors"
                 >
                   Forgot password?
@@ -270,8 +212,13 @@ export default function Login() {
                   id="password-input"
                   type={showPassword ? "text" : "password"}
                   required
+                  autoComplete="current-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (localError) setLocalError("");
+                    dispatch(clearAuthError());
+                  }}
                   placeholder="••••••••"
                   className="w-full h-11 pl-4 pr-11 text-gray-900 bg-white text-sm rounded-[10px] border border-gray-300 focus:border-[#E21B70] focus:ring-2 focus:ring-[#E21B70]/20 transition-all duration-200 outline-none"
                 />
@@ -281,16 +228,12 @@ export default function Login() {
                   aria-label={showPassword ? "Hide password" : "Show password"}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors p-1"
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
-            {/* Solid Pink Gradient Sign In Button */}
+            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
@@ -298,27 +241,11 @@ export default function Login() {
             >
               {loading ? (
                 <>
-                  <svg 
-                    className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" 
-                    xmlns="http://www.w3.org/2000/svg" 
-                    fill="none" 
-                    viewBox="0 0 24 24"
-                  >
-                    <circle 
-                      className="opacity-25" 
-                      cx="12" 
-                      cy="12" 
-                      r="10" 
-                      stroke="currentColor" 
-                      strokeWidth="4" 
-                    />
-                    <path 
-                      className="opacity-75" 
-                      fill="currentColor" 
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" 
-                    />
+                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  <span>Signing in...</span>
+                  <span>Signing in…</span>
                 </>
               ) : (
                 <>
@@ -329,32 +256,19 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Quick Demo Toggle Buttons for Testing Error/Loading States */}
-          <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col items-center gap-3">
+          {/* Footer note */}
+          <div className="mt-8 pt-6 border-t border-gray-100 text-center">
             <p className="text-xs text-gray-400">
-              Need assistance? Contact support or system administrator.
+              Don't have an account?{" "}
+              <span className="font-semibold text-gray-600">Contact your administrator</span>
             </p>
-            <div className="flex gap-2">
-              <button 
-                type="button" 
-                onClick={() => setError(error ? "" : "Invalid email or password. Please try again.")}
-                className="text-[11px] px-2.5 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
-              >
-                Toggle Error State
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setLoading(!loading)}
-                className="text-[11px] px-2.5 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
-              >
-                Toggle Loading State
-              </button>
-            </div>
+            <p className="text-[11px] text-gray-300 mt-2">
+              Self-registration is disabled. Accounts are created by administrators only.
+            </p>
           </div>
 
         </div>
       </div>
-
     </div>
   );
 }

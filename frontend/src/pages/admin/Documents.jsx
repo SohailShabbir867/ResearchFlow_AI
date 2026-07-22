@@ -1,2 +1,1 @@
-import DocumentManager from "../DocumentManager.jsx";
-export default DocumentManager;
+export { default } from "../DocumentManager.jsx";

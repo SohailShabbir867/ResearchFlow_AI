@@ -1,2 +1,1 @@
-import UserManagement from "../UserManagement.jsx";
-export default UserManagement;
+export { default } from "../UserManagement.jsx";

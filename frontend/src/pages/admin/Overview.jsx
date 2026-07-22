@@ -1,2 +1,1 @@
-import AdminDashboard from "../AdminDashboard.jsx";
-export default AdminDashboard;
+export { default } from "../AdminDashboard.jsx";

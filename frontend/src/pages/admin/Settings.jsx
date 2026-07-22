@@ -1,2 +1,1 @@
-import SystemSettings from "../SystemSettings.jsx";
-export default SystemSettings;
+export { default } from "../SystemSettings.jsx";

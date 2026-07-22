@@ -1,2 +1,1 @@
-import QueryAuditLog from "../QueryAuditLog.jsx";
-export default QueryAuditLog;
+export { default } from "../QueryAuditLog.jsx";
