@@ -62,16 +62,62 @@ export const loadCurrentUser = createAsyncThunk(
   }
 );
 
+export const signupUser = createAsyncThunk(
+  "auth/signupUser",
+  async ({ name, email, password, specialty }, { rejectWithValue }) => {
+    try {
+      const res = await axios.post(`${API}/signup`, { name, email, password, specialty });
+      return res.data; // { message, email }
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.error || "Signup failed. Please try again.");
+    }
+  }
+);
+
+export const forgotPassword = createAsyncThunk(
+  "auth/forgotPassword",
+  async ({ email }, { rejectWithValue }) => {
+    try {
+      const res = await axios.post(`${API}/forgot-password`, { email });
+      return res.data; // { message }
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.error || "Failed to send reset email.");
+    }
+  }
+);
+
+export const resetPassword = createAsyncThunk(
+  "auth/resetPassword",
+  async ({ token, password }, { rejectWithValue }) => {
+    try {
+      const res = await axios.post(`${API}/reset-password/${token}`, { password });
+      return res.data; // { message }
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.error || "Password reset failed.");
+    }
+  }
+);
+
+export const changePassword = createAsyncThunk(
+  "auth/changePassword",
+  async ({ currentPassword, newPassword }, { rejectWithValue }) => {
+    try {
+      const res = await axios.post(`${API}/change-password`, { currentPassword, newPassword });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.error || "Failed to change password.");
+    }
+  }
+);
+
 export const updateProfile = createAsyncThunk(
   "auth/updateProfile",
   async (updates, { rejectWithValue }) => {
     try {
-      // Profile update goes through admin patch endpoint when admin,
-      // or a future /api/auth/profile endpoint — for now reload user
-      const res = await axios.get(`${API}/me`);
+      const res = await axios.patch(`${API}/profile`, updates);
       return res.data;
     } catch (err) {
-      return rejectWithValue(err.response?.data?.error || "Update failed.");
+      return rejectWithValue(err.response?.data?.error || "Profile update failed.");
     }
   }
 );
@@ -83,14 +129,23 @@ const authSlice = createSlice({
   initialState: {
     user: null,
     token: null,
-    loading: false,       // login/logout in progress
-    initializing: true,   // true until loadCurrentUser resolves on app mount
+    loading: false,
+    initializing: true,
     error: null,
+    emailSent: false,     // signup/forgot-password email sent
+    resetDone: false,     // password reset completed
+    signupDone: false,    // signup completed (waiting for verification)
   },
 
   reducers: {
     clearAuthError(state) {
       state.error = null;
+    },
+    clearFlags(state) {
+      state.emailSent  = false;
+      state.resetDone  = false;
+      state.signupDone = false;
+      state.error      = null;
     },
     setUser(state, action) {
       state.user = action.payload;
@@ -142,11 +197,72 @@ const authSlice = createSlice({
 
     // ── updateProfile ──────────────────────────────────────────────────────
     builder
+      .addCase(updateProfile.pending, (state) => { state.loading = true; })
       .addCase(updateProfile.fulfilled, (state, action) => {
+        state.loading = false;
         state.user = { ...state.user, ...action.payload };
+      })
+      .addCase(updateProfile.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
       });
+
+    // ── signupUser ─────────────────────────────────────────────────────────
+    builder
+      .addCase(signupUser.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.signupDone = false;
+      })
+      .addCase(signupUser.fulfilled, (state) => {
+        state.loading = false;
+        state.signupDone = true;
+        state.error = null;
+      })
+      .addCase(signupUser.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      });
+
+    // ── forgotPassword ─────────────────────────────────────────────────────
+    builder
+      .addCase(forgotPassword.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.emailSent = false;
+      })
+      .addCase(forgotPassword.fulfilled, (state) => {
+        state.loading = false;
+        state.emailSent = true;
+      })
+      .addCase(forgotPassword.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      });
+
+    // ── resetPassword ──────────────────────────────────────────────────────
+    builder
+      .addCase(resetPassword.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.resetDone = false;
+      })
+      .addCase(resetPassword.fulfilled, (state) => {
+        state.loading = false;
+        state.resetDone = true;
+      })
+      .addCase(resetPassword.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      });
+
+    // ── changePassword ─────────────────────────────────────────────────────
+    builder
+      .addCase(changePassword.pending,   (state) => { state.loading = true; state.error = null; })
+      .addCase(changePassword.fulfilled, (state) => { state.loading = false; })
+      .addCase(changePassword.rejected,  (state, action) => { state.loading = false; state.error = action.payload; });
   },
 });
 
-export const { clearAuthError, setUser } = authSlice.actions;
+export const { clearAuthError, clearFlags, setUser } = authSlice.actions;
 export default authSlice.reducer;

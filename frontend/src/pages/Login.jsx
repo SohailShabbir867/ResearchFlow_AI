@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
   Microscope,
@@ -28,6 +28,7 @@ export default function Login() {
   const [localError, setLocalError] = useState("");
   const [emailError, setEmailError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [unverified, setUnverified] = useState(false); // account exists but not verified
 
   const from = location.state?.from?.pathname || "/";
 
@@ -54,6 +55,8 @@ export default function Login() {
     if (loginUser.fulfilled.match(result)) {
       setSuccessMsg("Signed in successfully! Redirecting…");
       setTimeout(() => navigate(from, { replace: true }), 800);
+    } else if (result.payload?.includes?.("verify") || result.payload?.includes?.("unverified") || result.payload?.includes?.("pending")) {
+      setUnverified(true);
     }
     // authError is set in Redux state if rejected
   };
@@ -144,10 +147,24 @@ export default function Login() {
           </div>
 
           {/* Error Banner */}
-          {displayError && (
+          {displayError && !unverified && (
             <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-3 animate-fade-in">
               <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
               <div className="flex-1 font-medium">{displayError}</div>
+            </div>
+          )}
+
+          {/* Unverified Account Banner */}
+          {(unverified || (displayError && displayError.toLowerCase().includes("verif"))) && (
+            <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm flex items-start gap-3 animate-fade-in">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold mb-1">Email not verified</p>
+                <p className="text-amber-700 text-xs mb-2">Please check your inbox for the verification link.</p>
+                <Link to="/signup" className="text-xs font-semibold text-amber-800 underline">
+                  Resend verification email →
+                </Link>
+              </div>
             </div>
           )}
 
@@ -200,8 +217,8 @@ export default function Login() {
                   Password
                 </label>
                 <a
-                  href="#forgot"
-                  onClick={(e) => { e.preventDefault(); alert("Contact your administrator to reset your password."); }}
+                  href="/forgot-password"
+                  onClick={(e) => { e.preventDefault(); navigate("/forgot-password"); }}
                   className="text-xs font-semibold text-[#E21B70] hover:text-[#A53860] hover:underline transition-colors"
                 >
                   Forgot password?
@@ -257,13 +274,15 @@ export default function Login() {
           </form>
 
           {/* Footer note */}
-          <div className="mt-8 pt-6 border-t border-gray-100 text-center">
-            <p className="text-xs text-gray-400">
+          <div className="mt-8 pt-6 border-t border-gray-100">
+            <p className="text-sm text-center text-gray-500">
               Don't have an account?{" "}
-              <span className="font-semibold text-gray-600">Contact your administrator</span>
+              <Link to="/signup" className="font-semibold text-[#E21B70] hover:underline">
+                Create one
+              </Link>
             </p>
-            <p className="text-[11px] text-gray-300 mt-2">
-              Self-registration is disabled. Accounts are created by administrators only.
+            <p className="text-[11px] text-gray-300 mt-2 text-center">
+              New accounts require email verification before login.
             </p>
           </div>
 

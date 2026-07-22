@@ -8,6 +8,10 @@ import { loadCurrentUser } from "./store/authSlice.js";
 // ─── Pages ────────────────────────────────────────────────────────────────────
 import Research    from "./pages/Research.jsx";
 import Login       from "./pages/Login.jsx";
+import SignUp      from "./pages/SignUp.jsx";
+import ForgotPassword from "./pages/ForgotPassword.jsx";
+import ResetPassword  from "./pages/ResetPassword.jsx";
+import VerifyEmail    from "./pages/VerifyEmail.jsx";
 import Documents   from "./pages/Documents.jsx";
 import UserProfile from "./pages/UserProfile.jsx";
 
@@ -103,15 +107,18 @@ export default function App() {
         <BrowserRouter>
           <AppInit />
           <Routes>
-            {/* Public */}
+            {/* Public auth routes */}
             <Route
               path="/login"
-              element={
-                <PublicRoute>
-                  <Login />
-                </PublicRoute>
-              }
+              element={<PublicRoute><Login /></PublicRoute>}
             />
+            <Route
+              path="/signup"
+              element={<PublicRoute><SignUp /></PublicRoute>}
+            />
+            <Route path="/verify-email/:token" element={<VerifyEmail />} />
+            <Route path="/forgot-password"     element={<ForgotPassword />} />
+            <Route path="/reset-password/:token" element={<ResetPassword />} />
 
             {/* Protected — Regular users */}
             <Route
