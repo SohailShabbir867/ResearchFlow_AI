@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { 
   Microscope, 
   Plus, 
@@ -14,7 +15,8 @@ import {
   ThumbsUp, 
   ThumbsDown,
   AlertTriangle,
-  Sparkles
+  Sparkles,
+  FolderOpen
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -83,6 +85,7 @@ const DEFAULT_ACTIVE_MESSAGES = [
 ];
 
 export default function Research() {
+  const navigate = useNavigate();
   // Sidebar State
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [hoveredChatId, setHoveredChatId] = useState(null);
@@ -330,6 +333,19 @@ export default function Research() {
             </div>
           </div>
         )}
+
+        {/* Navigation Items (Document Library) */}
+        <div className="px-3 py-2 border-t border-white/5">
+          <button
+            onClick={() => navigate("/documents")}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all ${
+              sidebarCollapsed ? "justify-center" : ""
+            }`}
+          >
+            <FolderOpen className="w-4 h-4 text-gray-400 group-hover:text-[#E21B70]" />
+            {!sidebarCollapsed && <span>Document Library</span>}
+          </button>
+        </div>
 
         {/* User Footer */}
         <div className="p-3 border-t border-white/10 bg-[#0A0614]">
