@@ -1,6 +1,19 @@
 """
 =============================================================
-  MedResearch AI -- Add New Documents (Streaming Batch Indexer)
+  MedResearch AI -- Add New Documents (Incremental Indexer)
+=============================================================
+
+USAGE:
+    1. Drop your PDF/TXT/DOCX files into:
+       backend-python/data/documents/
+
+    2. Run this script:
+       venv\\Scripts\\python scripts/add_documents.py
+
+    New files are detected and added WITHOUT touching existing data.
+
+FULL RE-INDEX (wipe everything and start fresh):
+    venv\Scripts\python scripts/index_documents.py
 =============================================================
 """
 import sys
@@ -28,7 +41,7 @@ def main():
     t_total = time.time()
 
     print("=" * 60)
-    print("  MedResearch AI -- Streaming Batch Indexer")
+    print("  MedResearch AI -- Add New Documents")
     print("=" * 60)
     print(f"  Folder: {os.path.abspath(docs_folder)}")
     print()
@@ -41,7 +54,7 @@ def main():
         for src in sorted(existing):
             print(f"    - {src}")
     else:
-        print("  No documents indexed yet.")
+        print("  No documents indexed yet (empty index).")
     print()
 
     # Step 2: Load all docs and filter new ones
@@ -50,38 +63,35 @@ def main():
     new_chunks = [c for c in all_chunks if c["metadata"]["source"] not in existing]
 
     if not new_chunks:
+        print()
         print("  No new documents found! Everything is already indexed.")
+        print(f"  Tip: Drop new PDF/TXT/DOCX files into:")
+        print(f"       {os.path.abspath(docs_folder)}")
+        print("  Then run this script again.")
         return
 
     new_sources = sorted({c["metadata"]["source"] for c in new_chunks})
-    print(f"\n  {len(new_sources)} new document(s) found with {len(new_chunks)} total chunks:")
+    print(f"\n  {len(new_sources)} new document(s) found:")
     for src in new_sources:
         count = sum(1 for c in new_chunks if c["metadata"]["source"] == src)
-        print(f"    + {src} ({count} chunks)")
+        print(f"    + {src}  ({count} chunks)")
 
-    # Step 3: Stream embed & store in RAM-safe micro-batches of 100
-    BATCH_SIZE = 100
-    total_chunks = len(new_chunks)
-    total_batches = (total_chunks + BATCH_SIZE - 1) // BATCH_SIZE
+    # Step 3: Embed new chunks
+    print(f"\n=== Step 3: Embedding {len(new_chunks)} new chunks ===")
+    t2 = time.time()
+    embedded = embed_chunks(new_chunks)
+    t_embed = time.time() - t2
+    print(f"  Embedding complete in {format_time(t_embed)}")
 
-    print(f"\n=== Step 3: Streaming Embed & Store ({total_batches} batches of {BATCH_SIZE}) ===")
-    
-    for b_idx, start in enumerate(range(0, total_chunks, BATCH_SIZE), 1):
-        batch = new_chunks[start: start + BATCH_SIZE]
-        t_b = time.time()
-        
-        # Embed batch
-        embedded_batch = embed_chunks(batch)
-        
-        # Immediately save batch to Qdrant
-        store_chunks(embedded_batch, recreate=False)
-        
-        dur = time.time() - t_b
-        percent = (start + len(batch)) / total_chunks * 100
-        print(f"  [Batch {b_idx}/{total_batches}] {percent:.1f}% done ({start + len(batch)}/{total_chunks} chunks stored into Qdrant in {dur:.1f}s)")
+    # Step 4: Add to Qdrant (incremental -- do NOT recreate)
+    print(f"\n=== Step 4: Storing in vector database ===")
+    t3 = time.time()
+    store_chunks(embedded, recreate=False)
+    t_store = time.time() - t3
+    print(f"  Storage complete in {format_time(t_store)}")
 
-    # Step 4: Rebuild BM25 keyword search index
-    print(f"\n=== Step 4: Rebuilding keyword search index ===")
+    # Step 5: Rebuild BM25 index
+    print(f"\n=== Step 5: Rebuilding keyword search index ===")
     rebuild_bm25_index()
 
     # Summary
@@ -89,10 +99,17 @@ def main():
     t_all = time.time() - t_total
     print()
     print("=" * 60)
-    print("  Done! New documents indexed and saved.")
+    print("  Done! New documents added successfully.")
     print("=" * 60)
-    print(f"  Total chunks stored in Qdrant : {info.get('points_count', 'N/A')}")
-    print(f"  Time taken                   : {format_time(t_all)}")
+    print(f"  New docs added    : {len(new_sources)}")
+    print(f"  New chunks added  : {len(new_chunks)}")
+    print(f"  Total in database : {info.get('points_count', 'N/A')} chunks")
+    print(f"  Time taken        : {format_time(t_all)}")
+    print()
+    for src in new_sources:
+        print(f"  + {src}")
+    print()
+    print("  You can now ask questions about the new documents!")
     print("=" * 60)
 
 
