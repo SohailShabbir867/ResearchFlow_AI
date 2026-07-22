@@ -5,6 +5,7 @@ import Documents from "./pages/Documents.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import UserManagement from "./pages/UserManagement.jsx";
 import DocumentManager from "./pages/DocumentManager.jsx";
+import QueryAuditLog from "./pages/QueryAuditLog.jsx";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/admin/users" element={<UserManagement />} />
         <Route path="/admin/documents" element={<DocumentManager />} />
+        <Route path="/admin/logs" element={<QueryAuditLog />} />
       </Routes>
     </BrowserRouter>
   );
