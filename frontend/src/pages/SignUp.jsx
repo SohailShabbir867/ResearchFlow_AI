@@ -2,33 +2,31 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
-  Microscope,
-  Eye, EyeOff,
-  User, Mail, Lock, Stethoscope,
+  Microscope, Eye, EyeOff, User, Mail, Lock, Stethoscope,
   AlertCircle, CheckCircle2, ArrowRight, ArrowLeft,
 } from "lucide-react";
 import { signupUser, clearAuthError, clearFlags } from "../store/authSlice.js";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
-// Password strength checker
+/* ── Password strength helper ─────────────────────────────────── */
 function getStrength(pw) {
   let score = 0;
-  if (pw.length >= 8)  score++;
-  if (pw.length >= 12) score++;
-  if (/[A-Z]/.test(pw)) score++;
-  if (/[0-9]/.test(pw)) score++;
+  if (pw.length >= 8)          score++;
+  if (pw.length >= 12)         score++;
+  if (/[A-Z]/.test(pw))        score++;
+  if (/[0-9]/.test(pw))        score++;
   if (/[^A-Za-z0-9]/.test(pw)) score++;
-  if (score <= 1) return { label: "Weak",   color: "#EF4444", width: "20%" };
-  if (score <= 2) return { label: "Fair",   color: "#F59E0B", width: "45%" };
-  if (score <= 3) return { label: "Good",   color: "#3B82F6", width: "65%" };
-  if (score <= 4) return { label: "Strong", color: "#10B981", width: "85%" };
-  return              { label: "Very Strong", color: "#10B981", width: "100%" };
+  if (score <= 1) return { label: "Weak",        color: "#EF4444", width: "20%"  };
+  if (score <= 2) return { label: "Fair",        color: "#F59E0B", width: "45%"  };
+  if (score <= 3) return { label: "Good",        color: "#3B82F6", width: "65%"  };
+  if (score <= 4) return { label: "Strong",      color: "#10B981", width: "85%"  };
+  return               { label: "Very Strong",   color: "#10B981", width: "100%" };
 }
 
 const SPECIALTIES = [
-  "Cardiology", "Oncology", "Neurology", "Endocrinology",
-  "Radiology", "Pediatrics", "General Medicine", "Surgery",
-  "Pharmacology", "Psychiatry", "Other",
+  "Cardiology","Oncology","Neurology","Endocrinology",
+  "Radiology","Pediatrics","General Medicine","Surgery",
+  "Pharmacology","Psychiatry","Other",
 ];
 
 export default function SignUp() {
@@ -36,9 +34,7 @@ export default function SignUp() {
   const dispatch = useDispatch();
   const { loading, error: authError, signupDone } = useSelector(s => s.auth);
 
-  const [form, setForm] = useState({
-    name: "", email: "", password: "", confirmPassword: "", specialty: "",
-  });
+  const [form, setForm] = useState({ name:"", email:"", password:"", confirmPassword:"", specialty:"" });
   const [showPw,        setShowPw]        = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [errors,        setErrors]        = useState({});
@@ -47,14 +43,11 @@ export default function SignUp() {
   const strength = form.password ? getStrength(form.password) : null;
 
   function set(field, val) {
-    setForm(prev => ({ ...prev, [field]: val }));
-    if (errors[field]) setErrors(prev => ({ ...prev, [field]: "" }));
+    setForm(p => ({ ...p, [field]: val }));
+    if (errors[field]) setErrors(p => ({ ...p, [field]: "" }));
     dispatch(clearAuthError());
   }
-
-  function touch(field) {
-    setTouched(prev => ({ ...prev, [field]: true }));
-  }
+  function touch(field) { setTouched(p => ({ ...p, [field]: true })); }
 
   function validate() {
     const e = {};
@@ -74,7 +67,7 @@ export default function SignUp() {
     const errs = validate();
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      setTouched({ name: true, email: true, password: true, confirmPassword: true });
+      setTouched({ name:true, email:true, password:true, confirmPassword:true });
       return;
     }
     dispatch(signupUser({
@@ -85,15 +78,14 @@ export default function SignUp() {
     }));
   }
 
-  // Success state
+  /* ── Success screen ──────────────────────────────────────────── */
   if (signupDone) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--bg-page)" }}>
         <div className="w-full max-w-md text-center animate-fade-in">
-          {/* Success icon */}
           <div className="w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center"
-            style={{ background: "rgba(16,185,129,0.15)", border: "2px solid rgba(16,185,129,0.30)" }}>
-            <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+               style={{ background: "rgba(16,185,129,0.15)", border: "2px solid rgba(16,185,129,0.30)" }}>
+            <CheckCircle2 className="w-10 h-10 text-emerald-500" />
           </div>
           <h1 className="text-2xl font-bold mb-3" style={{ color: "var(--text-heading)" }}>
             Check Your Email!
@@ -101,15 +93,16 @@ export default function SignUp() {
           <p className="text-sm mb-2" style={{ color: "var(--text-secondary)" }}>
             We sent a verification link to:
           </p>
-          <p className="text-[#E21B70] font-semibold mb-6">{form.email}</p>
+          <p className="font-semibold mb-6" style={{ color: "var(--brand-primary)" }}>{form.email}</p>
           <p className="text-sm mb-8" style={{ color: "var(--text-muted)" }}>
-            Click the link in the email to activate your account. The link expires in 24 hours.
+            Click the link to activate your account. The link expires in 24 hours.
             Check your spam folder if you don't see it.
           </p>
           <div className="flex flex-col gap-3">
             <button
               onClick={() => { dispatch(clearFlags()); navigate("/login"); }}
-              className="btn-primary w-full flex items-center justify-center gap-2"
+              className="w-full h-12 rounded-xl text-white font-semibold flex items-center justify-center gap-2 transition-all"
+              style={{ background: "var(--brand-primary)", boxShadow: "var(--shadow-btn)" }}
             >
               <ArrowRight className="w-4 h-4" /> Go to Login
             </button>
@@ -123,11 +116,13 @@ export default function SignUp() {
     );
   }
 
-  const field = (id, label, type, placeholder, icon, showToggle) => {
+  /* ── Field renderer ──────────────────────────────────────────── */
+  const renderField = (id, label, type, placeholder, icon, isPasswordToggle) => {
     const hasErr = touched[id] && errors[id];
     return (
       <div key={id}>
-        <label htmlFor={id} className="block text-sm font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>
+        <label htmlFor={`signup-${id}`} className="block text-sm font-semibold mb-1.5"
+               style={{ color: "var(--text-secondary)" }}>
           {label}
         </label>
         <div className="relative">
@@ -135,19 +130,35 @@ export default function SignUp() {
             {icon}
           </span>
           <input
-            id={id}
-            type={showToggle ? (id === "password" ? (showPw ? "text" : "password") : (showConfirmPw ? "text" : "password")) : type}
+            id={`signup-${id}`}
+            type={isPasswordToggle
+              ? (id === "password" ? (showPw ? "text" : "password") : (showConfirmPw ? "text" : "password"))
+              : type}
             value={form[id]}
             onChange={e => set(id, e.target.value)}
             onBlur={() => touch(id)}
             placeholder={placeholder}
-            className="input-base pl-10 pr-10"
-            style={{ borderColor: hasErr ? "#EF4444" : undefined }}
+            autoComplete={id === "email" ? "email" : id === "name" ? "name" : "new-password"}
+            style={{
+              background: "var(--bg-input)",
+              color: "var(--text-primary)",
+              border: `1px solid ${hasErr ? "#EF4444" : "var(--border-input)"}`,
+            }}
+            className="w-full h-11 pl-10 pr-10 text-sm rounded-xl outline-none transition-all duration-200
+                       focus:ring-2"
+            onFocus={e => {
+              e.currentTarget.style.borderColor = hasErr ? "#EF4444" : "var(--brand-primary)";
+              e.currentTarget.style.boxShadow = `0 0 0 3px ${hasErr ? "rgba(239,68,68,0.12)" : "var(--brand-glow-subtle)"}`;
+            }}
+            onBlurCapture={e => {
+              e.currentTarget.style.borderColor = hasErr ? "#EF4444" : "var(--border-input)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
           />
-          {showToggle && (
+          {isPasswordToggle && (
             <button
               type="button"
-              className="absolute right-3.5 top-1/2 -translate-y-1/2"
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 transition-colors"
               style={{ color: "var(--text-muted)" }}
               onClick={() => id === "password" ? setShowPw(v => !v) : setShowConfirmPw(v => !v)}
             >
@@ -171,7 +182,7 @@ export default function SignUp() {
             </div>
             <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--border-color)" }}>
               <div className="h-full rounded-full transition-all duration-300"
-                style={{ width: strength.width, background: strength.color }} />
+                   style={{ width: strength.width, background: strength.color }} />
             </div>
           </div>
         )}
@@ -180,36 +191,33 @@ export default function SignUp() {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row font-sans antialiased" style={{ background: "var(--bg-page)" }}>
+    <div className="min-h-screen w-full flex flex-col lg:flex-row font-sans antialiased"
+         style={{ background: "var(--bg-page)" }}>
 
-      {/* LEFT PANEL */}
+      {/* ── LEFT PANEL ── */}
       <div
-        className="hidden lg:flex lg:w-5/12 xl:w-2/5 flex-col justify-between p-12 relative overflow-hidden"
-        style={{
-          background: "radial-gradient(circle at 30% 20%, rgba(226,27,112,0.25) 0%, #0A0614 70%)",
-          borderRight: "1px solid rgba(255,255,255,0.08)",
-        }}
+        className="hidden lg:flex lg:w-[42%] flex-col justify-between p-12 relative overflow-hidden"
+        style={{ background: "var(--brand-primary)", borderRight: "4px solid var(--brand-dark)" }}
       >
-        <div className="absolute -top-24 -left-16 w-96 h-96 rounded-full bg-[#E21B70]/15 blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-0 right-0 w-80 h-80 rounded-full bg-[#A53860]/10 blur-[100px] pointer-events-none" />
+        <div className="absolute inset-0 pointer-events-none"
+             style={{ backgroundImage: "radial-gradient(circle at 15% 15%, rgba(255,255,255,0.12) 0%, transparent 55%)" }} />
 
         {/* Logo */}
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center shadow-[0_0_20px_rgba(226,27,112,0.4)]">
-            <Microscope className="w-6 h-6 text-white" />
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+               style={{ background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.30)" }}>
+            <Microscope className="w-6 h-6 text-white" strokeWidth={2.2} />
           </div>
-          <span className="text-white font-bold text-xl">MedResearch AI</span>
+          <span className="text-white font-black text-xl tracking-tight">MedResearch AI</span>
         </div>
 
         {/* Text */}
         <div className="relative z-10">
           <h1 className="text-4xl font-bold text-white leading-tight mb-4">
             Join the Future of<br/>
-            <span className="bg-gradient-to-r from-white via-pink-100 to-[#E21B70] bg-clip-text text-transparent">
-              Medical Research
-            </span>
+            <span className="opacity-80">Medical Research</span>
           </h1>
-          <p className="text-gray-400 text-base leading-relaxed mb-8">
+          <p className="text-white/75 text-base leading-relaxed mb-8">
             Create your account and gain access to AI-powered research tools, instant document Q&A, and verified medical insights.
           </p>
           <ul className="space-y-3">
@@ -219,9 +227,10 @@ export default function SignUp() {
               "Full citation trail for every response",
               "Role-based access for clinical teams",
             ].map(txt => (
-              <li key={txt} className="flex items-center gap-3 text-sm text-gray-300">
-                <div className="w-5 h-5 rounded-full bg-[#E21B70]/20 border border-[#E21B70]/40 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-3 h-3 text-[#E21B70]" />
+              <li key={txt} className="flex items-center gap-3 text-sm text-white/80">
+                <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+                     style={{ background: "rgba(255,255,255,0.20)", border: "1px solid rgba(255,255,255,0.35)" }}>
+                  <CheckCircle2 className="w-3 h-3 text-white" />
                 </div>
                 {txt}
               </li>
@@ -229,22 +238,23 @@ export default function SignUp() {
           </ul>
         </div>
 
-        <p className="relative z-10 text-xs text-gray-600">
+        <p className="relative z-10 text-xs text-white/45">
           Powered by Qdrant · FastEmbed · Groq LLaMA 3.3 70B
         </p>
       </div>
 
-      {/* RIGHT PANEL */}
+      {/* ── RIGHT PANEL ── */}
       <div
         className="flex-1 flex flex-col justify-center p-6 sm:p-10 lg:p-14 overflow-y-auto"
-        style={{ background: "var(--bg-page)" }}
+        style={{ background: "var(--bg-input-bar)" }}
       >
-        <div className="w-full max-w-[480px] mx-auto">
+        <div className="w-full max-w-[460px] mx-auto">
 
           {/* Mobile logo */}
           <div className="flex items-center justify-between mb-8 lg:hidden">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+                   style={{ background: "var(--brand-primary)" }}>
                 <Microscope className="w-4 h-4 text-white" />
               </div>
               <span className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>MedResearch AI</span>
@@ -253,7 +263,7 @@ export default function SignUp() {
           </div>
 
           {/* Header */}
-          <div className="mb-8">
+          <div className="mb-7">
             <div className="hidden lg:flex justify-end mb-4">
               <ThemeToggle />
             </div>
@@ -262,7 +272,8 @@ export default function SignUp() {
             </h2>
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>
               Already have an account?{" "}
-              <Link to="/login" style={{ color: "#E21B70" }} className="font-semibold hover:underline">
+              <Link to="/login" className="font-semibold transition-colors"
+                    style={{ color: "var(--brand-primary)" }}>
                 Sign in
               </Link>
             </p>
@@ -271,31 +282,38 @@ export default function SignUp() {
           {/* Server error banner */}
           {authError && (
             <div className="mb-5 p-4 rounded-xl flex items-start gap-3 animate-fade-in"
-              style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.30)" }}>
-              <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                 style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)" }}>
+              <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
               <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{authError}</p>
             </div>
           )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-            {field("name",            "Full Name",        "text",     "Dr. John Smith",           <User           className="w-4 h-4" />, false)}
-            {field("email",           "Email Address",    "email",    "doctor@hospital.com",      <Mail           className="w-4 h-4" />, false)}
-            {field("password",        "Password",         "password", "At least 8 characters",    <Lock           className="w-4 h-4" />, true)}
-            {field("confirmPassword", "Confirm Password", "password", "Repeat your password",     <Lock           className="w-4 h-4" />, true)}
+            {renderField("name",            "Full Name",        "text",     "Dr. John Smith",        <User        className="w-4 h-4" />, false)}
+            {renderField("email",           "Email Address",    "email",    "doctor@hospital.com",   <Mail        className="w-4 h-4" />, false)}
+            {renderField("password",        "Password",         "password", "At least 8 characters", <Lock        className="w-4 h-4" />, true)}
+            {renderField("confirmPassword", "Confirm Password", "password", "Repeat your password",  <Lock        className="w-4 h-4" />, true)}
 
-            {/* Specialty (optional) */}
+            {/* Specialty */}
             <div>
-              <label htmlFor="specialty" className="block text-sm font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>
+              <label htmlFor="signup-specialty" className="block text-sm font-semibold mb-1.5"
+                     style={{ color: "var(--text-secondary)" }}>
                 Medical Specialty <span style={{ color: "var(--text-muted)" }}>(optional)</span>
               </label>
               <div className="relative">
-                <Stethoscope className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--text-muted)" }} />
+                <Stethoscope className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4"
+                             style={{ color: "var(--text-muted)" }} />
                 <select
-                  id="specialty"
+                  id="signup-specialty"
                   value={form.specialty}
                   onChange={e => set("specialty", e.target.value)}
-                  className="input-base pl-10 appearance-none"
+                  style={{
+                    background: "var(--bg-input)",
+                    color: "var(--text-primary)",
+                    border: "1px solid var(--border-input)",
+                  }}
+                  className="w-full h-11 pl-10 pr-4 text-sm rounded-xl outline-none transition-all appearance-none"
                 >
                   <option value="">Select specialty…</option>
                   {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -303,17 +321,21 @@ export default function SignUp() {
               </div>
             </div>
 
-            {/* Terms note */}
+            {/* Terms */}
             <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-              By creating an account, you agree to responsible use of the platform.
+              By creating an account, you agree to responsible use of this platform.
               Your account requires email verification before you can log in.
             </p>
 
             {/* Submit */}
             <button
+              id="signup-submit-btn"
               type="submit"
               disabled={loading}
-              className="btn-primary w-full h-12 flex items-center justify-center gap-2 text-base mt-2"
+              className="w-full h-12 rounded-xl text-white font-semibold text-base flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+              style={{ background: "var(--brand-primary)", boxShadow: "var(--shadow-btn)" }}
+              onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = "var(--brand-hover)"; }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "var(--brand-primary)")}
             >
               {loading ? (
                 <>
@@ -332,7 +354,7 @@ export default function SignUp() {
           {/* Back link */}
           <div className="mt-6 text-center">
             <Link to="/login" className="text-sm flex items-center justify-center gap-1.5"
-              style={{ color: "var(--text-muted)" }}>
+                  style={{ color: "var(--text-muted)" }}>
               <ArrowLeft className="w-3.5 h-3.5" /> Back to login
             </Link>
           </div>

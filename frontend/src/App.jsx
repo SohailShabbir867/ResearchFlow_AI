@@ -133,9 +133,9 @@ export default function App() {
             <Route
               path="/documents"
               element={
-                <PrivateRoute>
+                <AdminRoute>
                   <Documents />
-                </PrivateRoute>
+                </AdminRoute>
               }
             />
             <Route

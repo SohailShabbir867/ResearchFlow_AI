@@ -211,6 +211,43 @@ router.delete("/users/:id", async (req, res) => {
   }
 });
 
+// ─── PATCH /api/admin/users/:id/upload-access ─────────────────────────────────
+// Admin grants or revokes upload document access for a specific user
+router.patch("/users/:id/upload-access", async (req, res) => {
+  try {
+    const { grant } = req.body; // boolean: true = grant, false = revoke
+    if (typeof grant !== "boolean") {
+      return res.status(400).json({ error: "'grant' must be a boolean (true/false)." });
+    }
+
+    const user = await User.findById(req.params.id).select("-password");
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    // Admins always have upload access — don't allow revoking it
+    if (user.role === "admin" && !grant) {
+      return res.status(400).json({ error: "Cannot revoke upload access from an admin." });
+    }
+
+    user.canUploadDocuments   = grant;
+    user.uploadAccessGrantedBy = grant ? req.user._id : null;
+    await user.save();
+
+    return res.json({
+      message: grant
+        ? `Upload access granted to ${user.name}.`
+        : `Upload access revoked from ${user.name}.`,
+      user: user.toPublic(),
+    });
+  } catch (err) {
+    console.error("Upload access update error:", err.message);
+    return res.status(500).json({ error: "Failed to update upload access." });
+  }
+});
+
+
+
 // ─── GET /api/admin/documents ─────────────────────────────────────────────────
 router.get("/documents", async (req, res) => {
   try {

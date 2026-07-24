@@ -43,6 +43,17 @@ const UserSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  // ─── Upload Permissions ──────────────────────────────────────────────────────
+  canUploadDocuments: {
+    type: Boolean,
+    default: false,  // admins auto-get true; others need to be granted access
+  },
+  uploadAccessGrantedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
+
 
   // ─── Email Verification ──────────────────────────────────────────────────────
   isEmailVerified: {
@@ -84,6 +95,10 @@ UserSchema.index({ role: 1 });
 
 // ─── Pre-save: hash password if modified ─────────────────────────────────────
 UserSchema.pre("save", async function (next) {
+  // Auto-grant upload access to admins
+  if (this.isModified("role") && this.role === "admin") {
+    this.canUploadDocuments = true;
+  }
   if (!this.isModified("password")) return next();
   try {
     const salt = await bcrypt.genSalt(12);
@@ -104,16 +119,17 @@ UserSchema.methods.comparePassword = async function (plain) {
 // Safe public profile (no sensitive fields)
 UserSchema.methods.toPublic = function () {
   return {
-    _id:            this._id,
-    name:           this.name,
-    email:          this.email,
-    role:           this.role,
-    specialty:      this.specialty,
-    status:         this.status,
-    isEmailVerified: this.isEmailVerified,
-    queryCount:     this.queryCount,
-    lastActive:     this.lastActive,
-    createdAt:      this.createdAt,
+    _id:                   this._id,
+    name:                  this.name,
+    email:                 this.email,
+    role:                  this.role,
+    specialty:             this.specialty,
+    status:                this.status,
+    isEmailVerified:       this.isEmailVerified,
+    canUploadDocuments:    this.canUploadDocuments,
+    queryCount:            this.queryCount,
+    lastActive:            this.lastActive,
+    createdAt:             this.createdAt,
   };
 };
 

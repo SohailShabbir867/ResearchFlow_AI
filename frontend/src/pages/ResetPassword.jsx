@@ -70,14 +70,14 @@ export default function ResetPassword() {
 
   const displayError = localErr || authError;
 
-  // ─── Success ────────────────────────────────────────────────────────────────
+  // ─── Success ───
   if (resetDone) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--bg-page)" }}>
         <div className="w-full max-w-md animate-fade-in text-center">
           <div className="w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center"
             style={{ background: "rgba(16,185,129,0.15)", border: "2px solid rgba(16,185,129,0.30)" }}>
-            <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+            <CheckCircle2 className="w-10 h-10 text-emerald-500" />
           </div>
           <h1 className="text-2xl font-bold mb-2" style={{ color: "var(--text-heading)" }}>
             Password Reset!
@@ -87,12 +87,13 @@ export default function ResetPassword() {
           </p>
           {countdown !== null && (
             <p className="text-xs mb-6" style={{ color: "var(--text-muted)" }}>
-              Redirecting to login in <span className="font-bold text-[#E21B70]">{countdown}s</span>…
+              Redirecting to login in <span className="font-bold" style={{ color: "var(--brand-primary)" }}>{countdown}s</span>…
             </p>
           )}
           <button
             onClick={() => navigate("/login")}
-            className="btn-primary w-full flex items-center justify-center gap-2"
+            className="w-full h-12 rounded-xl text-white font-semibold flex items-center justify-center gap-2 transition-all"
+            style={{ background: "var(--brand-primary)", boxShadow: "var(--shadow-btn)" }}
           >
             <ArrowRight className="w-4 h-4" /> Sign In Now
           </button>
@@ -101,7 +102,7 @@ export default function ResetPassword() {
     );
   }
 
-  // ─── Form ──────────────────────────────────────────────────────────────────
+  // ─── Form ───
   return (
     <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--bg-page)" }}>
       <div className="w-full max-w-md animate-fade-in">
@@ -109,8 +110,8 @@ export default function ResetPassword() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center shadow-[0_0_14px_rgba(226,27,112,0.3)]">
-              <Microscope className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--brand-primary)" }}>
+              <Microscope className="w-5 h-5 text-white" strokeWidth={2.2} />
             </div>
             <span className="font-bold" style={{ color: "var(--text-primary)" }}>MedResearch AI</span>
           </div>
@@ -118,10 +119,14 @@ export default function ResetPassword() {
         </div>
 
         {/* Card */}
-        <div className="glass-card p-8">
+        <div className="p-8 rounded-2xl" style={{
+          background: "var(--bg-card)",
+          border: "1px solid var(--border-color-subtle)",
+          boxShadow: "var(--shadow-card)"
+        }}>
           <div className="w-14 h-14 mx-auto mb-5 rounded-2xl flex items-center justify-center"
-            style={{ background: "rgba(226,27,112,0.12)", border: "1px solid rgba(226,27,112,0.25)" }}>
-            <ShieldCheck className="w-7 h-7 text-[#E21B70]" />
+            style={{ background: "rgba(142,78,20,0.10)", border: "1px solid rgba(142,78,20,0.20)" }}>
+            <ShieldCheck className="w-7 h-7" style={{ color: "var(--brand-primary)" }} />
           </div>
 
           <h1 className="text-2xl font-bold text-center mb-1.5" style={{ color: "var(--text-heading)" }}>
@@ -134,12 +139,12 @@ export default function ResetPassword() {
           {/* Error */}
           {displayError && (
             <div className="mb-5 p-3.5 rounded-xl flex items-start gap-2.5 animate-fade-in"
-              style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.30)" }}>
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.25)" }}>
+              <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{displayError}</p>
                 {displayError.toLowerCase().includes("expired") && (
-                  <Link to="/forgot-password" className="text-xs mt-1 block text-[#E21B70] hover:underline">
+                  <Link to="/forgot-password" className="text-xs mt-1 block font-semibold hover:underline" style={{ color: "var(--brand-primary)" }}>
                     Request a new reset link →
                   </Link>
                 )}
@@ -150,7 +155,7 @@ export default function ResetPassword() {
           <form onSubmit={handleSubmit} noValidate className="space-y-5">
             {/* New password */}
             <div>
-              <label htmlFor="new-password" className="input-label">New Password</label>
+              <label htmlFor="new-password" className="block text-sm font-semibold mb-1.5" style={{ color: "var(--text-secondary)" }}>New Password</label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--text-muted)" }} />
                 <input
@@ -159,7 +164,8 @@ export default function ResetPassword() {
                   value={password}
                   onChange={e => { setPassword(e.target.value); setLocalErr(""); dispatch(clearAuthError()); }}
                   placeholder="At least 8 characters"
-                  className="input-base pl-10 pr-10"
+                  style={{ background: "var(--bg-input)", color: "var(--text-primary)", border: "1px solid var(--border-input)" }}
+                  className="w-full h-11 pl-10 pr-10 text-sm rounded-xl outline-none transition-all duration-200"
                   autoFocus
                 />
                 <button type="button" onClick={() => setShowPw(v => !v)}
@@ -184,7 +190,7 @@ export default function ResetPassword() {
 
             {/* Confirm */}
             <div>
-              <label htmlFor="confirm-password" className="input-label">Confirm Password</label>
+              <label htmlFor="confirm-password" className="block text-sm font-semibold mb-1.5" style={{ color: "var(--text-secondary)" }}>Confirm Password</label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--text-muted)" }} />
                 <input
@@ -193,7 +199,8 @@ export default function ResetPassword() {
                   value={confirm}
                   onChange={e => { setConfirm(e.target.value); setLocalErr(""); }}
                   placeholder="Repeat new password"
-                  className="input-base pl-10 pr-10"
+                  style={{ background: "var(--bg-input)", color: "var(--text-primary)", border: "1px solid var(--border-input)" }}
+                  className="w-full h-11 pl-10 pr-10 text-sm rounded-xl outline-none transition-all duration-200"
                 />
                 <button type="button" onClick={() => setShowConfirm(v => !v)}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }}>
@@ -212,7 +219,7 @@ export default function ResetPassword() {
             </div>
 
             {/* Password rules */}
-            <div className="p-3.5 rounded-xl" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-color)" }}>
+            <div className="p-3.5 rounded-xl" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-color-subtle)" }}>
               <p className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
                 Password Requirements
               </p>
@@ -225,7 +232,7 @@ export default function ResetPassword() {
                 <div key={rule} className="flex items-center gap-2 mb-1">
                   <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center ${met ? "bg-emerald-500/20" : ""}`}
                     style={{ border: `1px solid ${met ? "#10B981" : "var(--border-color)"}` }}>
-                    {met && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+                    {met && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
                   </div>
                   <span className="text-[11px]" style={{ color: met ? "#10B981" : "var(--text-muted)" }}>
                     {rule}
@@ -235,9 +242,11 @@ export default function ResetPassword() {
             </div>
 
             <button
+              id="reset-submit-btn"
               type="submit"
               disabled={loading || !password || !confirm}
-              className="btn-primary w-full h-12 flex items-center justify-center gap-2 text-base"
+              className="w-full h-12 rounded-xl text-white font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-60"
+              style={{ background: "var(--brand-primary)", boxShadow: "var(--shadow-btn)" }}
             >
               {loading
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Resetting…</>

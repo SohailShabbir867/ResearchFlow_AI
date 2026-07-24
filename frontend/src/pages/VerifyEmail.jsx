@@ -7,14 +7,14 @@ export default function VerifyEmail() {
   const { token } = useParams();
   const navigate  = useNavigate();
 
-  const [status,  setStatus]  = useState("loading"); // loading | success | expired | error
-  const [message, setMessage] = useState("");
-  const [email,   setEmail]   = useState("");
+  const [status,       setStatus]       = useState("loading"); // loading | success | expired | error
+  const [message,      setMessage]      = useState("");
+  const [email,        setEmail]        = useState("");
   const [resendEmail,  setResendEmail]  = useState("");
   const [resending,    setResending]    = useState(false);
   const [resendMsg,    setResendMsg]    = useState("");
   const [resendError,  setResendError]  = useState("");
-  const [countdown,    setCountdown]    = useState(null); // seconds to auto-redirect
+  const [countdown,    setCountdown]    = useState(null);
 
   useEffect(() => {
     if (!token) { setStatus("error"); setMessage("No verification token found."); return; }
@@ -23,7 +23,6 @@ export default function VerifyEmail() {
       .then(res => {
         setStatus(res.data.alreadyVerified ? "already" : "success");
         setMessage(res.data.message);
-        // Auto-redirect to login after 5 seconds
         setCountdown(5);
       })
       .catch(err => {
@@ -38,7 +37,6 @@ export default function VerifyEmail() {
       });
   }, [token]);
 
-  // Countdown timer for auto-redirect on success
   useEffect(() => {
     if (countdown === null) return;
     if (countdown === 0) { navigate("/login"); return; }
@@ -67,12 +65,17 @@ export default function VerifyEmail() {
       <div className="w-full max-w-md animate-fade-in">
         {/* Logo */}
         <div className="flex items-center justify-center gap-2.5 mb-8">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center">
-            <Microscope className="w-5 h-5 text-white" />
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white"
+               style={{ background: "var(--brand-primary)" }}>
+            <Microscope className="w-5 h-5 text-white" strokeWidth={2.2} />
           </div>
           <span className="font-bold text-lg" style={{ color: "var(--text-primary)" }}>MedResearch AI</span>
         </div>
-        <div className="glass-card p-8 text-center">
+        <div className="p-8 rounded-2xl text-center" style={{
+          background: "var(--bg-card)",
+          border: "1px solid var(--border-color-subtle)",
+          boxShadow: "var(--shadow-card)"
+        }}>
           {children}
         </div>
       </div>
@@ -81,7 +84,7 @@ export default function VerifyEmail() {
 
   if (status === "loading") return (
     <Card>
-      <Loader2 className="w-12 h-12 mx-auto mb-4 text-[#E21B70] animate-spin" />
+      <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin" style={{ color: "var(--brand-primary)" }} />
       <h1 className="text-xl font-bold mb-2" style={{ color: "var(--text-heading)" }}>
         Verifying your email…
       </h1>
@@ -93,7 +96,7 @@ export default function VerifyEmail() {
     <Card>
       <div className="w-16 h-16 rounded-full mx-auto mb-5 flex items-center justify-center"
         style={{ background: "rgba(16,185,129,0.15)", border: "2px solid rgba(16,185,129,0.30)" }}>
-        <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+        <CheckCircle2 className="w-8 h-8 text-emerald-500" />
       </div>
       <h1 className="text-2xl font-bold mb-2" style={{ color: "var(--text-heading)" }}>
         {status === "already" ? "Already Verified!" : "Email Verified!"}
@@ -103,10 +106,12 @@ export default function VerifyEmail() {
       </p>
       {countdown !== null && (
         <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
-          Redirecting to login in <span className="font-bold text-[#E21B70]">{countdown}s</span>…
+          Redirecting to login in <span className="font-bold" style={{ color: "var(--brand-primary)" }}>{countdown}s</span>…
         </p>
       )}
-      <button onClick={() => navigate("/login")} className="btn-primary w-full flex items-center justify-center gap-2">
+      <button onClick={() => navigate("/login")}
+              className="w-full h-12 rounded-xl text-white font-semibold flex items-center justify-center gap-2 transition-all"
+              style={{ background: "var(--brand-primary)", boxShadow: "var(--shadow-btn)" }}>
         <ArrowRight className="w-4 h-4" /> Sign In Now
       </button>
     </Card>
@@ -116,15 +121,15 @@ export default function VerifyEmail() {
     <Card>
       <div className="w-16 h-16 rounded-full mx-auto mb-5 flex items-center justify-center"
         style={{ background: "rgba(245,158,11,0.15)", border: "2px solid rgba(245,158,11,0.30)" }}>
-        <RefreshCw className="w-8 h-8 text-amber-400" />
+        <RefreshCw className="w-8 h-8 text-amber-500" />
       </div>
       <h1 className="text-2xl font-bold mb-2" style={{ color: "var(--text-heading)" }}>Link Expired</h1>
       <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
         Your verification link has expired. Request a new one below — it's valid for 24 hours.
       </p>
       {resendMsg ? (
-        <div className="p-4 rounded-xl mb-4 text-sm font-medium"
-          style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.30)", color: "#10B981" }}>
+        <div className="p-4 rounded-xl mb-4 text-sm font-medium text-emerald-600"
+          style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.30)" }}>
           ✅ {resendMsg}
         </div>
       ) : (
@@ -134,10 +139,13 @@ export default function VerifyEmail() {
             placeholder={email || "your@email.com"}
             value={resendEmail}
             onChange={e => setResendEmail(e.target.value)}
-            className="input-base"
+            style={{ background: "var(--bg-input)", color: "var(--text-primary)", border: "1px solid var(--border-input)" }}
+            className="w-full h-11 px-4 text-sm rounded-xl outline-none"
           />
-          {resendError && <p className="text-xs text-red-400">{resendError}</p>}
-          <button onClick={handleResend} disabled={resending} className="btn-primary w-full flex items-center justify-center gap-2">
+          {resendError && <p className="text-xs text-red-500">{resendError}</p>}
+          <button onClick={handleResend} disabled={resending}
+                  className="w-full h-11 rounded-xl text-white font-semibold flex items-center justify-center gap-2 transition-all"
+                  style={{ background: "var(--brand-primary)" }}>
             {resending ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</> : <><RefreshCw className="w-4 h-4" /> Resend Verification Email</>}
           </button>
         </div>
@@ -146,19 +154,19 @@ export default function VerifyEmail() {
     </Card>
   );
 
-  // status === "error"
   return (
     <Card>
       <div className="w-16 h-16 rounded-full mx-auto mb-5 flex items-center justify-center"
         style={{ background: "rgba(239,68,68,0.15)", border: "2px solid rgba(239,68,68,0.30)" }}>
-        <XCircle className="w-8 h-8 text-red-400" />
+        <XCircle className="w-8 h-8 text-red-500" />
       </div>
       <h1 className="text-2xl font-bold mb-2" style={{ color: "var(--text-heading)" }}>Verification Failed</h1>
       <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
         {message || "This verification link is invalid or has already been used."}
       </p>
       <div className="space-y-3">
-        <Link to="/signup" className="btn-secondary w-full text-center block py-2.5 text-sm font-medium">
+        <Link to="/signup" className="w-full text-center block py-2.5 text-sm font-semibold rounded-xl text-white"
+              style={{ background: "var(--brand-primary)" }}>
           Create a New Account
         </Link>
         <Link to="/login" className="block text-sm text-center" style={{ color: "var(--text-muted)" }}>

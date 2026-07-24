@@ -216,23 +216,25 @@ export default function UserManagement() {
 
 
       {/* ── MAIN CONTENT AREA ── */}
-      <main className="flex-1 flex flex-col h-full bg-[#0F0A1E] relative overflow-y-auto p-6 lg:p-8">
+      <main className="flex-1 flex flex-col h-full relative overflow-y-auto p-6 lg:p-8"
+            style={{ background: "var(--bg-page)", color: "var(--text-primary)" }}>
         
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileOpen(!mobileOpen)}
-              className="lg:hidden p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white transition-colors"
+              className="lg:hidden p-2 rounded-xl border text-gray-400 hover:text-white transition-colors"
+              style={{ background: "var(--bg-card)", borderColor: "var(--border-color)" }}
               title="Open menu"
             >
               <Menu className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-[24px] font-bold text-white tracking-tight">
+              <h1 className="text-[24px] font-bold tracking-tight" style={{ color: "var(--text-heading)" }}>
                 User Management
               </h1>
-              <p className="text-gray-400 text-sm mt-1">
+              <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
                 {users.length} total users
               </p>
             </div>
@@ -244,7 +246,8 @@ export default function UserManagement() {
 
             <button
               onClick={() => setShowAddModal(true)}
-              className="h-11 px-5 rounded-xl bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white font-semibold text-sm flex items-center gap-2 shadow-md shadow-[#E21B70]/25 hover:opacity-95 active:scale-[0.98] transition-all cursor-pointer"
+              className="h-11 px-5 rounded-xl text-white font-semibold text-sm flex items-center gap-2 transition-all cursor-pointer"
+              style={{ background: "var(--brand-primary)", boxShadow: "var(--shadow-btn)" }}
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
               <span>Add User</span>

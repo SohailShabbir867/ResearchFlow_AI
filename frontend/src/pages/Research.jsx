@@ -21,6 +21,8 @@ import {
   MessageSquare,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { useSelector, useDispatch } from "react-redux";
+import { logoutUser } from "../store/authSlice.js";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
 /* ─── Sample / Demo Data ──────────────────────────────────────────── */
@@ -64,6 +66,14 @@ const DETAIL_LEVELS = ["Quick", "Standard", "Detailed", "Deep"];
 
 export default function Research() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const user = useSelector(s => s.auth.user);
+
+  const canUpload = user?.role === "admin" || user?.canUploadDocuments;
+  const isAdmin = user?.role === "admin";
+  const userInitials = user?.name
+    ? user.name.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase()
+    : "U";
 
   // Sidebar
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -243,8 +253,8 @@ export default function Research() {
           </button>
         </div>
 
-        {/* Upload box */}
-        {!sidebarCollapsed && (
+        {/* Upload box (Admin or Granted Access Only) */}
+        {!sidebarCollapsed && canUpload && (
           <div className="px-3 pb-2 shrink-0">
             <div
               className="rounded-xl p-4 text-center cursor-pointer transition-all"
@@ -401,27 +411,40 @@ export default function Research() {
           </div>
         )}
 
-        {/* Document Library link */}
-        <div className="px-3 py-2 shrink-0" style={{ borderTop: "1px solid var(--border-color-subtle)" }}>
-          <button
-            onClick={() => navigate("/documents")}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all ${
-              sidebarCollapsed ? "justify-center" : ""
-            }`}
-            style={{ color: "var(--text-muted)" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(142,78,20,0.08)";
-              e.currentTarget.style.color = "var(--text-primary)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "var(--text-muted)";
-            }}
-          >
-            <FolderOpen className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && <span>Document Library</span>}
-          </button>
-        </div>
+        {/* Admin Navigation Links */}
+        {isAdmin && (
+          <div className="px-3 py-2 shrink-0 space-y-1" style={{ borderTop: "1px solid var(--border-color-subtle)" }}>
+            <button
+              onClick={() => navigate("/admin")}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                sidebarCollapsed ? "justify-center" : ""
+              }`}
+              style={{ color: "var(--brand-primary)", background: "rgba(142,78,20,0.08)" }}
+            >
+              <Settings className="w-4 h-4 shrink-0" />
+              {!sidebarCollapsed && <span>Admin Dashboard</span>}
+            </button>
+
+            <button
+              onClick={() => navigate("/documents")}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                sidebarCollapsed ? "justify-center" : ""
+              }`}
+              style={{ color: "var(--text-muted)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(142,78,20,0.08)";
+                e.currentTarget.style.color = "var(--text-primary)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "var(--text-muted)";
+              }}
+            >
+              <FolderOpen className="w-4 h-4 shrink-0" />
+              {!sidebarCollapsed && <span>Document Library</span>}
+            </button>
+          </div>
+        )}
 
         {/* User Footer */}
         <div
@@ -439,16 +462,16 @@ export default function Research() {
               className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
               style={{ background: "var(--brand-primary)" }}
             >
-              SS
+              {userInitials}
             </div>
             {!sidebarCollapsed && (
               <>
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0" onClick={() => navigate("/profile")}>
                   <p className="text-xs font-semibold truncate" style={{ color: "var(--text-primary)" }}>
-                    Sohail Shabbir
+                    {user?.name || "User"}
                   </p>
-                  <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                    Admin · Doctor
+                  <p className="text-[10px] capitalize" style={{ color: "var(--text-muted)" }}>
+                    {user?.role || "Viewer"} {user?.specialty ? `· ${user.specialty}` : ""}
                   </p>
                 </div>
                 <ThemeToggle />
@@ -458,6 +481,7 @@ export default function Research() {
                   style={{ color: "var(--text-muted)" }}
                   onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
                   onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                  title="Profile Settings"
                 >
                   <Settings className="w-4 h-4" />
                 </button>
@@ -631,7 +655,7 @@ export default function Research() {
                       <>
                         <div
                           className="px-4 py-3 rounded-2xl rounded-tr-sm text-sm leading-relaxed font-medium"
-                          style={{ background: "#1A6B3F", color: "#FFFFFF" }}
+                          style={{ background: "#EBE8E3", color: "#1C1410" }}
                         >
                           {msg.text}
                         </div>
@@ -755,8 +779,8 @@ export default function Research() {
                   {/* User avatar */}
                   {isUser && (
                     <div
-                      className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0 mt-1"
-                      style={{ background: "#1A6B3F" }}
+                      className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 mt-1"
+                      style={{ background: "#EBE8E3", color: "#1C1410" }}
                     >
                       SS
                     </div>
