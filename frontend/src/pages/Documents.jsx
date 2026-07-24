@@ -212,7 +212,7 @@ export default function Documents() {
             </div>
             {!sidebarCollapsed && (
               <span className="font-bold text-white text-base tracking-tight truncate">
-                MedResearch AI
+                ResearchAI
               </span>
             )}
           </div>

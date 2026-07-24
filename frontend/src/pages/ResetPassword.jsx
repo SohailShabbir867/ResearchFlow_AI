@@ -113,7 +113,7 @@ export default function ResetPassword() {
             <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--brand-primary)" }}>
               <Microscope className="w-5 h-5 text-white" strokeWidth={2.2} />
             </div>
-            <span className="font-bold" style={{ color: "var(--text-primary)" }}>MedResearch AI</span>
+            <span className="font-bold" style={{ color: "var(--text-primary)" }}>ResearchAI</span>
           </div>
           <ThemeToggle />
         </div>

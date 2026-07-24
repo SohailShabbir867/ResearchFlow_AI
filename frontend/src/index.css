@@ -23,7 +23,7 @@
   --bg-badge:       #F0EDE8;
   --bg-row-hover:   rgba(142, 78, 20, 0.05);
   --bg-elevated:    #F9F7F4;
-  --bg-user-msg:    #EBE8E3;
+  --bg-user-msg:    #8E4E14;
   --bg-ai-msg:      #FFFFFF;
   --bg-chat-area:   #F5F3EE;
   --bg-input-bar:   #FFFFFF;
@@ -41,7 +41,7 @@
   --text-muted:     #8A7D72;
   --text-disabled:  #B8ADA5;
   --text-heading:   #1C1410;
-  --text-user-msg:  #1C1410;
+  --text-user-msg:  #FFFFFF;
   --text-ai-msg:    #1C1410;
 
   /* Brand — warm brown rgb(142,78,20) */

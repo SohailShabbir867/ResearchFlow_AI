@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Microscope,
+  Sparkles,
   Plus,
   Trash2,
   Settings,
@@ -19,28 +19,34 @@ import {
   Menu,
   Upload,
   MessageSquare,
+  Crown,
+  Zap,
+  Lock,
+  CheckCircle2,
+  X,
+  Globe,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useSelector, useDispatch } from "react-redux";
 import { logoutUser } from "../store/authSlice.js";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
-/* ─── Sample / Demo Data ──────────────────────────────────────────── */
+/* ─── General Research Sample / Demo Data ──────────────────────────── */
 const SUGGESTIONS = [
-  "Summarise all key findings in the uploaded documents",
-  "List all medications mentioned with their dosages",
-  "What are the diagnostic criteria described?",
-  "Explain the treatment protocols step by step",
+  "Summarize the latest breakthroughs in AI and Quantum Computing",
+  "Analyze recent trends in renewable energy and global market impact",
+  "Synthesize key takeaways from my uploaded research paper dataset",
+  "Compare transformer architecture variations for domain-specific RAG",
 ];
 
 const SAMPLE_CHATS = {
   today: [
-    { id: "c1", title: "What are the main causes of hypertension?", time: "10m ago", active: true },
-    { id: "c2", title: "What is a medical research question about diabetes?", time: "1h ago", active: false },
+    { id: "c1", title: "What are the core advances in LLM reasoning in 2026?", time: "10m ago", active: true },
+    { id: "c2", title: "Compare solar vs wind energy grid integration methods", time: "1h ago", active: false },
   ],
   yesterday: [
-    { id: "c3", title: "How symptoms of heart failure present in elderly...", time: "1d ago", active: false },
-    { id: "c4", title: "Explain antibiotic resistance to the treatment...", time: "1d ago", active: false },
+    { id: "c3", title: "Key economic indicators and 2026 growth forecasts...", time: "1d ago", active: false },
+    { id: "c4", title: "Explain retrieval-augmented generation chunking techniques...", time: "1d ago", active: false },
   ],
 };
 
@@ -48,15 +54,15 @@ const DEFAULT_MESSAGES = [
   {
     id: "msg_1",
     role: "user",
-    text: "What are the main causes of hypertension?",
+    text: "What are the core advances in LLM reasoning in 2026?",
     time: "09:55 AM",
   },
   {
     id: "msg_2",
     role: "assistant",
     isRefused: false,
-    text: "Hypertension (high blood pressure) can be caused by several factors. The main causes include genetic predisposition, unhealthy diet (high salt intake), lack of physical activity, obesity, stress, smoking, excessive alcohol consumption, chronic kidney disease, hormonal disorders, and certain medications.",
-    sources: ["JNC_8_Hypertension_Guidelines.pdf", "Hypertension_Review_2024.pdf"],
+    text: "Key advances in LLM reasoning in 2026 focus on multi-step chain-of-thought verification, hybrid neuro-symbolic reasoning engines, and real-time retrieval augmented generation (RAG) with dynamic confidence scoring. Models now integrate live web knowledge streams with private vector databases for zero-hallucination research outputs.",
+    sources: ["LLM_Reasoning_Survey_2026.pdf", "RAG_Vector_Search_Benchmark.pdf"],
     time: "09:55 AM",
   },
 ];
@@ -69,8 +75,12 @@ export default function Research() {
   const dispatch = useDispatch();
   const user = useSelector(s => s.auth.user);
 
-  const canUpload = user?.role === "admin" || user?.canUploadDocuments;
   const isAdmin = user?.role === "admin";
+  const [isPro, setIsPro] = useState(isAdmin || user?.canUploadDocuments || false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeSuccess, setUpgradeSuccess] = useState(false);
+
+  const canUpload = isAdmin || isPro || user?.canUploadDocuments;
   const userInitials = user?.name
     ? user.name.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase()
     : "U";
@@ -217,14 +227,14 @@ export default function Research() {
           <div className="flex items-center gap-2.5 min-w-0">
             <div
               className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
-              style={{ background: "#FFFFFF", border: "1px solid var(--border-color-strong)" }}
+              style={{ background: "var(--brand-primary)" }}
             >
-              <Microscope className="w-4 h-4" style={{ color: "var(--brand-primary)" }} strokeWidth={2.2} />
+              <Sparkles className="w-4 h-4 text-white" strokeWidth={2.2} />
             </div>
             {!sidebarCollapsed && (
               <div className="min-w-0">
                 <p className="text-xs font-black uppercase tracking-widest truncate" style={{ color: "var(--text-primary)" }}>
-                  MedResearch
+                  ResearchAI
                 </p>
               </div>
             )}
@@ -245,34 +255,57 @@ export default function Research() {
             className="w-full h-10 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97]"
             style={{
               background: "var(--brand-primary)",
+              color: "#FFFFFF",
               boxShadow: "var(--shadow-btn)",
             }}
           >
-            <Plus className="w-4 h-4" strokeWidth={2.5} />
+            <Plus className="w-4 h-4 text-white" strokeWidth={2.5} />
             {!sidebarCollapsed && <span>+ New Chat</span>}
           </button>
         </div>
 
-        {/* Upload box (Admin or Granted Access Only) */}
-        {!sidebarCollapsed && canUpload && (
+        {/* Upload Custom RAG Dataset Box */}
+        {!sidebarCollapsed && (
           <div className="px-3 pb-2 shrink-0">
-            <div
-              className="rounded-xl p-4 text-center cursor-pointer transition-all"
-              style={{
-                border: "2px dashed var(--border-color)",
-                background: "transparent",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--brand-primary)")}
-              onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border-color)")}
-            >
-              <Upload className="w-5 h-5 mx-auto mb-1" style={{ color: "var(--text-muted)" }} />
-              <p className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
-                Upload PDF / TXT / DOCX
-              </p>
-              <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-                Drop here or click · Max 50 MB
-              </p>
-            </div>
+            {canUpload ? (
+              <div
+                className="rounded-xl p-3.5 text-center cursor-pointer transition-all"
+                style={{
+                  border: "2px dashed var(--border-color)",
+                  background: "transparent",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--brand-primary)")}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border-color)")}
+              >
+                <Upload className="w-4 h-4 mx-auto mb-1" style={{ color: "var(--brand-primary)" }} />
+                <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
+                  Upload Custom RAG Dataset
+                </p>
+                <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                  PDF / TXT / DOCX · Max 50 MB
+                </p>
+              </div>
+            ) : (
+              <div
+                onClick={() => setShowUpgradeModal(true)}
+                className="rounded-xl p-3.5 text-center cursor-pointer transition-all relative overflow-hidden group"
+                style={{
+                  border: "1px solid rgba(217,119,6,0.30)",
+                  background: "rgba(217,119,6,0.08)",
+                }}
+              >
+                <div className="flex items-center justify-center gap-1.5 text-amber-700 text-xs font-bold mb-1">
+                  <Crown className="w-4 h-4 text-amber-600" />
+                  <span>Pro Feature: RAG Upload</span>
+                </div>
+                <p className="text-[11px] text-amber-800/80 font-medium">
+                  Upload your own PDF/TXT dataset
+                </p>
+                <span className="mt-2 inline-block px-2.5 py-1 rounded-lg text-[10px] font-bold text-white bg-amber-700 shadow-sm group-hover:bg-amber-800 transition-colors">
+                  Upgrade to Pro →
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -459,8 +492,8 @@ export default function Research() {
             onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
           >
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 shadow-sm"
-              style={{ background: "#FFFFFF", border: "1px solid var(--border-color-strong)", color: "var(--brand-primary)" }}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm"
+              style={{ background: "var(--brand-primary)" }}
             >
               {userInitials}
             </div>
@@ -516,37 +549,36 @@ export default function Research() {
             {/* AI Icon + name */}
             <div
               className="w-9 h-9 rounded-xl flex items-center justify-center shadow-sm"
-              style={{ background: "#FFFFFF", border: "1px solid var(--border-color-strong)" }}
+              style={{ background: "var(--brand-primary)" }}
             >
-              <Microscope className="w-5 h-5" style={{ color: "var(--brand-primary)" }} strokeWidth={2.2} />
+              <Sparkles className="w-5 h-5 text-white" strokeWidth={2.2} />
             </div>
             <div>
               <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                MedResearch AI
+                ResearchAI
               </p>
               <div className="flex items-center gap-1.5">
                 <span
                   className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(52,211,153,0.8)]"
                 />
                 <p className="text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
-                  FASTEMBED · QDRANT · GROQ LLAMA 70B · HYBRID SEARCH · STREAMING
+                  REAL-TIME WEB INTELLIGENCE · QDRANT RAG · GROQ LLAMA 3.3 70B
                 </p>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            {!isPro && (
+              <button
+                onClick={() => setShowUpgradeModal(true)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition-all cursor-pointer"
+              >
+                <Crown className="w-3.5 h-3.5 text-amber-700" />
+                <span>Upgrade Pro RAG</span>
+              </button>
+            )}
             <ThemeToggle />
-            <div
-              className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all"
-              style={{
-                color: "var(--text-secondary)",
-                borderColor: "var(--border-color)",
-                background: "var(--bg-card)",
-              }}
-            >
-              MongoDB Local
-            </div>
             <button
               onClick={() => {
                 if (activeChatId) {
@@ -586,17 +618,17 @@ export default function Research() {
                   className="w-16 h-16 rounded-2xl flex items-center justify-center"
                   style={{ background: "var(--brand-primary)", boxShadow: "0 8px 24px var(--brand-glow)" }}
                 >
-                  <Microscope className="w-8 h-8 text-white" strokeWidth={2.2} />
+                  <Sparkles className="w-8 h-8 text-white" strokeWidth={2.2} />
                 </div>
                 <div>
                   <h2 className="text-xl font-bold mb-1" style={{ color: "var(--text-heading)" }}>
-                    Medical Research Assistant
+                    ResearchAI Knowledge Assistant
                   </h2>
                   <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                    Upload documents in the sidebar, then ask any question.
+                    Ask any question for real-time up-to-date information, or upload custom RAG datasets (Pro).
                   </p>
                   <p className="text-xs mt-1 font-medium" style={{ color: "var(--brand-primary)" }}>
-                    Answers stream in real-time · Source evidence shown below each answer
+                    Up-to-Date Web Intelligence · Custom Vector Datasets · Citation Traceability
                   </p>
                 </div>
 
@@ -642,9 +674,9 @@ export default function Research() {
                   {!isUser && (
                     <div
                       className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-1 shadow-sm"
-                      style={{ background: "#FFFFFF", border: "1px solid var(--border-color-strong)" }}
+                      style={{ background: "var(--brand-primary)" }}
                     >
-                      <Microscope className="w-4 h-4" style={{ color: "var(--brand-primary)" }} strokeWidth={2.2} />
+                      <Microscope className="w-4 h-4 text-white" strokeWidth={2.2} />
                     </div>
                   )}
 
@@ -655,7 +687,7 @@ export default function Research() {
                       <>
                         <div
                           className="px-4 py-3 rounded-2xl rounded-tr-sm text-sm leading-relaxed font-medium"
-                          style={{ background: "#EBE8E3", color: "#1C1410" }}
+                          style={{ background: "var(--brand-primary)", color: "#FFFFFF" }}
                         >
                           {msg.text}
                         </div>
@@ -779,10 +811,10 @@ export default function Research() {
                   {/* User avatar */}
                   {isUser && (
                     <div
-                      className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 mt-1"
-                      style={{ background: "#EBE8E3", color: "#1C1410" }}
+                      className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0 mt-1 shadow-sm"
+                      style={{ background: "var(--brand-primary)" }}
                     >
-                      SS
+                      {userInitials}
                     </div>
                   )}
                 </div>
@@ -911,6 +943,117 @@ export default function Research() {
             </div>
           </div>
         </div>
+
+        {/* ── PRO PLAN UPGRADE MODAL ── */}
+        {showUpgradeModal && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-[540px] rounded-3xl p-6 sm:p-8 relative shadow-2xl animate-fade-in"
+              style={{ background: "var(--bg-card)", border: "1px solid var(--border-color-subtle)" }}
+            >
+              {/* Close Button */}
+              <button
+                onClick={() => setShowUpgradeModal(false)}
+                className="absolute top-5 right-5 p-1.5 rounded-xl transition-colors"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Modal Header */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-amber-500/15 border border-amber-500/30 text-amber-600 shrink-0">
+                  <Crown className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold tracking-tight" style={{ color: "var(--text-heading)" }}>
+                    Upgrade to ResearchAI Pro
+                  </h3>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    Unlock Custom RAG Dataset Ingestion & Private Vector Storage
+                  </p>
+                </div>
+              </div>
+
+              {/* Upgrade Success Notification */}
+              {upgradeSuccess && (
+                <div className="mb-4 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Pro Plan Activated! You can now upload custom PDF / TXT / DOCX datasets.</span>
+                </div>
+              )}
+
+              {/* Pricing Cards */}
+              <div className="grid grid-cols-2 gap-3 my-5">
+                {/* Free Plan */}
+                <div className="p-4 rounded-2xl border text-left" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-color-subtle)" }}>
+                  <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Free Plan</p>
+                  <p className="text-2xl font-black mt-1" style={{ color: "var(--text-heading)" }}>$0 <span className="text-xs font-normal">/mo</span></p>
+                  <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>Up-to-Date Web AI Chat</p>
+                  <div className="mt-3 text-[10px] space-y-1 text-gray-500">
+                    <p>✓ Unlimited Web Queries</p>
+                    <p className="text-red-500">✕ Custom RAG Uploads</p>
+                  </div>
+                </div>
+
+                {/* Pro Plan */}
+                <div className="p-4 rounded-2xl border-2 text-left relative overflow-hidden"
+                     style={{ background: "rgba(142,78,20,0.06)", borderColor: "var(--brand-primary)" }}>
+                  <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[9px] font-bold text-white uppercase tracking-wider" style={{ background: "var(--brand-primary)" }}>
+                    Popular
+                  </span>
+                  <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--brand-primary)" }}>Pro Plan</p>
+                  <p className="text-2xl font-black mt-1" style={{ color: "var(--text-heading)" }}>$19 <span className="text-xs font-normal">/mo</span></p>
+                  <p className="text-[11px] font-semibold" style={{ color: "var(--brand-primary)" }}>Custom RAG Uploads</p>
+                  <div className="mt-3 text-[10px] space-y-1 font-medium" style={{ color: "var(--text-primary)" }}>
+                    <p>✓ Unlimited PDF/TXT Ingestion</p>
+                    <p>✓ Qdrant Vector Indexing</p>
+                    <p>✓ LLaMA 3.3 70B Priority</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Feature Checklist */}
+              <div className="space-y-2 mb-6 text-xs text-left" style={{ color: "var(--text-secondary)" }}>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span><strong>Private Vector Collections:</strong> Index thousands of documents per workspace.</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span><strong>Zero Data Leakage:</strong> Isolated Qdrant & Groq processing pipeline.</span>
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowUpgradeModal(false)}
+                  className="flex-1 py-3 rounded-2xl border font-semibold text-xs transition-colors"
+                  style={{ background: "var(--bg-card)", borderColor: "var(--border-color)", color: "var(--text-muted)" }}
+                >
+                  Continue Free
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPro(true);
+                    setUpgradeSuccess(true);
+                    setTimeout(() => setShowUpgradeModal(false), 1200);
+                  }}
+                  className="flex-1 py-3 rounded-2xl text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer"
+                  style={{ background: "var(--brand-primary)", boxShadow: "var(--shadow-btn)" }}
+                >
+                  <Crown className="w-4 h-4" />
+                  <span>Unlock Pro Plan ($19)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </main>
     </div>
   );

@@ -2,8 +2,7 @@ import React, { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
-  Microscope, ShieldCheck, Zap, FileText,
-  Eye, EyeOff, AlertCircle, ArrowRight, CheckCircle2,
+  Microscope, AtSign, Lock, Eye, EyeOff, AlertCircle, ArrowRight, CheckCircle2,
 } from "lucide-react";
 import { loginUser, clearAuthError } from "../store/authSlice.js";
 import ThemeToggle from "../components/ThemeToggle.jsx";
@@ -54,246 +53,203 @@ export default function Login() {
 
   const displayError = localError || authError;
 
-  /* ── Shared input style ─────────────────────────────────────────── */
-  const inputCls = (hasErr) =>
-    `w-full h-11 px-4 text-sm rounded-xl border outline-none transition-all duration-200 ${
-      hasErr
-        ? "border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100"
-        : "border-[#C8C2B8] focus:border-[#8E4E14] focus:ring-2 focus:ring-[rgba(142,78,20,0.12)]"
-    }`;
-
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row font-sans antialiased"
-         style={{ background: "var(--bg-page)" }}>
+    <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 font-sans antialiased"
+         style={{ background: "#F4F1EA" }}>
 
-      {/* ── LEFT PANEL — warm brown brand panel ── */}
-      <div
-        className="w-full lg:w-[45%] min-h-[360px] lg:min-h-screen relative p-8 lg:p-14 flex flex-col justify-between overflow-hidden"
-        style={{ background: "var(--brand-primary)", borderRight: "4px solid var(--brand-dark)" }}
-      >
-        {/* Subtle texture overlays */}
-        <div className="absolute inset-0 opacity-10 pointer-events-none"
-             style={{ backgroundImage: "radial-gradient(circle at 20% 20%, #FFFFFF 0%, transparent 60%)" }} />
-        <div className="absolute bottom-0 right-0 w-80 h-80 rounded-full opacity-10 pointer-events-none"
-             style={{ background: "rgba(255,255,255,0.15)", filter: "blur(80px)" }} />
+      {/* ── CENTERED TWO-PANEL CARD (Matching Reference Image) ── */}
+      <div className="w-full max-w-[960px] bg-white rounded-3xl sm:rounded-[28px] overflow-hidden flex flex-col md:flex-row shadow-[0_20px_60px_rgba(0,0,0,0.08)] border border-[#E6E0D4]">
 
-        {/* Logo + theme toggle */}
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                 style={{ background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.3)" }}>
-              <Microscope className="w-6 h-6 text-white" strokeWidth={2.2} />
+        {/* ── LEFT HERO PANEL (Terracotta / Brown) ── */}
+        <div className="w-full md:w-[46%] p-8 sm:p-10 flex flex-col justify-between relative overflow-hidden shrink-0"
+             style={{ background: "linear-gradient(145deg, #F09154 0%, #D87739 60%, #B85F26 100%)" }}>
+
+          {/* Top Logo */}
+          <div className="flex items-center gap-3 relative z-10">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-[#012D1D] text-white shadow-md">
+              <Sparkles className="w-5 h-5 text-white" strokeWidth={2.2} />
             </div>
-            <span className="font-black text-white text-lg tracking-tight">MedResearch AI</span>
+            <span className="font-bold text-lg tracking-tight text-[#012D1D] font-serif">
+              ResearchAI
+            </span>
           </div>
-          <ThemeToggle />
-        </div>
 
-        {/* Hero text */}
-        <div className="relative z-10 my-10 lg:my-0">
-          <h1 className="text-[32px] sm:text-[40px] font-bold text-white leading-tight tracking-tight mb-4">
-            AI-Powered<br />
-            <span className="opacity-90">Medical Research</span>
-          </h1>
-          <p className="text-white/80 text-base mb-8 leading-relaxed">
-            Ask clinical questions. Get answers from your documents.
-          </p>
-
-          <div className="space-y-3">
-            {[
-              { icon: ShieldCheck, title: "Document Security & Compliance",  desc: "HIPAA-compliant document locking protecting all sensitive clinical files." },
-              { icon: Zap,         title: "Lightning Fast Retrieval",         desc: "Sub-second vector query responses across large medical paper libraries."  },
-              { icon: FileText,    title: "Verifiable Citations",             desc: "Every insight is directly cited and linked to exact source excerpts."      },
-            ].map(({ icon: Icon, title, desc }) => (
-              <div key={title}
-                   className="flex items-start gap-3 p-3.5 rounded-xl transition-all group"
-                   style={{ background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.18)" }}>
-                <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                     style={{ background: "rgba(255,255,255,0.15)" }}>
-                  <Icon className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <p className="text-white font-semibold text-sm">{title}</p>
-                  <p className="text-white/65 text-xs mt-0.5 leading-normal">{desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="relative z-10">
-          <p className="text-xs text-white/55 font-medium tracking-wide">
-            Powered by <span className="text-white/80 font-semibold">Qdrant</span> ·{" "}
-            <span className="text-white/80 font-semibold">FastEmbed</span> ·{" "}
-            <span className="text-white/80 font-semibold">Groq LLaMA 3.3 70B</span>
-          </p>
-        </div>
-      </div>
-
-      {/* ── RIGHT PANEL — form ── */}
-      <div
-        className="w-full lg:w-[55%] min-h-screen flex flex-col justify-center items-center p-6 sm:p-12 lg:p-16"
-        style={{ background: "var(--bg-input-bar)" }}
-      >
-        <div className="w-full max-w-[420px] mx-auto">
-
-          {/* Heading */}
-          <div className="mb-8">
-            <h2 className="text-3xl font-bold tracking-tight" style={{ color: "var(--text-heading)" }}>
-              Welcome back
-            </h2>
-            <p className="text-sm mt-1.5" style={{ color: "var(--text-muted)" }}>
-              Sign in to your MedResearch account
+          {/* Hero Content */}
+          <div className="my-8 sm:my-12 relative z-10">
+            <h1 className="text-3xl sm:text-4xl font-bold font-serif leading-[1.2] text-[#012D1D] mb-3">
+              AI-Powered<br />Research Assistant.
+            </h1>
+            <p className="text-sm text-[#3E2010]/80 leading-relaxed font-medium">
+              Chat with up-to-date real-time intelligence or upload custom RAG datasets for private document analysis.
             </p>
           </div>
 
-          {/* Error Banner */}
-          {displayError && !unverified && (
-            <div className="mb-5 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-3 animate-fade-in">
-              <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-              <p className="font-medium">{displayError}</p>
-            </div>
-          )}
-
-          {/* Unverified banner */}
-          {unverified && (
-            <div className="mb-5 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm flex items-start gap-3 animate-fade-in">
-              <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold mb-1">Email not verified</p>
-                <p className="text-amber-700 text-xs mb-2">Check your inbox for the verification link.</p>
-                <Link to="/signup" className="text-xs font-semibold text-amber-700 underline">
-                  Resend verification email →
-                </Link>
-              </div>
-            </div>
-          )}
-
-          {/* Success banner */}
-          {successMsg && (
-            <div className="mb-5 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-start gap-3 animate-fade-in">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
-              <p className="font-medium">{successMsg}</p>
-            </div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-
-            {/* Email */}
-            <div>
-              <label htmlFor="login-email" className="block text-sm font-semibold mb-1.5"
-                     style={{ color: "var(--text-secondary)" }}>
-                Email address
-              </label>
-              <input
-                id="login-email"
-                type="email"
-                required
-                autoComplete="email"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (emailError) setEmailError("");
-                  if (localError) setLocalError("");
-                  dispatch(clearAuthError());
-                }}
-                placeholder="doctor@hospital.com"
-                style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
-                className={inputCls(!!emailError)}
-              />
-              {emailError && (
-                <p className="text-xs text-red-600 mt-1.5 font-medium flex items-center gap-1">
-                  ⚠ {emailError}
-                </p>
-              )}
-            </div>
-
-            {/* Password */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="login-password" className="text-sm font-semibold"
-                       style={{ color: "var(--text-secondary)" }}>
-                  Password
-                </label>
-                <Link to="/forgot-password"
-                      className="text-xs font-semibold transition-colors"
-                      style={{ color: "var(--brand-primary)" }}>
-                  Forgot password?
-                </Link>
-              </div>
-              <div className="relative">
-                <input
-                  id="login-password"
-                  type={showPassword ? "text" : "password"}
-                  required
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (localError) setLocalError("");
-                    dispatch(clearAuthError());
-                  }}
-                  placeholder="••••••••"
-                  style={{ background: "var(--bg-input)", color: "var(--text-primary)" }}
-                  className={`${inputCls(false)} pr-11`}
+          {/* Bottom Illustration Circle */}
+          <div className="relative z-10 flex justify-center mt-2">
+            <div className="w-44 h-44 sm:w-52 sm:h-52 rounded-full p-2.5 bg-white/30 backdrop-blur-sm shadow-xl flex items-center justify-center">
+              <div className="w-full h-full rounded-full overflow-hidden bg-[#FFF8EE] border-4 border-white flex items-center justify-center shadow-inner">
+                <img
+                  src="/doctor_avatar.png"
+                  alt="Doctor Illustration"
+                  className="w-full h-full object-cover"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 transition-colors"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
               </div>
             </div>
+          </div>
+        </div>
 
-            {/* Submit */}
-            <button
-              type="submit"
-              id="login-submit-btn"
-              disabled={loading}
-              className="w-full h-12 rounded-xl text-white font-semibold text-base flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
-              style={{ background: "var(--brand-primary)", boxShadow: "var(--shadow-btn)" }}
-              onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = "var(--brand-hover)"; }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "var(--brand-primary)")}
-            >
-              {loading ? (
-                <>
-                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
+        {/* ── RIGHT FORM PANEL ── */}
+        <div className="w-full md:w-[54%] p-8 sm:p-12 flex flex-col justify-between bg-white">
+          <div>
+
+            {/* Top Navigation Tabs (Sign Up | Log In) */}
+            <div className="flex items-center justify-between mb-8 pb-3 border-b border-[#F0EBE1]">
+              <div className="flex items-center gap-8 text-sm font-bold">
+                <Link to="/signup" className="text-[#8C8275] hover:text-[#012D1D] transition-colors">
+                  Sign Up
+                </Link>
+                <div className="relative text-[#012D1D]">
+                  <span>Log In</span>
+                  <div className="absolute -bottom-[13px] left-0 right-0 h-[3px] bg-[#D87739] rounded-full" />
+                </div>
+              </div>
+              <ThemeToggle />
+            </div>
+
+            {/* Title & Subtitle */}
+            <div className="mb-8">
+              <h2 className="text-3xl sm:text-4xl font-bold font-serif text-[#012D1D] tracking-tight">
+                Welcome Back
+              </h2>
+              <p className="text-xs sm:text-sm text-[#70675C] mt-1.5 font-medium">
+                Access your personalized clinical research dashboard.
+              </p>
+            </div>
+
+            {/* Banners */}
+            {displayError && !unverified && (
+              <div className="mb-5 p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2.5">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>{displayError}</span>
+              </div>
+            )}
+
+            {unverified && (
+              <div className="mb-5 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold">Email not verified</p>
+                  <p className="mt-0.5">Please check your inbox for the activation link.</p>
+                </div>
+              </div>
+            )}
+
+            {successMsg && (
+              <div className="mb-5 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{successMsg}</span>
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+
+              {/* Email field */}
+              <div>
+                <label className="block text-[11px] font-extrabold uppercase tracking-widest text-[#012D1D] mb-1.5">
+                  EMAIL OR PHONE NUMBER
+                </label>
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8C8275]">
+                    <AtSign className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (emailError) setEmailError("");
+                      if (localError) setLocalError("");
+                      dispatch(clearAuthError());
+                    }}
+                    placeholder="Enter Your Email"
+                    className="w-full h-12 pl-11 pr-4 text-sm font-medium text-[#012D1D] bg-[#F7F5F0] rounded-2xl border border-transparent focus:border-[#D87739] focus:bg-white focus:ring-2 focus:ring-[#D87739]/15 outline-none transition-all placeholder-[#A09688]"
+                  />
+                </div>
+                {emailError && (
+                  <p className="text-xs text-red-500 mt-1 font-medium">⚠ {emailError}</p>
+                )}
+              </div>
+
+              {/* Password field */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[11px] font-extrabold uppercase tracking-widest text-[#012D1D]">
+                    PASSWORD
+                  </label>
+                  <Link to="/forgot-password" className="text-xs font-bold text-[#D87739] hover:underline">
+                    Forgot Password?
+                  </Link>
+                </div>
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8C8275]">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (localError) setLocalError("");
+                      dispatch(clearAuthError());
+                    }}
+                    placeholder="••••••••"
+                    className="w-full h-12 pl-11 pr-11 text-sm font-medium text-[#012D1D] bg-[#F7F5F0] rounded-2xl border border-transparent focus:border-[#D87739] focus:bg-white focus:ring-2 focus:ring-[#D87739]/15 outline-none transition-all placeholder-[#A09688]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8C8275] hover:text-[#012D1D] transition-colors p-1"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Primary Action Button (Dark Forest Green / Brown Pill) */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full h-12 rounded-2xl bg-[#012D1D] hover:bg-[#024029] text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#012D1D]/20 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-60 mt-2"
+              >
+                {loading ? (
                   <span>Signing in…</span>
-                </>
-              ) : (
-                <>
-                  <span>Sign In</span>
-                  <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
-                </>
-              )}
-            </button>
-          </form>
+                ) : (
+                  <>
+                    <span>Log In →</span>
+                  </>
+                )}
+              </button>
 
-          {/* Footer */}
-          <div className="mt-8 pt-6" style={{ borderTop: "1px solid var(--border-color-subtle)" }}>
-            <p className="text-sm text-center" style={{ color: "var(--text-muted)" }}>
-              Don't have an account?{" "}
-              <Link to="/signup" className="font-semibold transition-colors"
-                    style={{ color: "var(--brand-primary)" }}>
-                Create one
+            </form>
+          </div>
+
+          {/* Footer Note */}
+          <div className="mt-8 pt-4 text-center border-t border-[#F0EBE1]">
+            <p className="text-xs text-[#70675C] font-semibold">
+              New here?{" "}
+              <Link to="/signup" className="font-bold text-[#D87739] hover:underline">
+                Create an account
               </Link>
             </p>
-            <p className="text-[11px] text-center mt-2" style={{ color: "var(--text-disabled)" }}>
-              New accounts require email verification before login.
-            </p>
           </div>
 
         </div>
+
       </div>
+
     </div>
   );
 }

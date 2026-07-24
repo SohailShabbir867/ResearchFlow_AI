@@ -2,8 +2,16 @@ import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
-  Microscope, LayoutDashboard, Users, FileStack, ScrollText,
-  Settings, Activity, ArrowLeft, X, LogOut,
+  Sparkles,
+  LayoutDashboard,
+  Users,
+  FileStack,
+  ScrollText,
+  Settings,
+  Activity,
+  ArrowLeft,
+  X,
+  LogOut,
 } from "lucide-react";
 import { logoutUser } from "../../store/authSlice.js";
 import ThemeToggle from "../ThemeToggle.jsx";
@@ -58,11 +66,11 @@ export default function AdminSidebar({ mobileOpen, onMobileClose }) {
             className="w-9 h-9 rounded-xl flex items-center justify-center"
             style={{ background: "var(--brand-primary)" }}
           >
-            <Microscope className="w-5 h-5 text-white" strokeWidth={2.2} />
+            <Sparkles className="w-5 h-5 text-white" strokeWidth={2.2} />
           </div>
           <div>
             <p className="text-sm font-black uppercase tracking-widest leading-none"
-               style={{ color: "var(--text-primary)" }}>MedResearch</p>
+               style={{ color: "var(--text-primary)" }}>ResearchAI</p>
             <p className="text-[10px] font-bold uppercase tracking-widest mt-0.5"
                style={{ color: "var(--brand-primary)" }}>Admin Panel</p>
           </div>

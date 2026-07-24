@@ -2,26 +2,11 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
-  Microscope, Eye, EyeOff, User, Mail, Lock, Stethoscope,
-  AlertCircle, CheckCircle2, ArrowRight, ArrowLeft,
+  Microscope, AtSign, Lock, Eye, EyeOff, User, Stethoscope,
+  AlertCircle, CheckCircle2, ArrowRight,
 } from "lucide-react";
 import { signupUser, clearAuthError, clearFlags } from "../store/authSlice.js";
 import ThemeToggle from "../components/ThemeToggle.jsx";
-
-/* ── Password strength helper ─────────────────────────────────── */
-function getStrength(pw) {
-  let score = 0;
-  if (pw.length >= 8)          score++;
-  if (pw.length >= 12)         score++;
-  if (/[A-Z]/.test(pw))        score++;
-  if (/[0-9]/.test(pw))        score++;
-  if (/[^A-Za-z0-9]/.test(pw)) score++;
-  if (score <= 1) return { label: "Weak",        color: "#EF4444", width: "20%"  };
-  if (score <= 2) return { label: "Fair",        color: "#F59E0B", width: "45%"  };
-  if (score <= 3) return { label: "Good",        color: "#3B82F6", width: "65%"  };
-  if (score <= 4) return { label: "Strong",      color: "#10B981", width: "85%"  };
-  return               { label: "Very Strong",   color: "#10B981", width: "100%" };
-}
 
 const SPECIALTIES = [
   "Cardiology","Oncology","Neurology","Endocrinology",
@@ -39,8 +24,6 @@ export default function SignUp() {
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [errors,        setErrors]        = useState({});
   const [touched,       setTouched]       = useState({});
-
-  const strength = form.password ? getStrength(form.password) : null;
 
   function set(field, val) {
     setForm(p => ({ ...p, [field]: val }));
@@ -78,288 +61,282 @@ export default function SignUp() {
     }));
   }
 
-  /* ── Success screen ──────────────────────────────────────────── */
+  /* ── Success Screen ─────────────────────────────────────────── */
   if (signupDone) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--bg-page)" }}>
-        <div className="w-full max-w-md text-center animate-fade-in">
-          <div className="w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center"
-               style={{ background: "rgba(16,185,129,0.15)", border: "2px solid rgba(16,185,129,0.30)" }}>
-            <CheckCircle2 className="w-10 h-10 text-emerald-500" />
+      <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 font-sans antialiased"
+           style={{ background: "#F4F1EA" }}>
+        <div className="w-full max-w-[540px] bg-white rounded-3xl p-8 sm:p-12 text-center shadow-xl border border-[#E6E0D4] animate-fade-in">
+          <div className="w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center bg-emerald-50 border-2 border-emerald-200">
+            <CheckCircle2 className="w-10 h-10 text-emerald-600" />
           </div>
-          <h1 className="text-2xl font-bold mb-3" style={{ color: "var(--text-heading)" }}>
+          <h1 className="text-2xl sm:text-3xl font-bold font-serif text-[#012D1D] mb-3">
             Check Your Email!
           </h1>
-          <p className="text-sm mb-2" style={{ color: "var(--text-secondary)" }}>
+          <p className="text-sm text-[#70675C] mb-2 font-medium">
             We sent a verification link to:
           </p>
-          <p className="font-semibold mb-6" style={{ color: "var(--brand-primary)" }}>{form.email}</p>
-          <p className="text-sm mb-8" style={{ color: "var(--text-muted)" }}>
-            Click the link to activate your account. The link expires in 24 hours.
-            Check your spam folder if you don't see it.
+          <p className="font-bold text-[#D87739] mb-6">{form.email}</p>
+          <p className="text-xs text-[#70675C] mb-8 leading-relaxed">
+            Click the link in the email to activate your account. The link expires in 24 hours. Check your spam folder if you don't see it.
           </p>
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={() => { dispatch(clearFlags()); navigate("/login"); }}
-              className="w-full h-12 rounded-xl text-white font-semibold flex items-center justify-center gap-2 transition-all"
-              style={{ background: "var(--brand-primary)", boxShadow: "var(--shadow-btn)" }}
-            >
-              <ArrowRight className="w-4 h-4" /> Go to Login
-            </button>
-            <Link to="/login" className="text-sm" style={{ color: "var(--text-muted)" }}>
-              Already verified?{" "}
-              <span style={{ color: "var(--brand-primary)" }}>Sign in</span>
-            </Link>
-          </div>
+          <button
+            onClick={() => { dispatch(clearFlags()); navigate("/login"); }}
+            className="w-full h-12 rounded-2xl bg-[#012D1D] hover:bg-[#024029] text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#012D1D]/20 transition-all"
+          >
+            Go to Login →
+          </button>
         </div>
       </div>
     );
   }
 
-  /* ── Field renderer ──────────────────────────────────────────── */
-  const renderField = (id, label, type, placeholder, icon, isPasswordToggle) => {
-    const hasErr = touched[id] && errors[id];
-    return (
-      <div key={id}>
-        <label htmlFor={`signup-${id}`} className="block text-sm font-semibold mb-1.5"
-               style={{ color: "var(--text-secondary)" }}>
-          {label}
-        </label>
-        <div className="relative">
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }}>
-            {icon}
-          </span>
-          <input
-            id={`signup-${id}`}
-            type={isPasswordToggle
-              ? (id === "password" ? (showPw ? "text" : "password") : (showConfirmPw ? "text" : "password"))
-              : type}
-            value={form[id]}
-            onChange={e => set(id, e.target.value)}
-            onBlur={() => touch(id)}
-            placeholder={placeholder}
-            autoComplete={id === "email" ? "email" : id === "name" ? "name" : "new-password"}
-            style={{
-              background: "var(--bg-input)",
-              color: "var(--text-primary)",
-              border: `1px solid ${hasErr ? "#EF4444" : "var(--border-input)"}`,
-            }}
-            className="w-full h-11 pl-10 pr-10 text-sm rounded-xl outline-none transition-all duration-200
-                       focus:ring-2"
-            onFocus={e => {
-              e.currentTarget.style.borderColor = hasErr ? "#EF4444" : "var(--brand-primary)";
-              e.currentTarget.style.boxShadow = `0 0 0 3px ${hasErr ? "rgba(239,68,68,0.12)" : "var(--brand-glow-subtle)"}`;
-            }}
-            onBlurCapture={e => {
-              e.currentTarget.style.borderColor = hasErr ? "#EF4444" : "var(--border-input)";
-              e.currentTarget.style.boxShadow = "none";
-            }}
-          />
-          {isPasswordToggle && (
-            <button
-              type="button"
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 transition-colors"
-              style={{ color: "var(--text-muted)" }}
-              onClick={() => id === "password" ? setShowPw(v => !v) : setShowConfirmPw(v => !v)}
-            >
-              {(id === "password" ? showPw : showConfirmPw)
-                ? <EyeOff className="w-4 h-4" />
-                : <Eye    className="w-4 h-4" />}
-            </button>
-          )}
-        </div>
-        {hasErr && (
-          <p className="text-xs mt-1.5 flex items-center gap-1" style={{ color: "#EF4444" }}>
-            <AlertCircle className="w-3 h-3" /> {errors[id]}
-          </p>
-        )}
-        {/* Password strength bar */}
-        {id === "password" && form.password && (
-          <div className="mt-2">
-            <div className="flex items-center justify-between text-[11px] mb-1">
-              <span style={{ color: "var(--text-muted)" }}>Strength</span>
-              <span style={{ color: strength.color, fontWeight: 600 }}>{strength.label}</span>
-            </div>
-            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--border-color)" }}>
-              <div className="h-full rounded-full transition-all duration-300"
-                   style={{ width: strength.width, background: strength.color }} />
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row font-sans antialiased"
-         style={{ background: "var(--bg-page)" }}>
+    <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 font-sans antialiased"
+         style={{ background: "#F4F1EA" }}>
 
-      {/* ── LEFT PANEL ── */}
-      <div
-        className="hidden lg:flex lg:w-[42%] flex-col justify-between p-12 relative overflow-hidden"
-        style={{ background: "var(--brand-primary)", borderRight: "4px solid var(--brand-dark)" }}
-      >
-        <div className="absolute inset-0 pointer-events-none"
-             style={{ backgroundImage: "radial-gradient(circle at 15% 15%, rgba(255,255,255,0.12) 0%, transparent 55%)" }} />
+      {/* ── CENTERED TWO-PANEL CARD ── */}
+      <div className="w-full max-w-[960px] bg-white rounded-3xl sm:rounded-[28px] overflow-hidden flex flex-col md:flex-row shadow-[0_20px_60px_rgba(0,0,0,0.08)] border border-[#E6E0D4]">
 
-        {/* Logo */}
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-               style={{ background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.30)" }}>
-            <Microscope className="w-6 h-6 text-white" strokeWidth={2.2} />
-          </div>
-          <span className="text-white font-black text-xl tracking-tight">MedResearch AI</span>
-        </div>
+        {/* ── LEFT HERO PANEL ── */}
+        <div className="w-full md:w-[44%] p-8 sm:p-10 flex flex-col justify-between relative overflow-hidden shrink-0"
+             style={{ background: "linear-gradient(145deg, #F09154 0%, #D87739 60%, #B85F26 100%)" }}>
 
-        {/* Text */}
-        <div className="relative z-10">
-          <h1 className="text-4xl font-bold text-white leading-tight mb-4">
-            Join the Future of<br/>
-            <span className="opacity-80">Medical Research</span>
-          </h1>
-          <p className="text-white/75 text-base leading-relaxed mb-8">
-            Create your account and gain access to AI-powered research tools, instant document Q&A, and verified medical insights.
-          </p>
-          <ul className="space-y-3">
-            {[
-              "AI answers from your own documents",
-              "Secure, HIPAA-grade document storage",
-              "Full citation trail for every response",
-              "Role-based access for clinical teams",
-            ].map(txt => (
-              <li key={txt} className="flex items-center gap-3 text-sm text-white/80">
-                <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
-                     style={{ background: "rgba(255,255,255,0.20)", border: "1px solid rgba(255,255,255,0.35)" }}>
-                  <CheckCircle2 className="w-3 h-3 text-white" />
-                </div>
-                {txt}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <p className="relative z-10 text-xs text-white/45">
-          Powered by Qdrant · FastEmbed · Groq LLaMA 3.3 70B
-        </p>
-      </div>
-
-      {/* ── RIGHT PANEL ── */}
-      <div
-        className="flex-1 flex flex-col justify-center p-6 sm:p-10 lg:p-14 overflow-y-auto"
-        style={{ background: "var(--bg-input-bar)" }}
-      >
-        <div className="w-full max-w-[460px] mx-auto">
-
-          {/* Mobile logo */}
-          <div className="flex items-center justify-between mb-8 lg:hidden">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-                   style={{ background: "var(--brand-primary)" }}>
-                <Microscope className="w-4 h-4 text-white" />
-              </div>
-              <span className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>MedResearch AI</span>
+          {/* Top Logo */}
+          <div className="flex items-center gap-3 relative z-10">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-[#012D1D] text-white shadow-md">
+              <Sparkles className="w-5 h-5 text-white" strokeWidth={2.2} />
             </div>
-            <ThemeToggle />
+            <span className="font-bold text-lg tracking-tight text-[#012D1D] font-serif">
+              ResearchAI
+            </span>
           </div>
 
-          {/* Header */}
-          <div className="mb-7">
-            <div className="hidden lg:flex justify-end mb-4">
+          {/* Hero Content */}
+          <div className="my-8 sm:my-12 relative z-10">
+            <h1 className="text-3xl sm:text-4xl font-bold font-serif leading-[1.2] text-[#012D1D] mb-3">
+              Join ResearchAI<br />Intelligence.
+            </h1>
+            <p className="text-sm text-[#3E2010]/80 leading-relaxed font-medium">
+              Access real-time AI knowledge streaming or upgrade to Pro to upload private RAG datasets.
+            </p>
+          </div>
+
+          {/* Bottom Illustration Circle */}
+          <div className="relative z-10 flex justify-center mt-2">
+            <div className="w-44 h-44 sm:w-52 sm:h-52 rounded-full p-2.5 bg-white/30 backdrop-blur-sm shadow-xl flex items-center justify-center">
+              <div className="w-full h-full rounded-full overflow-hidden bg-[#FFF8EE] border-4 border-white flex items-center justify-center shadow-inner">
+                <img
+                  src="/doctor_avatar.png"
+                  alt="Doctor Illustration"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── RIGHT FORM PANEL ── */}
+        <div className="w-full md:w-[56%] p-8 sm:p-10 flex flex-col justify-between bg-white">
+          <div>
+
+            {/* Top Navigation Tabs */}
+            <div className="flex items-center justify-between mb-6 pb-3 border-b border-[#F0EBE1]">
+              <div className="flex items-center gap-8 text-sm font-bold">
+                <div className="relative text-[#012D1D]">
+                  <span>Sign Up</span>
+                  <div className="absolute -bottom-[13px] left-0 right-0 h-[3px] bg-[#D87739] rounded-full" />
+                </div>
+                <Link to="/login" className="text-[#8C8275] hover:text-[#012D1D] transition-colors">
+                  Log In
+                </Link>
+              </div>
               <ThemeToggle />
             </div>
-            <h2 className="text-3xl font-bold mb-1.5" style={{ color: "var(--text-heading)" }}>
-              Create your account
-            </h2>
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+
+            {/* Title */}
+            <div className="mb-6">
+              <h2 className="text-2xl sm:text-3xl font-bold font-serif text-[#012D1D] tracking-tight">
+                Create Account
+              </h2>
+              <p className="text-xs text-[#70675C] mt-1 font-medium">
+                Enter your details to register as a clinical user.
+              </p>
+            </div>
+
+            {/* Banners */}
+            {authError && (
+              <div className="mb-4 p-3 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+
+              {/* Full Name */}
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#012D1D] mb-1">
+                  FULL NAME
+                </label>
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8C8275]">
+                    <User className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={form.name}
+                    onChange={e => set("name", e.target.value)}
+                    onBlur={() => touch("name")}
+                    placeholder="Dr. Sarah Jenkins"
+                    className="w-full h-11 pl-11 pr-4 text-xs font-medium text-[#012D1D] bg-[#F7F5F0] rounded-2xl border border-transparent focus:border-[#D87739] focus:bg-white focus:ring-2 focus:ring-[#D87739]/15 outline-none transition-all placeholder-[#A09688]"
+                  />
+                </div>
+                {touched.name && errors.name && (
+                  <p className="text-[11px] text-red-500 mt-1 font-medium">⚠ {errors.name}</p>
+                )}
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#012D1D] mb-1">
+                  EMAIL ADDRESS
+                </label>
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8C8275]">
+                    <AtSign className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="email"
+                    required
+                    value={form.email}
+                    onChange={e => set("email", e.target.value)}
+                    onBlur={() => touch("email")}
+                    placeholder="doctor@hospital.com"
+                    className="w-full h-11 pl-11 pr-4 text-xs font-medium text-[#012D1D] bg-[#F7F5F0] rounded-2xl border border-transparent focus:border-[#D87739] focus:bg-white focus:ring-2 focus:ring-[#D87739]/15 outline-none transition-all placeholder-[#A09688]"
+                  />
+                </div>
+                {touched.email && errors.email && (
+                  <p className="text-[11px] text-red-500 mt-1 font-medium">⚠ {errors.email}</p>
+                )}
+              </div>
+
+              {/* Specialty & Password grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+                {/* Specialty */}
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#012D1D] mb-1">
+                    SPECIALTY <span className="text-[#8C8275] font-normal">(OPTIONAL)</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8C8275]">
+                      <Stethoscope className="w-3.5 h-3.5" />
+                    </div>
+                    <select
+                      value={form.specialty}
+                      onChange={e => set("specialty", e.target.value)}
+                      className="w-full h-11 pl-10 pr-3 text-xs font-medium text-[#012D1D] bg-[#F7F5F0] rounded-2xl border border-transparent focus:border-[#D87739] focus:bg-white outline-none transition-all appearance-none cursor-pointer"
+                    >
+                      <option value="">Select specialty…</option>
+                      {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Password */}
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#012D1D] mb-1">
+                    PASSWORD
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8C8275]">
+                      <Lock className="w-3.5 h-3.5" />
+                    </div>
+                    <input
+                      type={showPw ? "text" : "password"}
+                      required
+                      value={form.password}
+                      onChange={e => set("password", e.target.value)}
+                      onBlur={() => touch("password")}
+                      placeholder="••••••••"
+                      className="w-full h-11 pl-10 pr-9 text-xs font-medium text-[#012D1D] bg-[#F7F5F0] rounded-2xl border border-transparent focus:border-[#D87739] focus:bg-white outline-none transition-all placeholder-[#A09688]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPw(!showPw)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8C8275] p-1"
+                    >
+                      {showPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Confirm Password */}
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#012D1D] mb-1">
+                  CONFIRM PASSWORD
+                </label>
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8C8275]">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <input
+                    type={showConfirmPw ? "text" : "password"}
+                    required
+                    value={form.confirmPassword}
+                    onChange={e => set("confirmPassword", e.target.value)}
+                    onBlur={() => touch("confirmPassword")}
+                    placeholder="Repeat password"
+                    className="w-full h-11 pl-11 pr-11 text-xs font-medium text-[#012D1D] bg-[#F7F5F0] rounded-2xl border border-transparent focus:border-[#D87739] focus:bg-white outline-none transition-all placeholder-[#A09688]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPw(!showConfirmPw)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8C8275] p-1"
+                  >
+                    {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {touched.confirmPassword && errors.confirmPassword && (
+                  <p className="text-[11px] text-red-500 mt-1 font-medium">⚠ {errors.confirmPassword}</p>
+                )}
+              </div>
+
+              {/* Primary Action Button */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full h-12 rounded-2xl bg-[#012D1D] hover:bg-[#024029] text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#012D1D]/20 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-60 mt-3"
+              >
+                {loading ? (
+                  <span>Creating account…</span>
+                ) : (
+                  <span>Register Account →</span>
+                )}
+              </button>
+
+            </form>
+          </div>
+
+          {/* Footer Note */}
+          <div className="mt-6 pt-3 text-center border-t border-[#F0EBE1]">
+            <p className="text-xs text-[#70675C] font-semibold">
               Already have an account?{" "}
-              <Link to="/login" className="font-semibold transition-colors"
-                    style={{ color: "var(--brand-primary)" }}>
-                Sign in
+              <Link to="/login" className="font-bold text-[#D87739] hover:underline">
+                Log in
               </Link>
             </p>
           </div>
 
-          {/* Server error banner */}
-          {authError && (
-            <div className="mb-5 p-4 rounded-xl flex items-start gap-3 animate-fade-in"
-                 style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)" }}>
-              <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
-              <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{authError}</p>
-            </div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-            {renderField("name",            "Full Name",        "text",     "Dr. John Smith",        <User        className="w-4 h-4" />, false)}
-            {renderField("email",           "Email Address",    "email",    "doctor@hospital.com",   <Mail        className="w-4 h-4" />, false)}
-            {renderField("password",        "Password",         "password", "At least 8 characters", <Lock        className="w-4 h-4" />, true)}
-            {renderField("confirmPassword", "Confirm Password", "password", "Repeat your password",  <Lock        className="w-4 h-4" />, true)}
-
-            {/* Specialty */}
-            <div>
-              <label htmlFor="signup-specialty" className="block text-sm font-semibold mb-1.5"
-                     style={{ color: "var(--text-secondary)" }}>
-                Medical Specialty <span style={{ color: "var(--text-muted)" }}>(optional)</span>
-              </label>
-              <div className="relative">
-                <Stethoscope className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4"
-                             style={{ color: "var(--text-muted)" }} />
-                <select
-                  id="signup-specialty"
-                  value={form.specialty}
-                  onChange={e => set("specialty", e.target.value)}
-                  style={{
-                    background: "var(--bg-input)",
-                    color: "var(--text-primary)",
-                    border: "1px solid var(--border-input)",
-                  }}
-                  className="w-full h-11 pl-10 pr-4 text-sm rounded-xl outline-none transition-all appearance-none"
-                >
-                  <option value="">Select specialty…</option>
-                  {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Terms */}
-            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-              By creating an account, you agree to responsible use of this platform.
-              Your account requires email verification before you can log in.
-            </p>
-
-            {/* Submit */}
-            <button
-              id="signup-submit-btn"
-              type="submit"
-              disabled={loading}
-              className="w-full h-12 rounded-xl text-white font-semibold text-base flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed mt-2"
-              style={{ background: "var(--brand-primary)", boxShadow: "var(--shadow-btn)" }}
-              onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = "var(--brand-hover)"; }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "var(--brand-primary)")}
-            >
-              {loading ? (
-                <>
-                  <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Creating account…
-                </>
-              ) : (
-                <>Create Account <ArrowRight className="w-4 h-4" /></>
-              )}
-            </button>
-          </form>
-
-          {/* Back link */}
-          <div className="mt-6 text-center">
-            <Link to="/login" className="text-sm flex items-center justify-center gap-1.5"
-                  style={{ color: "var(--text-muted)" }}>
-              <ArrowLeft className="w-3.5 h-3.5" /> Back to login
-            </Link>
-          </div>
         </div>
+
       </div>
+
     </div>
   );
 }

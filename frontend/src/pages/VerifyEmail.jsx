@@ -69,7 +69,7 @@ export default function VerifyEmail() {
                style={{ background: "var(--brand-primary)" }}>
             <Microscope className="w-5 h-5 text-white" strokeWidth={2.2} />
           </div>
-          <span className="font-bold text-lg" style={{ color: "var(--text-primary)" }}>MedResearch AI</span>
+          <span className="font-bold text-lg" style={{ color: "var(--text-primary)" }}>ResearchAI</span>
         </div>
         <div className="p-8 rounded-2xl text-center" style={{
           background: "var(--bg-card)",
