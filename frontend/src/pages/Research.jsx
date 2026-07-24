@@ -1,175 +1,142 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { 
-  Microscope, 
-  Plus, 
-  Trash2, 
-  Settings, 
-  ChevronLeft, 
+import {
+  Microscope,
+  Plus,
+  Trash2,
+  Settings,
+  ChevronLeft,
   ChevronRight,
-  Send, 
-  RotateCcw, 
-  FileText, 
-  Check, 
-  Copy, 
-  ThumbsUp, 
+  Send,
+  RotateCcw,
+  FileText,
+  Check,
+  Copy,
+  ThumbsUp,
   ThumbsDown,
   AlertTriangle,
-  Sparkles,
   FolderOpen,
-  Menu
+  Menu,
+  Upload,
+  MessageSquare,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
+/* ─── Sample / Demo Data ──────────────────────────────────────────── */
 const SUGGESTIONS = [
-  "What is Type 2 diabetes?",
-  "List symptoms of heart failure",
-  "Explain antibiotic resistance"
+  "Summarise all key findings in the uploaded documents",
+  "List all medications mentioned with their dosages",
+  "What are the diagnostic criteria described?",
+  "Explain the treatment protocols step by step",
 ];
 
 const SAMPLE_CHATS = {
   today: [
-    { 
-      id: "c1", 
-      title: "What are recommended treatments for chronic hypertension...", 
-      time: "10m ago",
-      active: true 
-    },
-    { 
-      id: "c2", 
-      title: "What is a medical research question about diabetes?", 
-      time: "1h ago",
-      active: false 
-    }
+    { id: "c1", title: "What are the main causes of hypertension?", time: "10m ago", active: true },
+    { id: "c2", title: "What is a medical research question about diabetes?", time: "1h ago", active: false },
   ],
   yesterday: [
-    { 
-      id: "c3", 
-      title: "How symptoms of heart failure present in elderly...", 
-      time: "1d ago",
-      active: false 
-    },
-    { 
-      id: "c4", 
-      title: "Explain antibiotic resistance to the treatment...", 
-      time: "1d ago",
-      active: false 
-    }
-  ]
+    { id: "c3", title: "How symptoms of heart failure present in elderly...", time: "1d ago", active: false },
+    { id: "c4", title: "Explain antibiotic resistance to the treatment...", time: "1d ago", active: false },
+  ],
 };
 
-const DEFAULT_ACTIVE_MESSAGES = [
+const DEFAULT_MESSAGES = [
   {
     id: "msg_1",
     role: "user",
-    text: "What are the recommended treatments for chronic hypertension in elderly patients?"
+    text: "What are the main causes of hypertension?",
+    time: "09:55 AM",
   },
   {
     id: "msg_2",
     role: "assistant",
     isRefused: false,
-    text: "According to the JNC 8 guidelines and recent meta-analyses, treatment for chronic hypertension in patients over 60 should initially target a systolic blood pressure of less than 150 mmHg. Recommended first-line agents include thiazide-type diuretics, calcium channel blockers (CCBs), ACE inhibitors, or ARBs.\n\n### Recommended Drug Classes:\n- **Calcium Channel Blockers (CCBs)**: Long-acting dihydropyridines (e.g. Amlodipine)\n- **ACE Inhibitors / ARBs**: Prioritized in diabetic or renal-impaired patients\n- **Thiazide Diuretics**: Chlorthalidone or Hydrochlorothiazide\n- **Beta-Blockers**: Not recommended as primary first-line monotherapy unless specific compelling cardiac indications exist.",
-    sources: ["JNC_8_Hypertension_Guidelines.pdf", "Hypertension_in_Elderly_Review_2024.pdf"]
+    text: "Hypertension (high blood pressure) can be caused by several factors. The main causes include genetic predisposition, unhealthy diet (high salt intake), lack of physical activity, obesity, stress, smoking, excessive alcohol consumption, chronic kidney disease, hormonal disorders, and certain medications.",
+    sources: ["JNC_8_Hypertension_Guidelines.pdf", "Hypertension_Review_2024.pdf"],
+    time: "09:55 AM",
   },
-  {
-    id: "msg_3",
-    role: "user",
-    text: "Can you summarize the experimental off-label dosage for investigational Drug X?"
-  },
-  {
-    id: "msg_4",
-    role: "assistant",
-    isRefused: true,
-    text: "I can only answer questions based on the uploaded documents. The provided clinical search index does not contain verified guidelines or protocol data regarding investigational Drug X off-label dosages.",
-    sources: []
-  }
 ];
+
+/* ─── Detail Levels ──────────────────────────────────────────────── */
+const DETAIL_LEVELS = ["Quick", "Standard", "Detailed", "Deep"];
 
 export default function Research() {
   const navigate = useNavigate();
-  // Sidebar State
+
+  // Sidebar
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hoveredChatId, setHoveredChatId] = useState(null);
 
-  // Chat Data & Active Conversation
+  // Chat data
   const [chats, setChats] = useState(SAMPLE_CHATS);
   const [activeChatId, setActiveChatId] = useState("c1");
   const [messagesMap, setMessagesMap] = useState({
-    c1: DEFAULT_ACTIVE_MESSAGES,
+    c1: DEFAULT_MESSAGES,
     c2: [],
     c3: [],
-    c4: []
+    c4: [],
   });
 
-  // Typing & Input State
-  const [input, setInput] = useState("What are the contraindications for ACE inhibitors?");
-  const [isTyping, setIsTyping] = useState(true); // Demonstrates typing indicator by default
+  // Input & UI state
+  const [input, setInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [feedbacks, setFeedbacks] = useState({});
-  const [hoveredMsgId, setHoveredMsgId] = useState(null);
+  const [detailLevel, setDetailLevel] = useState("Detailed");
+  const [sourcesOpen, setSourcesOpen] = useState({});
 
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
 
-  const currentMessages = activeChatId ? (messagesMap[activeChatId] || []) : [];
+  const currentMessages = activeChatId ? messagesMap[activeChatId] || [] : [];
 
-  // Scroll to bottom when messages update
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [currentMessages, isTyping]);
 
-  // Handle New Chat Click
+  /* ── Handlers ──────────────────────────────────────────────────── */
   const handleNewChat = () => {
     setActiveChatId(null);
     setInput("");
     setIsTyping(false);
   };
 
-  // Handle Sending Question
   const handleSend = (queryText) => {
     const question = (queryText || input).trim();
     if (!question) return;
 
     let chatId = activeChatId;
-
     if (!chatId) {
       chatId = "c_" + Date.now();
-      const newChatItem = {
-        id: chatId,
-        title: question.length > 38 ? question.substring(0, 38) + "..." : question,
-        time: "Just now"
-      };
-      setChats(prev => ({
+      setChats((prev) => ({
         ...prev,
-        today: [newChatItem, ...prev.today]
+        today: [
+          { id: chatId, title: question.substring(0, 45) + (question.length > 45 ? "…" : ""), time: "Just now" },
+          ...prev.today,
+        ],
       }));
       setActiveChatId(chatId);
     }
 
-    const userMsg = { id: "msg_u_" + Date.now(), role: "user", text: question };
-
-    setMessagesMap(prev => ({
+    const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    setMessagesMap((prev) => ({
       ...prev,
-      [chatId]: [...(prev[chatId] || []), userMsg]
+      [chatId]: [...(prev[chatId] || []), { id: "u_" + Date.now(), role: "user", text: question, time: now }],
     }));
-
     setInput("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     setIsTyping(true);
 
-    // Simulate RAG Response
     setTimeout(() => {
-      let aiText = "";
-      let sources = [];
-      let isRefused = false;
-
-      const lowerQ = question.toLowerCase();
-      if (lowerQ.includes("contraindication") || lowerQ.includes("ace")) {
-        aiText = "### Contraindications for ACE Inhibitors\n\n- **History of Angioedema**: Prior angioedema related to previous ACE inhibitor treatment.\n- **Pregnancy**: Absolute contraindication (FDA Black Box Warning due to fetal renal toxicity).\n- **Bilateral Renal Artery Stenosis**: Risk of severe acute renal failure.\n- **Concomitant Aliskiren Use**: In diabetic patients due to hyperkalemia and renal failure risk.";
+      let aiText, sources = [], isRefused = false;
+      const q = question.toLowerCase();
+      if (q.includes("contraindication") || q.includes("ace")) {
+        aiText = "### Contraindications for ACE Inhibitors\n\n- **History of Angioedema**: Prior angioedema related to previous ACE inhibitor treatment.\n- **Pregnancy**: Absolute contraindication (FDA Black Box Warning).\n- **Bilateral Renal Artery Stenosis**: Risk of severe acute renal failure.\n- **Concomitant Aliskiren Use**: In diabetic patients due to hyperkalemia risk.";
         sources = ["JNC_8_Hypertension_Guidelines.pdf", "Cardiovascular_Pharmacology_2025.pdf"];
-      } else if (lowerQ.includes("diabetes")) {
+      } else if (q.includes("diabetes")) {
         aiText = "### Type 2 Diabetes Management\nFirst-line therapy remains **Metformin** combined with lifestyle modifications. SGLT2 inhibitors and GLP-1 receptor agonists are prioritized for patients with established ASCVD or heart failure.";
         sources = ["endocrinology_guidelines.pdf"];
       } else {
@@ -177,249 +144,406 @@ export default function Research() {
         aiText = "I can only answer questions based on the uploaded documents. The indexed medical documents do not contain authoritative data matching this query.";
       }
 
-      const aiMsg = {
-        id: "msg_a_" + Date.now(),
-        role: "assistant",
-        isRefused,
-        text: aiText,
-        sources
-      };
-
-      setMessagesMap(prev => ({
+      setMessagesMap((prev) => ({
         ...prev,
-        [chatId]: [...(prev[chatId] || []), aiMsg]
+        [chatId]: [
+          ...(prev[chatId] || []),
+          { id: "a_" + Date.now(), role: "assistant", isRefused, text: aiText, sources, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
+        ],
       }));
-
       setIsTyping(false);
-    }, 1500);
+    }, 1600);
   };
 
-  // Delete Chat Item
   const handleDeleteChat = (e, groupKey, chatId) => {
     e.stopPropagation();
-    setChats(prev => ({
-      ...prev,
-      [groupKey]: prev[groupKey].filter(c => c.id !== chatId)
-    }));
-    if (activeChatId === chatId) {
-      setActiveChatId(null);
-    }
+    setChats((prev) => ({ ...prev, [groupKey]: prev[groupKey].filter((c) => c.id !== chatId) }));
+    if (activeChatId === chatId) setActiveChatId(null);
   };
 
-  // Copy Message Handler
   const handleCopy = (id, text) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  /* ── Styles ──────────────────────────────────────────────────────
+     All colors driven by CSS custom properties so they adapt to
+     both light (default) and dark mode automatically.
+  ─────────────────────────────────────────────────────────────────*/
+
   return (
-    <div className="flex h-screen w-full bg-[#0F0A1E] font-sans antialiased text-gray-100 overflow-hidden selection:bg-[#E21B70]/30 selection:text-white">
-      
-      {/* Mobile Sidebar Backdrop Overlay */}
+    <div
+      className="flex h-screen w-full font-sans antialiased overflow-hidden"
+      style={{ background: "var(--bg-page)", color: "var(--text-primary)" }}
+    >
+      {/* ── Mobile backdrop ── */}
       {mobileMenuOpen && (
-        <div 
+        <div
           onClick={() => setMobileMenuOpen(false)}
-          className="fixed inset-0 bg-black/70 backdrop-blur-xs z-40 lg:hidden"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
         />
       )}
 
-      {/* ── LEFT SIDEBAR (280px, dark #0A0614) ── */}
-      <aside 
-        className={`bg-[#0A0614] border-r border-white/10 flex flex-col justify-between transition-all duration-300 z-50 shrink-0 fixed lg:static inset-y-0 left-0 ${
+      {/* ════════════════════════════════════════════════════════════
+          LEFT SIDEBAR
+      ════════════════════════════════════════════════════════════ */}
+      <aside
+        style={{
+          background: "var(--bg-sidebar)",
+          borderRight: "1px solid var(--border-color-subtle)",
+          width: sidebarCollapsed ? "64px" : "260px",
+          transition: "width 0.25s ease",
+        }}
+        className={`flex flex-col h-full shrink-0 z-50 fixed lg:static inset-y-0 left-0 ${
           mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        } ${sidebarCollapsed ? "w-16" : "w-[280px]"}`}
+        }`}
       >
-        {/* Top Header */}
-        <div className="p-4 flex items-center justify-between border-b border-white/5">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center text-white shrink-0 shadow-[0_0_15px_rgba(226,27,112,0.3)]">
-              <Microscope className="w-5 h-5 stroke-[2.2]" />
+        {/* Logo row */}
+        <div
+          className="flex items-center justify-between px-4 h-14 shrink-0"
+          style={{ borderBottom: "1px solid var(--border-color-subtle)" }}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: "var(--brand-primary)" }}
+            >
+              <Microscope className="w-4 h-4 text-white" strokeWidth={2.2} />
             </div>
             {!sidebarCollapsed && (
-              <span className="font-bold text-white text-base tracking-tight truncate">
-                MedResearch AI
-              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-widest truncate" style={{ color: "var(--text-primary)" }}>
+                  MedResearch
+                </p>
+              </div>
             )}
           </div>
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
-            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="p-1.5 rounded-lg transition-colors shrink-0"
+            style={{ color: "var(--text-muted)" }}
           >
-            {sidebarCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+            {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
         </div>
 
-        {/* Full-width Pink Gradient New Chat Button */}
-        <div className="p-3">
+        {/* New Chat Button */}
+        <div className="px-3 pt-3 pb-2 shrink-0">
           <button
             onClick={handleNewChat}
-            className={`w-full h-11 rounded-xl bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-md shadow-[#E21B70]/20 hover:opacity-95 active:scale-[0.98] transition-all duration-200 ${
-              sidebarCollapsed ? "px-0" : "px-4"
-            }`}
+            className="w-full h-10 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97]"
+            style={{
+              background: "var(--brand-primary)",
+              boxShadow: "var(--shadow-btn)",
+            }}
           >
-            <Plus className="w-5 h-5 stroke-[2.5]" />
-            {!sidebarCollapsed && <span>New Chat</span>}
+            <Plus className="w-4 h-4" strokeWidth={2.5} />
+            {!sidebarCollapsed && <span>+ New Chat</span>}
           </button>
         </div>
 
-        {/* Chat History List */}
+        {/* Upload box */}
         {!sidebarCollapsed && (
-          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-5 scrollbar-thin scrollbar-thumb-white/10">
-            {/* TODAY */}
-            <div>
-              <div className="px-2 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                Today
-              </div>
-              <div className="space-y-1">
-                {chats.today.map(c => {
-                  const isActive = activeChatId === c.id;
-                  return (
-                    <div
-                      key={c.id}
-                      onClick={() => setActiveChatId(c.id)}
-                      onMouseEnter={() => setHoveredChatId(c.id)}
-                      onMouseLeave={() => setHoveredChatId(null)}
-                      className={`group relative flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-150 ${
-                        isActive
-                          ? "bg-gradient-to-r from-[#E21B70]/20 to-[#A53860]/10 border-l-[3px] border-[#E21B70] text-white font-medium shadow-sm"
-                          : "text-gray-400 hover:text-gray-200 hover:bg-white/5"
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1 pr-2">
-                        <p className="text-xs truncate leading-snug">{c.title}</p>
-                        <p className="text-[10px] text-gray-500 mt-0.5">{c.time}</p>
-                      </div>
-                      {hoveredChatId === c.id && (
-                        <button
-                          onClick={(e) => handleDeleteChat(e, "today", c.id)}
-                          className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-white/10 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* YESTERDAY */}
-            <div>
-              <div className="px-2 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                Yesterday
-              </div>
-              <div className="space-y-1">
-                {chats.yesterday.map(c => {
-                  const isActive = activeChatId === c.id;
-                  return (
-                    <div
-                      key={c.id}
-                      onClick={() => setActiveChatId(c.id)}
-                      onMouseEnter={() => setHoveredChatId(c.id)}
-                      onMouseLeave={() => setHoveredChatId(null)}
-                      className={`group relative flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-150 ${
-                        isActive
-                          ? "bg-gradient-to-r from-[#E21B70]/20 to-[#A53860]/10 border-l-[3px] border-[#E21B70] text-white font-medium shadow-sm"
-                          : "text-gray-400 hover:text-gray-200 hover:bg-white/5"
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1 pr-2">
-                        <p className="text-xs truncate leading-snug">{c.title}</p>
-                        <p className="text-[10px] text-gray-500 mt-0.5">{c.time}</p>
-                      </div>
-                      {hoveredChatId === c.id && (
-                        <button
-                          onClick={(e) => handleDeleteChat(e, "yesterday", c.id)}
-                          className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-white/10 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+          <div className="px-3 pb-2 shrink-0">
+            <div
+              className="rounded-xl p-4 text-center cursor-pointer transition-all"
+              style={{
+                border: "2px dashed var(--border-color)",
+                background: "transparent",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--brand-primary)")}
+              onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border-color)")}
+            >
+              <Upload className="w-5 h-5 mx-auto mb-1" style={{ color: "var(--text-muted)" }} />
+              <p className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
+                Upload PDF / TXT / DOCX
+              </p>
+              <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                Drop here or click · Max 50 MB
+              </p>
             </div>
           </div>
         )}
 
-        {/* Navigation Items (Document Library) */}
-        <div className="px-3 py-2 border-t border-white/5">
+        {/* Indexed Documents */}
+        {!sidebarCollapsed && (
+          <div className="px-3 pb-3 shrink-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
+              Indexed Documents
+            </p>
+            <p className="text-xs font-semibold" style={{ color: "var(--brand-primary)" }}>
+              No documents indexed yet.
+            </p>
+            <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+              Upload a PDF to get started.
+            </p>
+            <div className="mt-2" style={{ borderBottom: "1px solid var(--border-color-subtle)" }} />
+          </div>
+        )}
+
+        {/* Chat History */}
+        {!sidebarCollapsed && (
+          <div className="flex-1 overflow-y-auto px-3 pb-2 sidebar-scroll">
+            <p className="text-[10px] font-bold uppercase tracking-widest mb-2 mt-1" style={{ color: "var(--text-muted)" }}>
+              Chat History
+            </p>
+
+            {Object.entries(chats).length === 0 || (chats.today.length === 0 && chats.yesterday.length === 0) ? (
+              <div className="text-center py-6">
+                <MessageSquare className="w-6 h-6 mx-auto mb-1" style={{ color: "var(--text-muted)" }} />
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>No previous chats.</p>
+                <button
+                  onClick={handleNewChat}
+                  className="text-xs font-semibold mt-0.5"
+                  style={{ color: "var(--brand-primary)" }}
+                >
+                  Create one now
+                </button>
+              </div>
+            ) : (
+              <>
+                {chats.today.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest px-1 mb-1" style={{ color: "var(--text-muted)" }}>
+                      Today
+                    </p>
+                    {chats.today.map((c) => {
+                      const isActive = activeChatId === c.id;
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => setActiveChatId(c.id)}
+                          onMouseEnter={() => setHoveredChatId(c.id)}
+                          onMouseLeave={() => setHoveredChatId(null)}
+                          className="group relative flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer transition-all duration-150 mb-0.5"
+                          style={{
+                            background: isActive ? "rgba(142,78,20,0.12)" : "transparent",
+                            borderLeft: isActive ? "3px solid var(--brand-primary)" : "3px solid transparent",
+                          }}
+                        >
+                          <div className="min-w-0 flex-1 pr-2">
+                            <p
+                              className="text-xs truncate leading-snug font-medium"
+                              style={{ color: isActive ? "var(--brand-primary)" : "var(--text-secondary)" }}
+                            >
+                              {c.title}
+                            </p>
+                            <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                              {c.time}
+                            </p>
+                          </div>
+                          {hoveredChatId === c.id && (
+                            <button
+                              onClick={(e) => handleDeleteChat(e, "today", c.id)}
+                              className="p-1 rounded transition-colors opacity-0 group-hover:opacity-100"
+                              style={{ color: "var(--text-muted)" }}
+                              onMouseEnter={(e) => (e.currentTarget.style.color = "#EF4444")}
+                              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {chats.yesterday.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest px-1 mb-1" style={{ color: "var(--text-muted)" }}>
+                      Yesterday
+                    </p>
+                    {chats.yesterday.map((c) => {
+                      const isActive = activeChatId === c.id;
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => setActiveChatId(c.id)}
+                          onMouseEnter={() => setHoveredChatId(c.id)}
+                          onMouseLeave={() => setHoveredChatId(null)}
+                          className="group relative flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer transition-all duration-150 mb-0.5"
+                          style={{
+                            background: isActive ? "rgba(142,78,20,0.12)" : "transparent",
+                            borderLeft: isActive ? "3px solid var(--brand-primary)" : "3px solid transparent",
+                          }}
+                        >
+                          <div className="min-w-0 flex-1 pr-2">
+                            <p
+                              className="text-xs truncate leading-snug font-medium"
+                              style={{ color: isActive ? "var(--brand-primary)" : "var(--text-secondary)" }}
+                            >
+                              {c.title}
+                            </p>
+                            <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                              {c.time}
+                            </p>
+                          </div>
+                          {hoveredChatId === c.id && (
+                            <button
+                              onClick={(e) => handleDeleteChat(e, "yesterday", c.id)}
+                              className="p-1 rounded transition-colors opacity-0 group-hover:opacity-100"
+                              style={{ color: "var(--text-muted)" }}
+                              onMouseEnter={(e) => (e.currentTarget.style.color = "#EF4444")}
+                              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Document Library link */}
+        <div className="px-3 py-2 shrink-0" style={{ borderTop: "1px solid var(--border-color-subtle)" }}>
           <button
             onClick={() => navigate("/documents")}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all ${
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all ${
               sidebarCollapsed ? "justify-center" : ""
             }`}
+            style={{ color: "var(--text-muted)" }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(142,78,20,0.08)";
+              e.currentTarget.style.color = "var(--text-primary)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "var(--text-muted)";
+            }}
           >
-            <FolderOpen className="w-4 h-4 text-gray-400 group-hover:text-[#E21B70]" />
+            <FolderOpen className="w-4 h-4 shrink-0" />
             {!sidebarCollapsed && <span>Document Library</span>}
           </button>
         </div>
 
         {/* User Footer */}
-        <div className="p-3 border-t border-white/10 bg-[#0A0614]">
-          <div className={`flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer ${
-            sidebarCollapsed ? "justify-center" : ""
-          }`}>
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#E21B70] to-[#A53860] flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-md">
+        <div
+          className="px-3 py-3 shrink-0"
+          style={{ borderTop: "1px solid var(--border-color-subtle)" }}
+        >
+          <div
+            className={`flex items-center gap-2.5 p-2 rounded-xl cursor-pointer transition-colors ${
+              sidebarCollapsed ? "justify-center" : ""
+            }`}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(142,78,20,0.06)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+              style={{ background: "var(--brand-primary)" }}
+            >
               SS
             </div>
             {!sidebarCollapsed && (
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-white truncate">Sohail Shabbir</p>
-                <p className="text-[10px] text-gray-400 truncate">Admin · Doctor</p>
-              </div>
-            )}
-            {!sidebarCollapsed && (
-              <button 
-                onClick={() => alert("Settings opened.")}
-                className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
+              <>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold truncate" style={{ color: "var(--text-primary)" }}>
+                    Sohail Shabbir
+                  </p>
+                  <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                    Admin · Doctor
+                  </p>
+                </div>
+                <ThemeToggle />
+                <button
+                  onClick={() => navigate("/profile")}
+                  className="p-1.5 rounded-lg transition-colors"
+                  style={{ color: "var(--text-muted)" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                >
+                  <Settings className="w-4 h-4" />
+                </button>
+              </>
             )}
           </div>
         </div>
       </aside>
 
-      {/* ── MAIN CHAT AREA (background #0F0A1E) ── */}
-      <main className="flex-1 flex flex-col h-full bg-[#0F0A1E] relative overflow-hidden">
-        
-        {/* Top Header Bar */}
-        <header className="h-16 px-4 sm:px-6 border-b border-white/10 bg-[#0F0A1E]/80 backdrop-blur-md flex items-center justify-between shrink-0 z-20">
+      {/* ════════════════════════════════════════════════════════════
+          MAIN CONTENT AREA
+      ════════════════════════════════════════════════════════════ */}
+      <main
+        className="flex-1 flex flex-col h-full overflow-hidden relative"
+        style={{ background: "var(--bg-chat-area)" }}
+      >
+        {/* Top Header */}
+        <header
+          className="h-14 px-4 sm:px-6 flex items-center justify-between shrink-0 z-20"
+          style={{ borderBottom: "1px solid var(--border-color-subtle)", background: "var(--bg-input-bar)" }}
+        >
           <div className="flex items-center gap-3">
-            {/* Mobile Hamburger Menu Button */}
+            {/* Mobile hamburger */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-              title="Open sidebar menu"
+              className="lg:hidden p-1.5 rounded-lg transition-colors"
+              style={{ color: "var(--text-muted)" }}
             >
               <Menu className="w-5 h-5" />
             </button>
 
-            <h1 className="text-base font-bold text-white tracking-tight">
-              Research Chat
-            </h1>
-            {/* Green status dot "RAG Online" badge */}
-            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-              <span>RAG Online</span>
+            {/* AI Icon + name */}
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{ background: "var(--brand-primary)" }}
+            >
+              <Microscope className="w-5 h-5 text-white" strokeWidth={2.2} />
+            </div>
+            <div>
+              <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+                MedResearch AI
+              </p>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(52,211,153,0.8)]"
+                />
+                <p className="text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
+                  FASTEMBED · QDRANT · GROQ LLAMA 70B · HYBRID SEARCH · STREAMING
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <ThemeToggle />
-
+            <div
+              className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all"
+              style={{
+                color: "var(--text-secondary)",
+                borderColor: "var(--border-color)",
+                background: "var(--bg-card)",
+              }}
+            >
+              MongoDB Local
+            </div>
             <button
               onClick={() => {
                 if (activeChatId) {
-                  setMessagesMap(prev => ({ ...prev, [activeChatId]: [] }));
+                  setMessagesMap((prev) => ({ ...prev, [activeChatId]: [] }));
                   setIsTyping(false);
                 }
               }}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 border border-white/5 hover:border-white/10 transition-all flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5"
+              style={{
+                color: "var(--text-muted)",
+                borderColor: "var(--border-color-subtle)",
+                background: "transparent",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "var(--text-primary)";
+                e.currentTarget.style.borderColor = "var(--border-color)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "var(--text-muted)";
+                e.currentTarget.style.borderColor = "var(--border-color-subtle)";
+              }}
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Clear</span>
@@ -427,187 +551,274 @@ export default function Research() {
           </div>
         </header>
 
-        {/* Scrollable Conversation View */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-          
-          {/* CENTER EMPTY STATE (If current chat has 0 messages) */}
-          {currentMessages.length === 0 && !isTyping && (
-            <div className="min-h-[calc(100vh-220px)] flex flex-col items-center justify-center text-center p-4">
-              <div className="relative mb-6">
-                <div className="absolute inset-0 rounded-3xl bg-[#E21B70]/30 blur-2xl animate-pulse" />
-                <div className="relative w-20 h-20 rounded-3xl bg-gradient-to-br from-[#E21B70] to-[#A53860] flex items-center justify-center text-white shadow-[0_0_50px_rgba(226,27,112,0.4)]">
-                  <Microscope className="w-10 h-10 stroke-[2.2]" />
+        {/* ── Scrollable chat messages ── */}
+        <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 space-y-6 sidebar-scroll">
+          <div className="max-w-3xl mx-auto w-full">
+
+            {/* Empty state / Welcome screen */}
+            {currentMessages.length === 0 && !isTyping && (
+              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-4">
+                <div
+                  className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                  style={{ background: "var(--brand-primary)", boxShadow: "0 8px 24px var(--brand-glow)" }}
+                >
+                  <Microscope className="w-8 h-8 text-white" strokeWidth={2.2} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold mb-1" style={{ color: "var(--text-heading)" }}>
+                    Medical Research Assistant
+                  </h2>
+                  <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                    Upload documents in the sidebar, then ask any question.
+                  </p>
+                  <p className="text-xs mt-1 font-medium" style={{ color: "var(--brand-primary)" }}>
+                    Answers stream in real-time · Source evidence shown below each answer
+                  </p>
+                </div>
+
+                {/* Suggestion chips */}
+                <div className="flex flex-col gap-2 mt-2 w-full max-w-lg">
+                  {SUGGESTIONS.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => handleSend(s)}
+                      className="text-left text-sm px-4 py-3 rounded-xl border transition-all"
+                      style={{
+                        background: "var(--bg-card)",
+                        borderColor: "var(--border-color)",
+                        color: "var(--text-secondary)",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = "var(--brand-primary)";
+                        e.currentTarget.style.color = "var(--brand-primary)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = "var(--border-color)";
+                        e.currentTarget.style.color = "var(--text-secondary)";
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
                 </div>
               </div>
-              <h2 className="text-[24px] font-bold text-white tracking-tight mb-2">
-                What would you like to research?
-              </h2>
-              <p className="text-gray-400 text-sm max-w-md mb-8">
-                Answers come only from your indexed medical documents
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-3 max-w-3xl">
-                {SUGGESTIONS.map((sug, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSend(sug)}
-                    className="px-5 py-3 rounded-full bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white text-sm font-medium hover:brightness-110 active:scale-[0.98] transition-all shadow-md shadow-[#E21B70]/20 flex items-center gap-2"
-                  >
-                    <span>{sug}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* MESSAGES LIST */}
-          {currentMessages.map((msg) => {
-            const isUser = msg.role === "user";
-            const isRefused = msg.isRefused;
+            {/* Messages */}
+            {currentMessages.map((msg) => {
+              const isUser = msg.role === "user";
+              const isRefused = msg.isRefused;
 
-            return (
-              <div
-                key={msg.id}
-                onMouseEnter={() => setHoveredMsgId(msg.id)}
-                onMouseLeave={() => setHoveredMsgId(null)}
-                className={`flex gap-3 max-w-4xl mx-auto ${isUser ? "justify-end" : "justify-start"}`}
-              >
-                {/* AI Avatar to the left (28px circle) */}
-                {!isUser && (
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center text-white text-[11px] font-bold shrink-0 mt-1 shadow-md">
-                    AI
-                  </div>
-                )}
-
-                <div className={`flex flex-col ${isUser ? "items-end max-w-[65%]" : "items-start max-w-[80%]"}`}>
-                  
-                  {/* USER MESSAGE BUBBLE */}
-                  {isUser && (
-                    <div className="px-4 py-3 rounded-2xl rounded-tr-[4px] bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white text-[14px] leading-relaxed shadow-md shadow-pink-950/20">
-                      {msg.text}
-                    </div>
-                  )}
-
-                  {/* AI RESPONSE BUBBLE (Standard or Refused) */}
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"} animate-fade-in`}
+                >
+                  {/* AI avatar */}
                   {!isUser && (
                     <div
-                      className={`p-5 rounded-2xl rounded-tl-[4px] text-sm leading-relaxed ${
-                        isRefused
-                          ? "bg-amber-500/10 border-l-[3px] border-amber-500 border-t border-r border-b border-amber-500/20 text-amber-200"
-                          : "bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.10)] backdrop-blur-md text-gray-100"
-                      }`}
+                      className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-1"
+                      style={{ background: "var(--brand-primary)" }}
                     >
-                      {/* Refused Header Badge */}
-                      {isRefused && (
-                        <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold uppercase tracking-wide mb-2.5">
-                          <AlertTriangle className="w-4 h-4 shrink-0" />
-                          <span>⚠ Outside document scope</span>
+                      <Microscope className="w-4 h-4 text-white" strokeWidth={2.2} />
+                    </div>
+                  )}
+
+                  <div className={`flex flex-col ${isUser ? "items-end max-w-[65%]" : "items-start max-w-[80%] w-full"}`}>
+
+                    {/* USER bubble — deep forest green (#012D1D) */}
+                    {isUser && (
+                      <>
+                        <div
+                          className="px-4 py-3 rounded-2xl rounded-tr-sm text-sm leading-relaxed font-medium"
+                          style={{ background: "#1A6B3F", color: "#FFFFFF" }}
+                        >
+                          {msg.text}
                         </div>
-                      )}
-
-                      {/* Markdown Content */}
-                      <div className="prose prose-invert prose-sm max-w-none prose-h3:text-white prose-h3:font-bold prose-h3:text-base prose-p:leading-relaxed prose-li:my-1">
-                        <ReactMarkdown>{msg.text}</ReactMarkdown>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Sources Chips BELOW the AI bubble (Not inside) */}
-                  {!isUser && msg.sources && msg.sources.length > 0 && (
-                    <div className="mt-3 flex flex-col items-start gap-1.5">
-                      <span className="text-xs text-gray-400 font-medium">
-                        Sources
-                      </span>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {msg.sources.map((src, i) => (
-                          <div
-                            key={i}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white text-xs font-medium shadow-sm hover:brightness-110 transition-all cursor-pointer"
-                          >
-                            <FileText className="w-3.5 h-3.5 text-white/90" />
-                            <span>{src}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Hover Action Buttons Row below AI message */}
-                  {!isUser && hoveredMsgId === msg.id && (
-                    <div className="flex items-center gap-1.5 mt-2 animate-fade-in">
-                      <button
-                        onClick={() => handleCopy(msg.id, msg.text)}
-                        className="px-2.5 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors flex items-center gap-1"
-                      >
-                        {copiedId === msg.id ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                            <span className="text-emerald-400">Copied</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5" />
-                            <span>📋 Copy</span>
-                          </>
+                        {msg.time && (
+                          <p className="text-[10px] mt-1 mr-1" style={{ color: "var(--text-muted)" }}>
+                            {msg.time}
+                          </p>
                         )}
-                      </button>
+                      </>
+                    )}
 
-                      <button
-                        onClick={() => setFeedbacks(p => ({ ...p, [msg.id]: "up" }))}
-                        className={`p-1.5 rounded-lg text-xs hover:bg-white/5 transition-colors ${
-                          feedbacks[msg.id] === "up" ? "text-emerald-400" : "text-gray-400 hover:text-white"
-                        }`}
-                      >
-                        <ThumbsUp className="w-3.5 h-3.5" />
-                      </button>
+                    {/* AI bubble */}
+                    {!isUser && (
+                      <>
+                        <div
+                          className="w-full rounded-2xl rounded-tl-sm p-4 text-sm leading-relaxed"
+                          style={{
+                            background: isRefused ? "rgba(245,158,11,0.08)" : "var(--bg-card)",
+                            border: isRefused
+                              ? "1px solid rgba(245,158,11,0.3)"
+                              : "1px solid var(--border-color)",
+                            boxShadow: "var(--shadow-card)",
+                            color: "var(--text-ai-msg)",
+                          }}
+                        >
+                          {isRefused && (
+                            <div className="flex items-center gap-1.5 text-amber-500 text-xs font-bold uppercase tracking-wide mb-2">
+                              <AlertTriangle className="w-4 h-4" />
+                              <span>Outside document scope</span>
+                            </div>
+                          )}
+                          <div
+                            className="prose-chat max-w-none"
+                            style={{ color: "var(--text-ai-msg)" }}
+                          >
+                            <ReactMarkdown>{msg.text}</ReactMarkdown>
+                          </div>
+                        </div>
 
-                      <button
-                        onClick={() => setFeedbacks(p => ({ ...p, [msg.id]: "down" }))}
-                        className={`p-1.5 rounded-lg text-xs hover:bg-white/5 transition-colors ${
-                          feedbacks[msg.id] === "down" ? "text-red-400" : "text-gray-400 hover:text-white"
-                        }`}
-                      >
-                        <ThumbsDown className="w-3.5 h-3.5" />
-                      </button>
+                        {/* Sources row */}
+                        {msg.sources && msg.sources.length > 0 && (
+                          <div
+                            className="mt-2 w-full rounded-xl p-3 flex items-center justify-between"
+                            style={{ border: "1px solid var(--border-color)", background: "var(--bg-card)" }}
+                          >
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+                                Sources: {msg.sources.length} documents
+                              </span>
+                              <button
+                                onClick={() => setSourcesOpen((p) => ({ ...p, [msg.id]: !p[msg.id] }))}
+                                className="text-xs px-2 py-0.5 rounded-full border transition-colors"
+                                style={{ borderColor: "var(--border-color)", color: "var(--text-muted)" }}
+                              >
+                                {sourcesOpen[msg.id] ? "▲" : "▼"}
+                              </button>
+                            </div>
+                            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                              {msg.time}
+                            </span>
+                          </div>
+                        )}
+                        {sourcesOpen[msg.id] && msg.sources && msg.sources.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-2 pl-1">
+                            {msg.sources.map((src, i) => (
+                              <div
+                                key={i}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all"
+                                style={{
+                                  background: "var(--brand-primary)",
+                                  color: "#FFFFFF",
+                                }}
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>{src}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-1 mt-2">
+                          <button
+                            onClick={() => handleCopy(msg.id, msg.text)}
+                            className="px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors"
+                            style={{ color: "var(--text-muted)" }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                          >
+                            {copiedId === msg.id ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                <span className="text-emerald-500">Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>Copy</span>
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => setFeedbacks((p) => ({ ...p, [msg.id]: "up" }))}
+                            className="p-1.5 rounded-lg transition-colors"
+                            style={{ color: feedbacks[msg.id] === "up" ? "#10B981" : "var(--text-muted)" }}
+                          >
+                            <ThumbsUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setFeedbacks((p) => ({ ...p, [msg.id]: "down" }))}
+                            className="p-1.5 rounded-lg transition-colors"
+                            style={{ color: feedbacks[msg.id] === "down" ? "#EF4444" : "var(--text-muted)" }}
+                          >
+                            <ThumbsDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* User avatar */}
+                  {isUser && (
+                    <div
+                      className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0 mt-1"
+                      style={{ background: "#1A6B3F" }}
+                    >
+                      SS
                     </div>
                   )}
-
                 </div>
+              );
+            })}
 
-                {/* User Avatar to the right (28px circle) */}
-                {isUser && (
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#E21B70] to-[#A53860] flex items-center justify-center text-white text-[11px] font-bold shrink-0 mt-1 shadow-md">
-                    SS
-                  </div>
-                )}
+            {/* Typing indicator */}
+            {isTyping && (
+              <div className="flex gap-3 justify-start animate-fade-in">
+                <div
+                  className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background: "var(--brand-primary)" }}
+                >
+                  <Microscope className="w-4 h-4 text-white" strokeWidth={2.2} />
+                </div>
+                <div
+                  className="px-5 py-4 rounded-2xl rounded-tl-sm flex items-center gap-1.5"
+                  style={{
+                    background: "var(--bg-card)",
+                    border: "1px solid var(--border-color)",
+                  }}
+                >
+                  {[0, 150, 300].map((delay) => (
+                    <span
+                      key={delay}
+                      className="w-2 h-2 rounded-full animate-bounce"
+                      style={{ background: "var(--brand-primary)", animationDelay: `${delay}ms` }}
+                    />
+                  ))}
+                </div>
               </div>
-            );
-          })}
+            )}
 
-          {/* ── TYPING INDICATOR STATE (3rd item / active state) ── */}
-          {isTyping && (
-            <div className="flex gap-3 max-w-4xl mx-auto justify-start items-center">
-              {/* 28px AI Avatar */}
-              <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center text-white text-[11px] font-bold shrink-0 shadow-md">
-                AI
-              </div>
-              {/* Glass Card Bubble containing 3 bouncing pink dots */}
-              <div className="px-4 py-3 rounded-2xl rounded-tl-[4px] bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.10)] backdrop-blur-md flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-[#E21B70] animate-bounce" />
-                <div className="w-2 h-2 rounded-full bg-[#E21B70] animate-bounce [animation-delay:0.15s]" />
-                <div className="w-2 h-2 rounded-full bg-[#E21B70] animate-bounce [animation-delay:0.3s]" />
-              </div>
-            </div>
-          )}
-
-          <div ref={bottomRef} />
+            <div ref={bottomRef} />
+          </div>
         </div>
 
-        {/* ── BOTTOM INPUT BAR ── */}
-        <div className="p-4 sm:p-6 border-t border-white/10 bg-[#0F0A1E]/95 backdrop-blur-md shrink-0 z-20">
-          <div className="max-w-4xl mx-auto">
-            <form 
-              onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-              className="flex items-center gap-3 bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.10)] rounded-2xl p-2 focus-within:border-[#E21B70]/60 transition-all duration-200"
+        {/* ── Bottom Input Bar ── */}
+        <div
+          className="shrink-0 px-4 sm:px-8 pt-3 pb-4 z-20"
+          style={{
+            borderTop: "1px solid var(--border-color-subtle)",
+            background: "var(--bg-input-bar)",
+          }}
+        >
+          <div className="max-w-3xl mx-auto">
+            <div
+              className="flex items-center gap-3 rounded-2xl px-3 py-2 transition-all"
+              style={{
+                background: "var(--bg-input)",
+                border: "1px solid var(--border-input)",
+              }}
+              onFocusCapture={(e) => {
+                e.currentTarget.style.borderColor = "var(--border-input-focus)";
+                e.currentTarget.style.boxShadow = "0 0 0 3px var(--brand-glow-subtle)";
+              }}
+              onBlurCapture={(e) => {
+                e.currentTarget.style.borderColor = "var(--border-input)";
+                e.currentTarget.style.boxShadow = "none";
+              }}
             >
               <textarea
                 ref={textareaRef}
@@ -620,35 +831,62 @@ export default function Research() {
                     handleSend();
                   }
                 }}
-                placeholder="Ask a medical research question..."
-                className="flex-1 bg-transparent text-white placeholder-gray-500 text-sm px-3 py-2 outline-none resize-none min-h-[44px] max-h-32"
+                placeholder="Ask a question about your uploaded documents... (Enter to send)"
+                className="flex-1 bg-transparent text-sm px-2 py-2 outline-none resize-none min-h-[36px] max-h-32"
+                style={{
+                  color: "var(--text-primary)",
+                  caretColor: "var(--brand-primary)",
+                }}
                 onInput={(e) => {
                   e.target.style.height = "auto";
                   e.target.style.height = Math.min(e.target.scrollHeight, 128) + "px";
                 }}
               />
-
-              {/* Pink Send Button (ACTIVE pink when input has text) */}
               <button
-                type="submit"
-                disabled={!input.trim()}
-                className={`h-[52px] px-6 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all duration-200 shrink-0 ${
-                  input.trim()
-                    ? "bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white shadow-md shadow-[#E21B70]/25 hover:opacity-95 active:scale-[0.98] cursor-pointer"
-                    : "bg-white/5 text-gray-500 border border-white/10 cursor-not-allowed opacity-50"
-                }`}
+                onClick={() => handleSend()}
+                disabled={!input.trim() || isTyping}
+                className="h-10 px-5 rounded-xl font-semibold text-sm flex items-center gap-2 transition-all duration-200 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] text-white"
+                style={{
+                  background: "var(--brand-primary)",
+                  boxShadow: "var(--shadow-btn)",
+                }}
+                onMouseEnter={(e) => {
+                  if (!e.currentTarget.disabled) e.currentTarget.style.background = "var(--brand-hover)";
+                }}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--brand-primary)")}
               >
-                <Send className="w-4 h-4 stroke-[2.5]" />
-                <span className="hidden sm:inline">Send</span>
+                <Send className="w-4 h-4" strokeWidth={2.5} />
+                <span>Send</span>
               </button>
-            </form>
+            </div>
 
-            <p className="text-center text-xs text-gray-500 mt-2.5">
-              Enter to send · Shift+Enter for new line
-            </p>
+            {/* Detail level + footer */}
+            <div className="flex items-center justify-between mt-2.5 px-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+                  Detail:
+                </span>
+                {DETAIL_LEVELS.map((level) => (
+                  <button
+                    key={level}
+                    onClick={() => setDetailLevel(level)}
+                    className="px-3 py-1 rounded-full text-xs font-medium border transition-all"
+                    style={
+                      detailLevel === level
+                        ? { background: "var(--brand-primary)", color: "#FFFFFF", borderColor: "var(--brand-primary)" }
+                        : { background: "transparent", color: "var(--text-muted)", borderColor: "var(--border-color)" }
+                    }
+                  >
+                    {level}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                Groq LLaMA 3.3 70B · Hybrid Search · Live RAG
+              </p>
+            </div>
           </div>
         </div>
-
       </main>
     </div>
   );

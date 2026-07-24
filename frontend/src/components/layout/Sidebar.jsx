@@ -118,7 +118,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
       <div className="flex items-center justify-between px-4 h-16 shrink-0" style={{ borderBottom: "1px solid var(--border-color-subtle)" }}>
         {!collapsed && (
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center shadow-[0_0_12px_rgba(226,27,112,0.4)]">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "var(--brand-primary)", boxShadow: "0 0 12px var(--brand-glow)" }}>
               <Microscope className="w-4 h-4 text-white" />
             </div>
             <div>
@@ -128,7 +128,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
           </div>
         )}
         {collapsed && (
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center mx-auto">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center mx-auto" style={{ background: "var(--brand-primary)" }}>
             <Microscope className="w-4 h-4 text-white" />
           </div>
         )}
@@ -188,21 +188,21 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
         {user?.role === "admin" && (
           <>
             {!collapsed && (
-              <div className="mx-1 my-1.5 h-px" style={{ background: "linear-gradient(to right, transparent, rgba(226,27,112,0.3), transparent)" }} />
+              <div className="mx-1 my-1.5 h-px" style={{ background: "linear-gradient(to right, transparent, rgba(142,78,20,0.3), transparent)" }} />
             )}
             <button
               onClick={() => { navigate("/admin"); if (onMobileClose) onMobileClose(); }}
               className={isActive("/admin") ? "sidebar-item-active w-full" : "sidebar-item w-full"}
               title="Admin Dashboard"
             >
-              <ShieldCheck className="w-4 h-4 shrink-0 text-[#E21B70]" />
+              <ShieldCheck className="w-4 h-4 shrink-0" style={{ color: "var(--brand-primary)" }} />
               {!collapsed && (
                 <span className="flex-1 text-left">
                   Admin Panel
                 </span>
               )}
               {!collapsed && (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(226,27,112,0.15)", color: "#E21B70", border: "1px solid rgba(226,27,112,0.3)" }}>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(142,78,20,0.12)", color: "var(--brand-primary)", border: "1px solid rgba(142,78,20,0.25)" }}>
                   ADMIN
                 </span>
               )}
@@ -275,7 +275,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
             {/* Avatar */}
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-              style={{ background: "linear-gradient(135deg, #E21B70, #A53860)" }}
+              style={{ background: "var(--brand-primary)" }}
             >
               {userInitials}
             </div>
@@ -297,7 +297,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
           <div className="flex flex-col items-center gap-2">
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
-              style={{ background: "linear-gradient(135deg, #E21B70, #A53860)" }}
+              style={{ background: "var(--brand-primary)" }}
             >
               {userInitials}
             </div>

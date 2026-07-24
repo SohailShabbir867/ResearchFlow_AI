@@ -131,7 +131,7 @@ export default function ChatBox() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50/50">
+    <div className="flex flex-col h-full" style={{ background: "var(--bg-chat-area)" }}>
 
       {/* ── Messages area ── */}
       <div className="flex-1 overflow-y-auto px-4 py-6">
@@ -140,15 +140,15 @@ export default function ChatBox() {
           {/* Empty state */}
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary-dark
-                              flex items-center justify-center shadow-lg shadow-primary/20">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg"
+                              style={{ background: "var(--brand-primary)", boxShadow: "0 8px 24px var(--brand-glow)" }}>
                 <span className="text-3xl">🔬</span>
               </div>
               <div>
-                <p className="text-gray-700 font-semibold text-base">Medical Research Assistant</p>
-                <p className="text-gray-400 text-sm mt-1 flex flex-col gap-0.5">
+                <p className="font-semibold text-base" style={{ color: "var(--text-primary)" }}>Medical Research Assistant</p>
+                <p className="text-sm mt-1 flex flex-col gap-0.5" style={{ color: "var(--text-muted)" }}>
                   <span>Ask any question — answers come from your indexed documents</span>
-                  <span className="text-xs text-primary/70 font-semibold">Saved locally to MongoDB</span>
+                  <span className="text-xs font-semibold" style={{ color: "var(--brand-primary)" }}>Saved locally to MongoDB</span>
                 </p>
               </div>
               <div className="grid grid-cols-1 gap-2 mt-2 w-full max-w-sm">
@@ -156,8 +156,10 @@ export default function ChatBox() {
                   <button
                     key={q}
                     onClick={() => { setInput(q); }}
-                    className="text-left text-xs text-gray-500 bg-white border border-gray-200 rounded-xl
-                               px-4 py-2.5 hover:border-primary hover:text-primary transition-colors"
+                    className="text-left text-xs border rounded-xl px-4 py-2.5 transition-colors"
+                    style={{ background: "var(--bg-card)", borderColor: "var(--border-color)", color: "var(--text-muted)" }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--brand-primary)"; e.currentTarget.style.color = "var(--brand-primary)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-color)"; e.currentTarget.style.color = "var(--text-muted)"; }}
                   >
                     {q}
                   </button>
@@ -172,8 +174,8 @@ export default function ChatBox() {
 
               {/* AI avatar */}
               {msg.role === "assistant" && (
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-primary-dark
-                                flex items-center justify-center shrink-0 shadow-sm mt-1">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm mt-1"
+                     style={{ background: "var(--brand-primary)" }}>
                   <span className="text-white text-xs font-bold">AI</span>
                 </div>
               )}
@@ -182,8 +184,8 @@ export default function ChatBox() {
                 {/* Bubble */}
                 <div className={`rounded-2xl px-5 py-4 ${
                   msg.role === "user"
-                    ? "bg-gradient-to-br from-primary to-primary-dark text-white rounded-tr-sm shadow-md shadow-primary/20"
-                    : "bg-white border border-gray-100 rounded-tl-sm shadow-sm"
+                    ? "msg-user"
+                    : "msg-ai"
                 }`}>
                   {msg.role === "user" ? (
                     <p className="text-sm leading-relaxed">{msg.text}</p>
@@ -212,8 +214,9 @@ export default function ChatBox() {
 
               {/* User avatar */}
               {msg.role === "user" && (
-                <div className="w-8 h-8 rounded-xl bg-gray-200 flex items-center justify-center shrink-0 mt-1">
-                  <span className="text-gray-600 text-xs font-bold">You</span>
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-1"
+                     style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-color)" }}>
+                  <span className="text-xs font-bold" style={{ color: "var(--text-muted)" }}>You</span>
                 </div>
               )}
             </div>
@@ -222,11 +225,11 @@ export default function ChatBox() {
           {/* Loading */}
           {loading && (
             <div className="flex gap-3 justify-start">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-primary-dark
-                              flex items-center justify-center shrink-0 shadow-sm">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
+                   style={{ background: "var(--brand-primary)" }}>
                 <span className="text-white text-xs font-bold">AI</span>
               </div>
-              <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm">
+              <div className="rounded-2xl rounded-tl-sm px-5 py-4 msg-ai">
                 <TypingDots />
               </div>
             </div>
@@ -247,7 +250,7 @@ export default function ChatBox() {
       </div>
 
       {/* ── Input bar ── */}
-      <div className="border-t border-gray-100 bg-white px-4 py-4">
+      <div className="border-t px-4 py-4" style={{ background: "var(--bg-input-bar)", borderColor: "var(--border-color-subtle)" }}>
         <div className="max-w-3xl mx-auto w-full">
           <div className="flex gap-3 items-end">
             <textarea
@@ -256,18 +259,18 @@ export default function ChatBox() {
               onKeyDown={handleKeyDown}
               placeholder="Ask a medical research question… (Enter to send, Shift+Enter for newline)"
               rows={2}
-              className="flex-1 resize-none border border-gray-200 rounded-xl px-4 py-2.5 text-sm
-                         focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10
-                         transition-all placeholder-gray-400 bg-gray-50 focus:bg-white"
+              className="flex-1 resize-none rounded-xl px-4 py-2.5 text-sm
+                         focus:outline-none transition-all"
+              style={{
+                background: "var(--bg-input)",
+                border: "1px solid var(--border-input)",
+                color: "var(--text-primary)"
+              }}
             />
             <button
               onClick={handleSubmit}
               disabled={loading || !input.trim()}
-              className="shrink-0 bg-gradient-to-br from-primary to-primary-dark text-white
-                         px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md shadow-primary/25
-                         hover:shadow-lg hover:shadow-primary/30 hover:scale-[1.02]
-                         disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100
-                         transition-all duration-200 flex items-center gap-2"
+              className="send-btn shrink-0"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -276,11 +279,11 @@ export default function ChatBox() {
               Send
             </button>
           </div>
-          <p className="text-xs text-gray-400 mt-2 pl-1 flex justify-between items-center">
+          <p className="text-xs mt-2 pl-1 flex justify-between items-center" style={{ color: "var(--text-muted)" }}>
             <span>
-              Powered by Groq LLaMA 3.3 70B &middot; Local RAG &middot; <span className="text-primary font-medium">Hybrid Search</span>
+              Powered by Groq LLaMA 3.3 70B &middot; Local RAG &middot; <span className="font-medium" style={{ color: "var(--brand-primary)" }}>Hybrid Search</span>
             </span>
-            <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-500 font-mono">
+            <span className="text-[10px] px-2 py-0.5 rounded font-mono" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
               Gemini Style Layout
             </span>
           </p>
