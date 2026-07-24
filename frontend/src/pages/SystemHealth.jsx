@@ -174,7 +174,7 @@ export default function SystemHealth() {
               className="p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white transition-colors"
               title="Refresh services"
             >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-[#E21B70]" : ""}`} />
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} style={{ color: isRefreshing ? "var(--brand-primary)" : "inherit" }} />
             </button>
           </div>
         </div>
@@ -255,7 +255,7 @@ export default function SystemHealth() {
             <div className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-emerald-400" />
               <span className="text-gray-400">Search:</span>
-              <span className="font-mono text-[#E21B70] font-bold">Hybrid+Rerank</span>
+              <span className="font-mono font-bold" style={{ color: "var(--brand-primary)" }}>Hybrid+Rerank</span>
             </div>
           </div>
         </div>

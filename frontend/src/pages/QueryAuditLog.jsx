@@ -213,7 +213,7 @@ export default function QueryAuditLog() {
               onClick={handleExportCSV}
               className="h-10 px-4 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10 hover:border-white/20 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-sm"
             >
-              <Download className="w-4 h-4 text-[#E21B70]" />
+              <Download className="w-4 h-4" style={{ color: "var(--brand-primary)" }} />
               <span>Export CSV</span>
             </button>
           </div>
@@ -312,7 +312,8 @@ export default function QueryAuditLog() {
                       {/* User Avatar + Name */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         <div className="flex items-center gap-2.5">
-                          <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${log.userAvatarBg} flex items-center justify-center text-white text-[10px] font-bold shrink-0 shadow-sm`}>
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm"
+                               style={{ background: "#FFFFFF", border: "1px solid var(--border-color-strong)", color: "var(--brand-primary)" }}>
                             {getInitials(log.user)}
                           </div>
                           <span className="font-semibold text-white text-xs">

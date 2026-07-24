@@ -216,10 +216,10 @@ export default function Research() {
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: "var(--brand-primary)" }}
+              className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
+              style={{ background: "#FFFFFF", border: "1px solid var(--border-color-strong)" }}
             >
-              <Microscope className="w-4 h-4 text-white" strokeWidth={2.2} />
+              <Microscope className="w-4 h-4" style={{ color: "var(--brand-primary)" }} strokeWidth={2.2} />
             </div>
             {!sidebarCollapsed && (
               <div className="min-w-0">
@@ -459,8 +459,8 @@ export default function Research() {
             onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
           >
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-              style={{ background: "var(--brand-primary)" }}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 shadow-sm"
+              style={{ background: "#FFFFFF", border: "1px solid var(--border-color-strong)", color: "var(--brand-primary)" }}
             >
               {userInitials}
             </div>
@@ -515,10 +515,10 @@ export default function Research() {
 
             {/* AI Icon + name */}
             <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center"
-              style={{ background: "var(--brand-primary)" }}
+              className="w-9 h-9 rounded-xl flex items-center justify-center shadow-sm"
+              style={{ background: "#FFFFFF", border: "1px solid var(--border-color-strong)" }}
             >
-              <Microscope className="w-5 h-5 text-white" strokeWidth={2.2} />
+              <Microscope className="w-5 h-5" style={{ color: "var(--brand-primary)" }} strokeWidth={2.2} />
             </div>
             <div>
               <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
@@ -641,10 +641,10 @@ export default function Research() {
                   {/* AI avatar */}
                   {!isUser && (
                     <div
-                      className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-1"
-                      style={{ background: "var(--brand-primary)" }}
+                      className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-1 shadow-sm"
+                      style={{ background: "#FFFFFF", border: "1px solid var(--border-color-strong)" }}
                     >
-                      <Microscope className="w-4 h-4 text-white" strokeWidth={2.2} />
+                      <Microscope className="w-4 h-4" style={{ color: "var(--brand-primary)" }} strokeWidth={2.2} />
                     </div>
                   )}
 
