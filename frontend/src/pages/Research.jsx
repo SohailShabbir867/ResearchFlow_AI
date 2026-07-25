@@ -169,7 +169,8 @@ export default function Research() {
       });
 
       if (!response.ok) {
-        throw new Error("Stream request failed");
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || errData.detail || "Stream request failed");
       }
 
       // Add empty assistant message to stream into

@@ -231,17 +231,33 @@ router.post("/feedback/:chatId/:messageIndex", async (req, res) => {
 });
 
 // ─── POST /api/research/chats/:id/stream ────────────────────────────────────────
-// Proxies SSE streaming from Python RAG with auth check
+// Proxies SSE streaming from Python RAG with auth check + MongoDB persistence
 router.post("/chats/:id/stream", async (req, res) => {
+  const mongoose = require("mongoose");
   const { id } = req.params;
+  const { question, top_k, answer_style, history } = req.body;
 
+  if (!question || !question.trim()) {
+    return res.status(400).json({ error: "Question is required." });
+  }
+
+  let chat = null;
   try {
-    const chat = await Chat.findById(id);
-    if (!chat) return res.status(404).json({ error: "Chat not found." });
-    if (chat.userId.toString() !== req.user._id.toString()) {
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      chat = await Chat.findById(id);
+    }
+    if (!chat) {
+      chat = new Chat({
+        userId: req.user._id,
+        title: question.trim().substring(0, 45),
+        messages: [],
+      });
+      await chat.save();
+    } else if (chat.userId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ error: "Access denied." });
     }
   } catch (err) {
+    console.error("Stream chat validation error:", err.message);
     return res.status(500).json({ error: "Failed to validate chat." });
   }
 
@@ -252,18 +268,61 @@ router.post("/chats/:id/stream", async (req, res) => {
   res.flushHeaders();
 
   try {
-    const { question, top_k, answer_style, history } = req.body;
     const pyResponse = await axios.post(
       `${PYTHON_URL()}/stream`,
-      { question, top_k: top_k || 5, answer_style: answer_style || "classical", history },
+      { question: question.trim(), top_k: top_k || 5, answer_style: answer_style || "classical", history },
       { responseType: "stream", timeout: 120000 }
     );
 
+    let fullAnswer = "";
+    let finalSources = [];
+    let isRefused = false;
+
     pyResponse.data.on("data", (chunk) => {
       res.write(chunk);
+
+      const str = chunk.toString();
+      const lines = str.split("\n").filter(l => l.startsWith("data: "));
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line.replace("data: ", ""));
+          if (data.token) fullAnswer += data.token;
+          if (data.replace) { fullAnswer = data.replace; isRefused = true; }
+          if (data.done) {
+            finalSources = data.sources || [];
+            if (data.refused) isRefused = true;
+          }
+        } catch {}
+      }
     });
 
-    pyResponse.data.on("end", () => {
+    pyResponse.data.on("end", async () => {
+      try {
+        if (fullAnswer.trim()) {
+          chat.messages.push({ role: "user", text: question.trim(), timestamp: new Date() });
+          chat.messages.push({ role: "assistant", text: fullAnswer.trim(), sources: finalSources, timestamp: new Date() });
+          await chat.save();
+
+          await QueryLog.create({
+            userId: req.user._id,
+            userName: req.user.name,
+            chatId: chat._id,
+            question: question.trim(),
+            answer: fullAnswer.trim(),
+            sources: finalSources,
+            status: isRefused ? "refused" : "answered",
+            refused: isRefused,
+          });
+
+          User.findByIdAndUpdate(req.user._id, {
+            $inc: { queryCount: 1 },
+            lastActive: Date.now(),
+          }).catch(() => {});
+        }
+      } catch (saveErr) {
+        console.error("Failed to save stream history:", saveErr.message);
+      }
+
       res.end();
     });
 
@@ -273,7 +332,7 @@ router.post("/chats/:id/stream", async (req, res) => {
     });
   } catch (err) {
     let msg = "RAG stream service error.";
-    if (err.code === "ECONNREFUSED") msg = "RAG service is offline.";
+    if (err.code === "ECONNREFUSED") msg = "RAG service is offline. Please ensure Python backend is running.";
     res.write(`data: ${JSON.stringify({ error: msg })}\n\n`);
     res.end();
   }
