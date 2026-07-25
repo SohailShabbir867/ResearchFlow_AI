@@ -55,34 +55,35 @@ REFUSAL_MSG = (
 ANSWER_STYLES = {
     "short": {
         "instruction": (
-            "Answer directly in 1-3 concise sentences. "
-            "Use **bold** for the single most important term only. "
-            "Do NOT use headings or lists for a short answer."
+            "Formulate a direct, impactful response in 1 to 3 concise sentences. "
+            "Focus exclusively on answering the query directly. "
+            "Highlight key medical/technical concepts with **bold text**. "
+            "Do NOT use headers, bullet points, or introductory filler."
         ),
         "max_tokens": 256,
     },
     "classical": {
         "instruction": (
-            "Write a clear, well-organized answer in structured Markdown:\n"
-            "- Start with a one-line `##` heading that titles the answer.\n"
-            "- Follow with a short introductory paragraph.\n"
-            "- Break the body into logical sections using `###` sub-headings.\n"
-            "- Use bullet points (`-`) for any enumeration of 2+ related items.\n"
-            "- Use numbered lists for steps or rankings.\n"
-            "- Wrap key terms in **bold** and short quotes/notes in *italics*.\n"
-            "- Keep total length to roughly 150-250 words."
+            "Structure your output cleanly using production Markdown:\n"
+            "- Begin with a single `##` title line summarizing the core subject.\n"
+            "- Write a crisp 2-sentence opening summary paragraph.\n"
+            "- Group relevant body details using `###` section headers.\n"
+            "- Use bullet points (`-`) for key attributes or list components.\n"
+            "- Emphasize key terms with **bold** typography."
         ),
         "max_tokens": 768,
     },
     "detailed": {
         "instruction": (
-            "Provide a thorough, deeply structured answer in Markdown:\n"
-            "- Start with a `##` heading that titles the topic.\n"
-            "- Write a 2-3 sentence introduction summarising the answer.\n"
-            "- Organise the body into clearly-labelled `###` sub-headings (one per concept).\n"
-            "- Under each sub-heading use paragraphs, **bold** key terms, and bullet/numbered lists where helpful.\n"
-            "- Include a final `## Summary` heading with 3-5 bullet-point takeaways.\n"
-            "- Cover all relevant details from the documents without padding."
+            "Provide an exhaustive, deeply structured analytical response in Markdown:\n"
+            "- Begin with a descriptive `##` title heading.\n"
+            "- Provide an executive summary paragraph introducing the findings.\n"
+            "- Divide the body into thematic `###` sub-headings covering all nuances.\n"
+            "- Use Markdown tables (`| Column 1 | Column 2 |`) for comparative data or attributes where applicable.\n"
+            "- Use bulleted (`-`) and numbered (`1.`) lists for steps or breakdowns.\n"
+            "- Wrap critical terms in **bold**.\n"
+            "- End with a dedicated `## Key Takeaways` section listing 3-5 bulleted core takeaways.\n"
+            "- Thoroughly detail all relevant context without conversational fluff."
         ),
         "max_tokens": 2500,
     },
@@ -162,62 +163,74 @@ def build_prompt(
     answer_style: str = None,
 ) -> str:
     """
-    Build a document-grounded prompt with conversation memory and adaptive style.
-
-    - history: list of {role, text} from previous conversation turns
-    - answer_style: "short" | "detailed" | "classical" (default)
+    Build a document-grounded prompt utilizing state-of-the-art prompt engineering:
+    1. Role Persona Assignment (Research & Medical Intelligence Expert)
+    2. Structural XML Containers (<context_documents>, <conversation_history>, <user_query>)
+    3. Strict Grounding Mandate & Zero-Hallucination Fallback (<refusal_protocol>)
+    4. Executive Markdown Formatting Rules
+    5. Adaptive Style Directives
     """
     if answer_style not in ANSWER_STYLES:
         answer_style = DEFAULT_STYLE
 
     style = ANSWER_STYLES[answer_style]
 
-    # Build context from chunks
-    context_text = ""
+    # Build XML document context
+    context_blocks = []
     for i, chunk in enumerate(context_chunks):
-        context_text += f"[Document {i+1}]\n{chunk['text']}\n\n"
+        source_name = chunk.get("source", f"Document {i+1}")
+        text_content = chunk.get("text", "").strip()
+        context_blocks.append(
+            f'<document index="{i+1}" source="{source_name}">\n{text_content}\n</document>'
+        )
+    context_text = "\n\n".join(context_blocks)
 
-    # Build conversation history section
-    history_text = ""
+    # Build XML conversation history
+    history_xml = ""
     if history:
-        # Use last 3 turns (6 messages max) for context
         recent = history[-6:]
         turns = []
         for msg in recent:
-            role = "User" if msg.get("role") == "user" else "Assistant"
-            text = msg.get("text", "")[:300]  # Truncate long messages
-            turns.append(f"{role}: {text}")
+            role = "user" if msg.get("role") == "user" else "assistant"
+            text = (msg.get("text") or "").strip()[:400]
+            turns.append(f'  <{role}>{text}</{role}>')
         if turns:
-            history_text = "CONVERSATION HISTORY (for context only):\n" + "\n".join(turns) + "\n\n---\n\n"
+            history_xml = "<conversation_history>\n" + "\n".join(turns) + "\n</conversation_history>\n\n"
 
-    return f"""You are a knowledgeable research assistant. You answer questions using ONLY the provided documents below, and you ALWAYS format your answer as clean, well-structured Markdown.
+    return f"""<system_instructions>
+You are ResearchAI, an elite Domain Research & Medical Intelligence System.
+Your objective is to provide executive-grade, perfectly formatted, highly accurate answers strictly grounded in the provided document context.
 
-STRICT RULES:
-- Use ONLY the information in the provided documents
-- If the documents don't cover the question, respond with EXACTLY: INSUFFICIENT_DOCUMENT_COVERAGE
-- Do NOT use your training knowledge or make things up
-- Do NOT mention document numbers, file names, or say "according to the documents"
-- Answer naturally as if you know the information, but ALWAYS follow the formatting rules below
+<core_directives>
+1. GROUNDING MANDATE: Answer using ONLY facts explicitly present in <context_documents>. Do NOT extrapolate, speculate, or introduce external training knowledge.
+2. REFUSAL PROTOCOL: If the information required to answer <user_query> cannot be logically derived from <context_documents>, respond with EXACTLY:
+   INSUFFICIENT_DOCUMENT_COVERAGE
+3. ZERO META-TALK: Never mention "based on the documents", "according to document 1", or "in the text". Present facts directly and authoritatively.
+4. SPATIAL & VISUAL ELEGANCE: Use clean GitHub-flavored Markdown. Include proper headers, spacing between blocks, bolding for key terminology, bulleted lists for multi-point facts, and Markdown tables when comparing items.
+</core_directives>
 
-FORMATTING RULES (apply to every answer):
-- Use `##` for the main title of your answer
-- Use `###` for sub-sections / sub-headings
-- Use bullet points (`-`) for lists of related items
-- Use numbered lists for steps, sequences, or rankings
-- Wrap key terms in **bold** and short notes in *italics*
-- Keep one blank line between every block (heading, paragraph, list) so the layout breathes
+<formatting_rules>
+- Heading Level 2 (`## Topic Title`) for the main title of your response.
+- Heading Level 3 (`### Subsection Title`) for thematic sub-sections.
+- Highlight crucial technical/medical terms using **bold text**.
+- Use Markdown lists (`-` or `1.`) for structured enumerations.
+- Ensure blank lines between headers, paragraphs, and list blocks for visual readability.
+</formatting_rules>
 
-ANSWER STYLE:
+<target_depth_style>
 {style['instruction']}
+</target_depth_style>
+</system_instructions>
 
----
+{history_xml}<context_documents>
+{context_text}
+</context_documents>
 
-{history_text}PROVIDED DOCUMENTS:
-{context_text}---
+<user_query>
+{question}
+</user_query>
 
-QUESTION: {question}
-
-ANSWER:"""
+<response>"""
 
 
 # ─── LLM call ────────────────────────────────────────────────────────────────
