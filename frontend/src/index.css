@@ -239,6 +239,141 @@
 
 :is(.dark-mode, .light-mode) ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12) !important; }
 
+/* ========================================================================== 
+   ADMIN UI FLAT PALETTE
+   Uses three tones only: page, surface, accent.
+========================================================================== */
+
+.admin-ui,
+.admin-ui * {
+  text-shadow: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.admin-ui {
+  background: var(--bg-page) !important;
+  color: var(--text-primary) !important;
+}
+
+.admin-ui [class*="bg-white/"] ,
+.admin-ui [class*="bg-[rgba(255,255,255,"] ,
+.admin-ui .bg-\[\#0F0A1E\],
+.admin-ui .bg-\[\#0A0614\],
+.admin-ui .bg-\[\#140E26\],
+.admin-ui .bg-\[\#1A1230\],
+.admin-ui .bg-\[\#180C14\],
+.admin-ui .bg-\[\#0C0818\],
+.admin-ui .bg-\[\#100D20\],
+.admin-ui .bg-\[\#070412\],
+.admin-ui .bg-emerald-950\/20,
+.admin-ui .bg-red-950\/20,
+.admin-ui .bg-emerald-950\/20,
+.admin-ui .bg-red-950\/30,
+.admin-ui .bg-emerald-500\/20,
+.admin-ui .bg-red-500\/20,
+.admin-ui .bg-amber-500\/20,
+.admin-ui .bg-blue-500\/20,
+.admin-ui .bg-emerald-500\/10,
+.admin-ui .bg-red-500\/10,
+.admin-ui .bg-amber-500\/10,
+.admin-ui .bg-blue-500\/10,
+.admin-ui .bg-white\/5,
+.admin-ui .bg-white\/10,
+.admin-ui .bg-white\/\[0\.02\],
+.admin-ui .bg-white\/\[0\.03\],
+.admin-ui .bg-white\/\[0\.04\],
+.admin-ui .bg-white\/\[0\.05\],
+.admin-ui .bg-white\/\[0\.07\],
+.admin-ui .bg-white\/\[0\.08\],
+.admin-ui .bg-gradient-to-tr,
+.admin-ui .bg-gradient-to-r,
+.admin-ui .bg-gradient-to-br,
+.admin-ui .bg-gradient-to-b {
+  background-color: var(--bg-elevated) !important;
+  background-image: none !important;
+}
+
+.admin-ui [class*="border-white/"] ,
+.admin-ui .border-emerald-500\/30,
+.admin-ui .border-red-500\/30,
+.admin-ui .border-amber-500\/30,
+.admin-ui .border-blue-500\/30,
+.admin-ui .border-emerald-500\/20,
+.admin-ui .border-red-500\/20,
+.admin-ui .border-amber-500\/20,
+.admin-ui .border-blue-500\/20,
+.admin-ui .border-emerald-500\/40,
+.admin-ui .border-red-500\/40,
+.admin-ui .border-amber-500\/40,
+.admin-ui .border-blue-500\/40 {
+  border-color: var(--border-color-subtle) !important;
+}
+
+.admin-ui .text-emerald-400,
+.admin-ui .text-emerald-500,
+.admin-ui .text-emerald-600,
+.admin-ui .text-red-400,
+.admin-ui .text-red-500,
+.admin-ui .text-red-600,
+.admin-ui .text-amber-400,
+.admin-ui .text-amber-500,
+.admin-ui .text-amber-600,
+.admin-ui .text-blue-400,
+.admin-ui .text-blue-500,
+.admin-ui .text-blue-600,
+.admin-ui .text-violet-400,
+.admin-ui .text-purple-400,
+.admin-ui .text-purple-500 {
+  color: var(--brand-primary) !important;
+}
+
+.admin-ui .bg-emerald-400,
+.admin-ui .bg-emerald-500,
+.admin-ui .bg-emerald-600,
+.admin-ui .bg-red-400,
+.admin-ui .bg-red-500,
+.admin-ui .bg-red-600,
+.admin-ui .bg-amber-400,
+.admin-ui .bg-amber-500,
+.admin-ui .bg-amber-600,
+.admin-ui .bg-blue-400,
+.admin-ui .bg-blue-500,
+.admin-ui .bg-blue-600,
+.admin-ui .bg-violet-400,
+.admin-ui .bg-violet-500,
+.admin-ui .bg-purple-400,
+.admin-ui .bg-purple-500 {
+  background-color: var(--brand-primary) !important;
+}
+
+.admin-ui .shadow-2xl,
+.admin-ui .shadow-xl,
+.admin-ui .shadow-lg,
+.admin-ui .shadow-md,
+.admin-ui .shadow-sm,
+.admin-ui .shadow-
+[0_0_25px_rgba\(239,68,68,0\.15\)],
+.admin-ui .shadow-
+[0_0_15px_rgba\(52,211,153,0\.05\)] {
+  box-shadow: none !important;
+}
+
+.admin-ui .backdrop-blur-sm,
+.admin-ui .backdrop-blur-md,
+.admin-ui .backdrop-blur-lg {
+  backdrop-filter: none !important;
+}
+
+.admin-ui [style*="background: rgba("],
+.admin-ui [style*="background-color: rgba("],
+.admin-ui [style*="background: linear-gradient("],
+.admin-ui [style*="boxShadow"],
+.admin-ui [style*="box-shadow"] {
+  background: var(--bg-elevated) !important;
+  background-image: none !important;
+}
+
 /* ==========================================================================
    LIGHT MODE — TAILWIND CLASS OVERRIDES (legacy .light-mode selector)
 ========================================================================== */

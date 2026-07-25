@@ -7,7 +7,7 @@ export default function AdminLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-page)" }}>
+    <div className="admin-ui flex h-screen overflow-hidden" style={{ background: "var(--bg-page)" }}>
       {/* Sidebar */}
       <AdminSidebar
         mobileOpen={mobileOpen}

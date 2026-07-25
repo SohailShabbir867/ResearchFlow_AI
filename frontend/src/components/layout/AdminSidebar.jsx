@@ -52,7 +52,7 @@ export default function AdminSidebar({ mobileOpen, onMobileClose }) {
 
   const sidebarContent = (
     <div
-      className="flex flex-col h-full"
+      className="admin-ui flex flex-col h-full"
       style={{
         width: "256px",
         background: "var(--bg-sidebar)",

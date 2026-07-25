@@ -82,7 +82,7 @@ export default function SystemSettings() {
   };
 
   return (
-    <div className="flex h-screen w-full font-sans antialiased overflow-hidden" style={{ background: "var(--bg-page)", color: "var(--text-primary)" }}>
+    <div className="admin-ui flex h-screen w-full font-sans antialiased overflow-hidden" style={{ background: "var(--bg-page)", color: "var(--text-primary)" }}>
       
 
       {/* Shared Admin Sidebar with working React Router navigation */}
