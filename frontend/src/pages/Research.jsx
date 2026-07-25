@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useSelector, useDispatch } from "react-redux";
 import { logoutUser } from "../store/authSlice.js";
 import ThemeToggle from "../components/ThemeToggle.jsx";
@@ -47,6 +48,90 @@ const DETAIL_LEVELS = [
   { label: "Classical", value: "classical" },
   { label: "Detailed",  value: "detailed" },
 ];
+
+/* ─── Markdown renderer config ──────────────────────────────────────
+   Renders the streamed LLM answer with proper headings, sub-headings,
+   lists, bold/italic, code, blockquotes and tables. A blinking caret is
+   shown while the message is still streaming to reinforce the typewriter
+   effect.
+*/
+const mdComponents = (streaming) => ({
+  h1: ({ children }) => (
+    <h1 className="chat-h1">{children}</h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="chat-h2">
+      <span className="chat-h2-bar" />
+      <span>{children}</span>
+    </h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="chat-h3">{children}</h3>
+  ),
+  h4: ({ children }) => (
+    <h4 className="chat-h4">{children}</h4>
+  ),
+  p: ({ children }) => {
+    // For the very last paragraph of a streaming message, append the caret.
+    return <p className="chat-p">{children}{streaming && <span className="stream-caret" />}</p>;
+  },
+  ul: ({ children }) => <ul className="chat-ul">{children}</ul>,
+  ol: ({ children }) => <ol className="chat-ol">{children}</ol>,
+  li: ({ children, ...props }) => {
+    // remark-gfm marks task list items with a checkbox child
+    const isTask = props.checked !== null && props.checked !== undefined;
+    if (isTask) {
+      return <li className="chat-li chat-task">{children}</li>;
+    }
+    return (
+      <li className="chat-li">
+        <span className="chat-li-dot" />
+        <span className="chat-li-text">{children}</span>
+      </li>
+    );
+  },
+  strong: ({ children }) => <strong className="chat-strong">{children}</strong>,
+  em: ({ children }) => <em className="chat-em">{children}</em>,
+  blockquote: ({ children }) => (
+    <blockquote className="chat-quote">{children}</blockquote>
+  ),
+  hr: () => <hr className="chat-hr" />,
+  a: ({ children, href }) => (
+    <a className="chat-link" href={href} target="_blank" rel="noreferrer">{children}</a>
+  ),
+  code: ({ inline, children }) =>
+    inline ? (
+      <code className="chat-code-inline">{children}</code>
+    ) : (
+      <pre className="chat-code-block">
+        <code>{children}</code>
+      </pre>
+    ),
+  table: ({ children }) => (
+    <div className="chat-table-wrap">
+      <table className="chat-table">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => <th className="chat-th">{children}</th>,
+  td: ({ children }) => <td className="chat-td">{children}</td>,
+});
+
+function MarkdownContent({ text, streaming = false }) {
+  return (
+    <div className="prose-chat max-w-none">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={mdComponents(streaming)}
+      >
+        {text || (streaming ? "" : "")}
+      </ReactMarkdown>
+      {/* Caret shows up when streaming hasn't emitted a paragraph yet */}
+      {streaming && (!text || !text.trim()) && (
+        <span className="stream-caret" />
+      )}
+    </div>
+  );
+}
 
 export default function Research() {
   const navigate = useNavigate();
@@ -761,9 +846,15 @@ export default function Research() {
             )}
 
             {/* Messages */}
-            {currentMessages.map((msg) => {
+            {currentMessages.map((msg, idx) => {
               const isUser = msg.role === "user";
               const isRefused = msg.isRefused;
+              // A message is "streaming" only if it's the last assistant
+              // message and we're currently typing — drives the typewriter caret.
+              const isStreaming =
+                !isUser &&
+                isTyping &&
+                idx === currentMessages.length - 1;
 
               return (
                 <div
@@ -819,12 +910,7 @@ export default function Research() {
                               <span>Outside document scope</span>
                             </div>
                           )}
-                          <div
-                            className="prose-chat max-w-none"
-                            style={{ color: "var(--text-ai-msg)" }}
-                          >
-                            <ReactMarkdown>{msg.text}</ReactMarkdown>
-                          </div>
+                          <MarkdownContent text={msg.text} streaming={isStreaming} />
                         </div>
 
                         {/* Sources row */}

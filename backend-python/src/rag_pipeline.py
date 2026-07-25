@@ -49,35 +49,42 @@ REFUSAL_MSG = (
 )
 
 # ─── Answer style configs ─────────────────────────────────────────────────────
+# Every style now instructs the LLM to emit well-structured Markdown so the UI
+# can render headings, sub-headings, lists, and details cleanly with a typewriter
+# streaming effect. The frontend renders the raw markdown token-by-token.
 ANSWER_STYLES = {
     "short": {
         "instruction": (
-            "Answer in 1-3 concise sentences. Be direct and to the point. "
-            "No headings, no bullet points unless listing 3+ items. "
-            "No introductory phrases like 'Based on the documents'."
+            "Answer directly in 1-3 concise sentences. "
+            "Use **bold** for the single most important term only. "
+            "Do NOT use headings or lists for a short answer."
         ),
         "max_tokens": 256,
     },
-    "detailed": {
-        "instruction": (
-            "Provide a thorough, well-structured answer using markdown:\n"
-            "- Use **bold** for key terms\n"
-            "- Use bullet points (-) for lists\n"
-            "- Use numbered lists for step-by-step processes\n"
-            "- Include all relevant details from the documents\n"
-            "- End with a brief **Summary** if the answer has multiple parts\n"
-            "Do NOT mention file names or say 'according to the documents'."
-        ),
-        "max_tokens": 1024,
-    },
     "classical": {
         "instruction": (
-            "Write a clear, well-organized answer in 3-6 sentences. "
-            "Use **bold** for key terms. Use bullet points only for lists of 3+ items. "
-            "Be informative but not verbose. No headings needed. "
-            "Do NOT mention file names or say 'according to the documents'."
+            "Write a clear, well-organized answer in structured Markdown:\n"
+            "- Start with a one-line `##` heading that titles the answer.\n"
+            "- Follow with a short introductory paragraph.\n"
+            "- Break the body into logical sections using `###` sub-headings.\n"
+            "- Use bullet points (`-`) for any enumeration of 2+ related items.\n"
+            "- Use numbered lists for steps or rankings.\n"
+            "- Wrap key terms in **bold** and short quotes/notes in *italics*.\n"
+            "- Keep total length to roughly 150-250 words."
         ),
-        "max_tokens": 512,
+        "max_tokens": 768,
+    },
+    "detailed": {
+        "instruction": (
+            "Provide a thorough, deeply structured answer in Markdown:\n"
+            "- Start with a `##` heading that titles the topic.\n"
+            "- Write a 2-3 sentence introduction summarising the answer.\n"
+            "- Organise the body into clearly-labelled `###` sub-headings (one per concept).\n"
+            "- Under each sub-heading use paragraphs, **bold** key terms, and bullet/numbered lists where helpful.\n"
+            "- Include a final `## Summary` heading with 3-5 bullet-point takeaways.\n"
+            "- Cover all relevant details from the documents without padding."
+        ),
+        "max_tokens": 1024,
     },
 }
 
@@ -182,14 +189,22 @@ def build_prompt(
         if turns:
             history_text = "CONVERSATION HISTORY (for context only):\n" + "\n".join(turns) + "\n\n---\n\n"
 
-    return f"""You are a knowledgeable research assistant. You answer questions using ONLY the provided documents below.
+    return f"""You are a knowledgeable research assistant. You answer questions using ONLY the provided documents below, and you ALWAYS format your answer as clean, well-structured Markdown.
 
 STRICT RULES:
 - Use ONLY the information in the provided documents
 - If the documents don't cover the question, respond with EXACTLY: INSUFFICIENT_DOCUMENT_COVERAGE
 - Do NOT use your training knowledge or make things up
 - Do NOT mention document numbers, file names, or say "according to the documents"
-- Just answer naturally as if you know the information
+- Answer naturally as if you know the information, but ALWAYS follow the formatting rules below
+
+FORMATTING RULES (apply to every answer):
+- Use `##` for the main title of your answer
+- Use `###` for sub-sections / sub-headings
+- Use bullet points (`-`) for lists of related items
+- Use numbered lists for steps, sequences, or rankings
+- Wrap key terms in **bold** and short notes in *italics*
+- Keep one blank line between every block (heading, paragraph, list) so the layout breathes
 
 ANSWER STYLE:
 {style['instruction']}

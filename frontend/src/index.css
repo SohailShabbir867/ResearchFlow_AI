@@ -775,43 +775,207 @@
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
-/* Prose (react-markdown) */
+/* Prose (react-markdown) — full structured-message styling
+   Drives headings, sub-headings, lists, tables, code and a blinking
+   typewriter caret while the assistant message is still streaming.
+*/
 .prose-chat {
-  color: var(--text-primary);
-  font-size: 0.875rem;
-  line-height: 1.65;
+  color: var(--text-ai-msg);
+  font-size: 0.9rem;
+  line-height: 1.7;
+  word-break: break-word;
 }
-.prose-chat h1, .prose-chat h2, .prose-chat h3 {
+
+/* ── Headings ─────────────────────────────────────────────── */
+.prose-chat .chat-h1 {
+  font-size: 1.3rem;
+  font-weight: 800;
   color: var(--text-heading);
+  margin: 0.4rem 0 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border-color);
+  line-height: 1.3;
+}
+.prose-chat .chat-h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.1rem;
   font-weight: 700;
-  margin: 0.75rem 0 0.5rem;
+  color: var(--brand-primary);
+  margin: 1.1rem 0 0.5rem;
+  line-height: 1.35;
 }
-.prose-chat p     { margin: 0.4rem 0; }
-.prose-chat ul, .prose-chat ol { padding-left: 1.25rem; margin: 0.4rem 0; }
-.prose-chat li    { margin: 0.15rem 0; }
-.prose-chat code {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.8rem;
-  background-color: var(--bg-elevated);
-  border: 1px solid var(--border-color);
-  @apply px-1.5 py-0.5 rounded;
+.prose-chat .chat-h2 .chat-h2-bar {
+  display: inline-block;
+  width: 4px;
+  height: 1.05rem;
+  border-radius: 9999px;
+  background: var(--brand-primary);
+  flex-shrink: 0;
 }
-.prose-chat pre {
-  background-color: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
-  @apply p-4 rounded-xl overflow-x-auto my-3;
+.prose-chat .chat-h3 {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  margin: 0.85rem 0 0.35rem;
+  line-height: 1.35;
 }
-.prose-chat pre code { background: none; border: none; padding: 0; }
-.prose-chat strong { color: var(--text-primary); font-weight: 600; }
-.prose-chat a  { color: var(--brand-primary); text-decoration: underline; }
-.prose-chat blockquote {
-  border-left: 3px solid var(--brand-primary);
-  padding-left: 1rem;
-  color: var(--text-muted);
+.prose-chat .chat-h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0.6rem 0 0.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ── Paragraphs / inline ──────────────────────────────────── */
+.prose-chat .chat-p   { margin: 0.5rem 0; }
+.prose-chat .chat-strong { color: var(--text-heading); font-weight: 700; }
+.prose-chat .chat-em     { color: var(--text-secondary); font-style: italic; }
+.prose-chat .chat-link   { color: var(--brand-primary); text-decoration: underline; }
+
+/* ── Lists ────────────────────────────────────────────────── */
+.prose-chat .chat-ul,
+.prose-chat .chat-ol {
   margin: 0.5rem 0;
+  padding-left: 0.25rem;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.prose-chat .chat-ol { counter-reset: chat-li; }
+.prose-chat .chat-li {
+  position: relative;
+  padding-left: 1.4rem;
+  color: var(--text-ai-msg);
+}
+/* unordered dot */
+.prose-chat .chat-ul .chat-li .chat-li-dot {
+  position: absolute;
+  left: 0.15rem;
+  top: 0.55rem;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--brand-primary);
+  flex-shrink: 0;
+}
+/* ordered number */
+.prose-chat .chat-ol .chat-li {
+  counter-increment: chat-li;
+}
+.prose-chat .chat-ol .chat-li::before {
+  content: counter(chat-li) ".";
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: 700;
+  color: var(--brand-primary);
+  width: 1.1rem;
+  text-align: right;
+}
+.prose-chat .chat-ol .chat-li .chat-li-dot { display: none; }
+/* gfm task list */
+.prose-chat .chat-task {
+  padding-left: 0;
+  list-style: none;
+}
+.prose-chat .chat-task input[type="checkbox"] {
+  margin-right: 0.5rem;
+  accent-color: var(--brand-primary);
+  transform: translateY(1px);
+}
+
+/* ── Blockquote ───────────────────────────────────────────── */
+.prose-chat .chat-quote {
+  margin: 0.6rem 0;
+  padding: 0.5rem 0.9rem;
+  border-left: 3px solid var(--brand-primary);
+  background: var(--brand-glow-subtle);
+  border-radius: 0 0.5rem 0.5rem 0;
+  color: var(--text-secondary);
   font-style: italic;
 }
-.prose-chat hr { border-color: var(--border-color); margin: 1rem 0; }
+
+/* ── Inline & block code ──────────────────────────────────── */
+.prose-chat .chat-code-inline {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  color: var(--brand-primary);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+}
+.prose-chat .chat-code-block {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 0.85rem 1rem;
+  margin: 0.6rem 0;
+  overflow-x: auto;
+  color: var(--text-ai-msg);
+}
+.prose-chat .chat-code-block code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* ── Tables ───────────────────────────────────────────────── */
+.prose-chat .chat-table-wrap {
+  margin: 0.6rem 0;
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+}
+.prose-chat .chat-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.prose-chat .chat-th {
+  text-align: left;
+  padding: 0.5rem 0.7rem;
+  background: var(--bg-elevated);
+  color: var(--text-heading);
+  font-weight: 700;
+  border-bottom: 1px solid var(--border-color);
+}
+.prose-chat .chat-td {
+  padding: 0.5rem 0.7rem;
+  color: var(--text-ai-msg);
+  border-bottom: 1px solid var(--border-color-subtle);
+}
+.prose-chat .chat-table tr:last-child .chat-td { border-bottom: none; }
+
+/* ── HR ───────────────────────────────────────────────────── */
+.prose-chat .chat-hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 1rem 0;
+}
+
+/* ── Typewriter caret (shown only while streaming) ────────── */
+.stream-caret {
+  display: inline-block;
+  width: 0.55rem;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--brand-primary);
+  border-radius: 1px;
+  animation: caret-blink 1s steps(2, start) infinite;
+}
+@keyframes caret-blink {
+  0%, 50%   { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
 
 /* ==========================================================================
    MOBILE RESPONSIVE
