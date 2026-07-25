@@ -320,6 +320,83 @@ async def upload_document(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}")
 
 
+# ─── Delete Document ─────────────────────────────────────────────────────────
+
+@app.delete("/documents/{source}")
+def delete_document(source: str):
+    """
+    Delete a document and all its vector chunks from Qdrant and disk.
+    Rebuilds BM25 index after deletion.
+    """
+    from src.vector_store import delete_document_by_source
+
+    unquoted_source = source
+    print(f"Deleting document: '{unquoted_source}'...")
+
+    # 1. Delete points from Qdrant
+    deleted_from_qdrant = delete_document_by_source(unquoted_source)
+
+    # 2. Delete physical file on disk if present
+    file_path = os.path.join(DOCS_FOLDER, unquoted_source)
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+            print(f"  Deleted local file '{file_path}'")
+        except Exception as e:
+            print(f"  Warning: could not delete file '{file_path}': {e}")
+
+    # 3. Rebuild BM25 index
+    rebuild_bm25_index()
+
+    return {
+        "status": "ok",
+        "message": f"Successfully deleted document '{unquoted_source}'",
+        "deleted_from_qdrant": deleted_from_qdrant
+    }
+
+
+# ─── Settings (Dynamic Guardrail Tuning) ─────────────────────────────────────
+
+class SettingsUpdate(BaseModel):
+    threshold: Optional[float] = None
+    minChunks: Optional[int] = None
+
+
+@app.get("/settings")
+def get_settings():
+    """Get current active RAG runtime thresholds."""
+    import src.rag_pipeline as rag
+    return {
+        "guardrail": {
+            "threshold": rag.RELEVANCE_THRESHOLD,
+            "minChunks": rag.MIN_RELEVANT_CHUNKS,
+        }
+    }
+
+
+@app.post("/settings")
+def update_settings(update: SettingsUpdate):
+    """Update runtime guardrail settings dynamically."""
+    import src.rag_pipeline as rag
+
+    if update.threshold is not None:
+        rag.RELEVANCE_THRESHOLD = float(update.threshold)
+        print(f"  [Runtime Settings] Updated RELEVANCE_THRESHOLD = {rag.RELEVANCE_THRESHOLD}")
+
+    if update.minChunks is not None:
+        rag.MIN_RELEVANT_CHUNKS = int(update.minChunks)
+        print(f"  [Runtime Settings] Updated MIN_RELEVANT_CHUNKS = {rag.MIN_RELEVANT_CHUNKS}")
+
+    return {
+        "status": "ok",
+        "message": "Runtime guardrail settings updated",
+        "guardrail": {
+            "threshold": rag.RELEVANCE_THRESHOLD,
+            "minChunks": rag.MIN_RELEVANT_CHUNKS,
+        }
+    }
+
+
 # ─── Index Rebuild ───────────────────────────────────────────────────────────
 
 @app.post("/rebuild-index")

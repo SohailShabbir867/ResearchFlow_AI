@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { 
   Microscope, 
@@ -23,90 +24,6 @@ import {
 } from "lucide-react";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
-// Mock Medical Documents Dataset
-const MOCK_DOCUMENTS = [
-  {
-    id: "doc_1",
-    filename: "JNC_8_Hypertension_Guidelines_2024.pdf",
-    ext: "PDF",
-    specialty: "Cardiology",
-    chunks: 203,
-    dateAdded: "Jul 12, 2025",
-    fileSize: "4.2 MB",
-    description: "Clinical guidelines for the management of high blood pressure in adults."
-  },
-  {
-    id: "doc_2",
-    filename: "ADA_Diabetes_Care_Standards_2025.pdf",
-    ext: "PDF",
-    specialty: "Endocrinology",
-    chunks: 312,
-    dateAdded: "Jul 10, 2025",
-    fileSize: "8.7 MB",
-    description: "Comprehensive recommendations for diagnosing and treating Type 1 and Type 2 diabetes."
-  },
-  {
-    id: "doc_3",
-    filename: "Oncology_Immunotherapy_Protocols.docx",
-    ext: "DOCX",
-    specialty: "Oncology",
-    chunks: 145,
-    dateAdded: "Jul 08, 2025",
-    fileSize: "2.1 MB",
-    description: "Targeted immunotherapy clinical trial results and dosage protocols."
-  },
-  {
-    id: "doc_4",
-    filename: "Antibiotic_Resistance_WHO_Report.txt",
-    ext: "TXT",
-    specialty: "Microbiology",
-    chunks: 98,
-    dateAdded: "Jul 05, 2025",
-    fileSize: "680 KB",
-    description: "Global surveillance data on antimicrobial resistance mechanisms."
-  },
-  {
-    id: "doc_5",
-    filename: "Neurological_Stroke_Rehabilitation.pdf",
-    ext: "PDF",
-    specialty: "Neurology",
-    chunks: 184,
-    dateAdded: "Jun 28, 2025",
-    fileSize: "5.4 MB",
-    description: "Acute stroke management and neuro-rehabilitation therapy frameworks."
-  },
-  {
-    id: "doc_6",
-    filename: "Pulmonology_Asthma_COPD_Guidelines.pdf",
-    ext: "PDF",
-    specialty: "Pulmonology",
-    chunks: 220,
-    dateAdded: "Jun 20, 2025",
-    fileSize: "6.1 MB",
-    description: "Inhaled corticosteroid algorithms for chronic respiratory illnesses."
-  },
-  {
-    id: "doc_7",
-    filename: "Pediatric_Dosage_Formulary_Summary.txt",
-    ext: "TXT",
-    specialty: "Pediatrics",
-    chunks: 76,
-    dateAdded: "Jun 15, 2025",
-    fileSize: "450 KB",
-    description: "Weight-based antibiotic and analgesic pediatric medication dosing."
-  },
-  {
-    id: "doc_8",
-    filename: "Cardiovascular_Risk_Assessment.docx",
-    ext: "DOCX",
-    specialty: "Cardiology",
-    chunks: 167,
-    dateAdded: "Jun 10, 2025",
-    fileSize: "3.2 MB",
-    description: "10-year ASCVD risk estimators and lipid-lowering therapy guidelines."
-  }
-];
-
 export default function Documents() {
   const navigate = useNavigate();
 
@@ -119,12 +36,40 @@ export default function Documents() {
   const [sortBy, setSortBy] = useState("Date Added");
   
   // UI Display States
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [forceEmpty, setForceEmpty] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState(null);
+  const [documentsList, setDocumentsList] = useState([]);
+
+  useEffect(() => {
+    const fetchDocs = async () => {
+      try {
+        setLoading(true);
+        const res = await axios.get("/api/admin/documents");
+        const docNames = res.data.documents || [];
+        const totalChunks = res.data.total_chunks || 0;
+        const formatted = docNames.map((name, i) => ({
+          id: "doc_" + i,
+          filename: name,
+          ext: name.split(".").pop().toUpperCase(),
+          specialty: "General",
+          chunks: docNames.length ? Math.round(totalChunks / docNames.length) : 0,
+          dateAdded: "Indexed",
+          fileSize: "Active",
+          description: `Medical research document indexed in Qdrant hybrid search vector store.`
+        }));
+        setDocumentsList(formatted);
+      } catch (err) {
+        console.error("Failed to load documents:", err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchDocs();
+  }, []);
 
   // Filter & Sort Logic
-  const filteredDocuments = MOCK_DOCUMENTS.filter(doc => {
+  const filteredDocuments = documentsList.filter(doc => {
     const matchesSearch = doc.filename.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           doc.specialty.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSpecialty = selectedSpecialty === "All Specialties" || doc.specialty === selectedSpecialty;

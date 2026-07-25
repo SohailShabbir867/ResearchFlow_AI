@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { 
   Microscope, Users, FileText, MessageSquare, Settings, HeartPulse, 
@@ -9,74 +10,11 @@ import {
 import AdminSidebar from "../components/layout/AdminSidebar.jsx";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
-const INITIAL_USERS = [
-  {
-    id: "usr_1",
-    name: "Sohail Shabbir",
-    email: "sohail@medresearch.ai",
-    role: "Admin",
-    specialty: "Medical AI Scientist",
-    status: "Active",
-    lastActive: "1 hour ago",
-    queries: 47,
-  },
-  {
-    id: "usr_2",
-    name: "Dr. Sarah Khan",
-    email: "sarah.khan@hospital.org",
-    role: "Doctor",
-    specialty: "Pulmonology",
-    status: "Suspended",
-    lastActive: "20 hours ago",
-    queries: 23,
-  },
-  {
-    id: "usr_3",
-    name: "Dr. Marcus Vance",
-    email: "m.vance@cardio-inst.org",
-    role: "Viewer",
-    specialty: "Cardiology",
-    status: "Active",
-    lastActive: "1 hour ago",
-    queries: 12,
-  },
-  {
-    id: "usr_4",
-    name: "Dr. Yasmin Raza",
-    email: "y.raza@endocrinology.med",
-    role: "Doctor",
-    specialty: "Endocrinology",
-    status: "Active",
-    lastActive: "3 hours ago",
-    queries: 89,
-  },
-  {
-    id: "usr_5",
-    name: "Dr. Naveed Deng",
-    email: "n.deng@oncology-center.org",
-    role: "Researcher",
-    specialty: "Oncology",
-    status: "Active",
-    lastActive: "5 hours ago",
-    queries: 34,
-  },
-  {
-    id: "usr_6",
-    name: "Dr. Priya Ahmed",
-    email: "priya.a@neurology.org",
-    role: "Doctor",
-    specialty: "Neurology",
-    status: "Active",
-    lastActive: "12 hours ago",
-    queries: 5,
-  }
-];
-
 export default function UserManagement() {
   const navigate = useNavigate();
-
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [users, setUsers] = useState(INITIAL_USERS);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
@@ -85,11 +23,37 @@ export default function UserManagement() {
   const [hoveredRowId, setHoveredRowId] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [deleteConfirmUser, setDeleteConfirmUser] = useState(null);
-  const [editingUser, setEditingUser] = useState(null);
 
   const [form, setForm] = useState({
     name: "", email: "", role: "Doctor", specialty: "", password: ""
   });
+
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      const res = await axios.get("/api/admin/users");
+      const userList = res.data.users || res.data || [];
+      const formatted = userList.map(u => ({
+        id: u._id || u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role ? u.role.charAt(0).toUpperCase() + u.role.slice(1) : "Doctor",
+        specialty: u.specialty || "General Medicine",
+        status: u.status === "active" || u.status === "Active" ? "Active" : "Suspended",
+        lastActive: u.lastActive ? new Date(u.lastActive).toLocaleDateString() : "Never",
+        queries: u.queryCount || 0,
+      }));
+      setUsers(formatted);
+    } catch (err) {
+      console.error("Failed to load users:", err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
 
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -99,38 +63,46 @@ export default function UserManagement() {
     return matchesSearch && matchesRole && matchesStatus;
   });
 
-  const handleCreateUser = (e) => {
+  const handleCreateUser = async (e) => {
     e.preventDefault();
     if (!form.name || !form.email || !form.password) return;
 
-    const newUser = {
-      id: "usr_" + Date.now(),
-      name: form.name,
-      email: form.email,
-      role: form.role,
-      specialty: form.specialty || "General Medicine",
-      status: "Active",
-      lastActive: "Just now",
-      queries: 0,
-    };
-
-    setUsers(prev => [newUser, ...prev]);
-    setShowAddModal(false);
-    setForm({ name: "", email: "", role: "Doctor", specialty: "", password: "" });
+    try {
+      await axios.post("/api/admin/users", {
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        role: form.role.toLowerCase(),
+        specialty: form.specialty || "General Medicine",
+      });
+      setShowAddModal(false);
+      setForm({ name: "", email: "", role: "Doctor", specialty: "", password: "" });
+      loadUsers();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to create user.");
+    }
   };
 
-  const handleToggleStatus = (id) => {
-    setUsers(prev => prev.map(u => {
-      if (u.id === id) {
-        return { ...u, status: u.status === "Active" ? "Suspended" : "Active" };
-      }
-      return u;
-    }));
+  const handleToggleStatus = async (id) => {
+    const targetUser = users.find(u => u.id === id);
+    if (!targetUser) return;
+    const newStatus = targetUser.status === "Active" ? "suspended" : "active";
+    try {
+      await axios.patch(`/api/admin/users/${id}/status`, { status: newStatus });
+      loadUsers();
+    } catch (err) {
+      alert("Failed to update status: " + (err.response?.data?.error || err.message));
+    }
   };
 
-  const handleDeleteUser = (id) => {
-    setUsers(prev => prev.filter(u => u.id !== id));
-    setDeleteConfirmUser(null);
+  const handleDeleteUser = async (id) => {
+    try {
+      await axios.delete(`/api/admin/users/${id}`);
+      setDeleteConfirmUser(null);
+      loadUsers();
+    } catch (err) {
+      alert("Failed to delete user: " + (err.response?.data?.error || err.message));
+    }
   };
 
   const getInitials = (name) => {

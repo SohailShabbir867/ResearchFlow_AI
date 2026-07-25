@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { 
   Microscope, 
@@ -27,101 +28,6 @@ import {
 import AdminSidebar from "../components/layout/AdminSidebar.jsx";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
-// Mock Query Audit Log Dataset matching visual prompt
-const MOCK_QUERY_LOGS = [
-  {
-    id: "q_1",
-    timestamp: "Jul 12, 2025 14:32",
-    user: "Sohail Shabbir",
-    userRole: "Admin",
-    userAvatarBg: "from-[#E21B70] to-[#A53860]",
-    question: "What are Type 2 diabetes treatments for chronic hypertension in elderly patients?",
-    status: "Answered",
-    sourcesCount: 21,
-    ms: 3300,
-    answer: "According to recent ADA and JNC 8 clinical guidelines, initial pharmacologic management for elderly patients with comorbid Type 2 diabetes and hypertension includes ACE inhibitors (or ARBs) combined with long-acting calcium channel blockers. Metformin remains first-line for glycemic control.",
-    breakdown: { embed: 110, search: 42, rerank: 88, llm: 3060, total: 3300 }
-  },
-  {
-    id: "q_2",
-    timestamp: "Jul 12, 2025 14:15",
-    user: "Sohail Shabbir",
-    userRole: "Admin",
-    userAvatarBg: "from-[#E21B70] to-[#A53860]",
-    question: "Recommended dosage protocols for chronic heart failure with reduced ejection fraction...",
-    status: "Answered",
-    sourcesCount: 17,
-    ms: 3500,
-    answer: "Guideline-directed medical therapy (GDMT) for HFrEF includes quad therapy: ARNI (Sacubitril/Valsartan), Beta-blockers (Bisoprolol/Carvedilol), MRA (Spironolactone), and SGLT2 inhibitors (Dapagliflozin/Empagliflozin).",
-    breakdown: { embed: 95, search: 38, rerank: 75, llm: 3292, total: 3500 }
-  },
-  {
-    id: "q_3",
-    timestamp: "Jul 12, 2025 13:40",
-    user: "Dr. Sarah Khan",
-    userRole: "Doctor",
-    userAvatarBg: "from-blue-500 to-indigo-600",
-    question: "What are the Type 2 diabetes protocols for acute myocardial infarction off-label dosage?",
-    status: "Refused",
-    sourcesCount: 13,
-    ms: 3500,
-    answer: "I can only answer questions based on the uploaded documents. The provided clinical search index does not contain verified guidelines or protocol data regarding off-label experimental dosages for acute myocardial infarction in diabetic patients.",
-    breakdown: { embed: 88, search: 50, rerank: 62, llm: 3300, total: 3500 }
-  },
-  {
-    id: "q_4",
-    timestamp: "Jul 12, 2025 12:20",
-    user: "Sohail Shabbir",
-    userRole: "Admin",
-    userAvatarBg: "from-[#E21B70] to-[#A53860]",
-    question: "What are the Type 2 chronic treatment options in pulmonary hypertension?",
-    status: "Answered",
-    sourcesCount: 16,
-    ms: 1850,
-    answer: "Targeted therapies for pulmonary arterial hypertension (PAH) include endothelin receptor antagonists (Ambrisentan), PDE-5 inhibitors (Sildenafil), and prostacyclin pathway agonists.",
-    breakdown: { embed: 70, search: 30, rerank: 50, llm: 1700, total: 1850 }
-  },
-  {
-    id: "q_5",
-    timestamp: "Jul 12, 2025 11:05",
-    user: "Dr. Marcus Vance",
-    userRole: "Viewer",
-    userAvatarBg: "from-purple-500 to-violet-600",
-    question: "Request for off-label dosage information regarding investigational Drug X...",
-    status: "Refused",
-    sourcesCount: 10,
-    ms: 4500,
-    answer: "I can only answer questions based on the uploaded documents. Investigational Drug X is not indexed in the current medical database.",
-    breakdown: { embed: 130, search: 60, rerank: 110, llm: 4200, total: 4500 }
-  },
-  {
-    id: "q_6",
-    timestamp: "Jul 12, 2025 10:14",
-    user: "Sohail Shabbir",
-    userRole: "Admin",
-    userAvatarBg: "from-[#E21B70] to-[#A53860]",
-    question: "What are the Type 2 Chronic treatment in diabetic nephropathy?",
-    status: "Answered",
-    sourcesCount: 19,
-    ms: 2500,
-    answer: "Management includes strict glycemic control (HbA1c < 7.0%), RAS blockade (ACEi/ARB) for proteinuria, and SGLT2 inhibitors which demonstrate proven renal protective benefits.",
-    breakdown: { embed: 85, search: 35, rerank: 60, llm: 2320, total: 2500 }
-  },
-  {
-    id: "q_7",
-    timestamp: "Jul 12, 2025 09:30",
-    user: "Dr. Yasmin Raza",
-    userRole: "Doctor",
-    userAvatarBg: "from-emerald-500 to-teal-600",
-    question: "What are the off-label diabetes hypertension drug interactions?",
-    status: "Answered",
-    sourcesCount: 12,
-    ms: 5000,
-    answer: "Dual RAS blockade (combining ACE inhibitors with ARBs or Aliskiren) is contraindicated due to increased risks of hyperkalemia, hypotension, and acute kidney injury.",
-    breakdown: { embed: 140, search: 70, rerank: 120, llm: 4670, total: 5000 }
-  }
-];
-
 export default function QueryAuditLog() {
   const navigate = useNavigate();
 
@@ -136,8 +42,51 @@ export default function QueryAuditLog() {
   const [selectedLog, setSelectedLog] = useState(null);
   const [hoveredQuestionId, setHoveredQuestionId] = useState(null);
 
+  // Live Query Logs State
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        setLoading(true);
+        const params = {};
+        if (searchQuery) params.search = searchQuery;
+        if (statusFilter !== "All") params.status = statusFilter.toLowerCase();
+
+        const res = await axios.get("/api/admin/logs", { params });
+        const fetchedLogs = res.data.logs || [];
+        const formatted = fetchedLogs.map((l, i) => ({
+          id: l._id || "q_" + i,
+          timestamp: l.createdAt ? new Date(l.createdAt).toLocaleString() : "Just now",
+          user: l.userName || (l.userId?.name) || "User",
+          userRole: l.userId?.role ? (l.userId.role.charAt(0).toUpperCase() + l.userId.role.slice(1)) : "User",
+          userAvatarBg: "from-blue-500 to-indigo-600",
+          question: l.question,
+          status: l.status === "refused" || l.refused ? "Refused" : "Answered",
+          sourcesCount: Array.isArray(l.sources) ? l.sources.length : 0,
+          ms: l.timing?.totalMs || 0,
+          answer: l.answer,
+          breakdown: {
+            embed: l.timing?.embedMs || 0,
+            search: l.timing?.searchMs || 0,
+            rerank: l.timing?.rerankMs || 0,
+            llm: l.timing?.llmMs || 0,
+            total: l.timing?.totalMs || 0
+          }
+        }));
+        setLogs(formatted);
+      } catch (err) {
+        console.error("Failed to load logs:", err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchLogs();
+  }, [searchQuery, statusFilter]);
+
   // Filter Logic
-  const filteredLogs = MOCK_QUERY_LOGS.filter(log => {
+  const filteredLogs = logs.filter(log => {
     const matchesSearch = log.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           log.user.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesUser = userFilter === "All Users" || log.user === userFilter;

@@ -1,4 +1,5 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { 
   Microscope, 
@@ -26,60 +27,6 @@ import {
 import AdminSidebar from "../components/layout/AdminSidebar.jsx";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
-// Mock Uploaded Documents Dataset
-const INITIAL_DOCUMENTS = [
-  {
-    id: "doc_1",
-    filename: "JNC_8_Hypertension_Guidelines_2024.pdf",
-    ext: "PDF",
-    specialty: "Cardiology",
-    chunks: 203,
-    size: "4.2 MB",
-    dateAdded: "Jul 12, 2025",
-    uploader: "Sohail Shabbir (Admin)"
-  },
-  {
-    id: "doc_2",
-    filename: "ADA_Diabetes_Care_Standards_2025.pdf",
-    ext: "PDF",
-    specialty: "Endocrinology",
-    chunks: 312,
-    size: "8.7 MB",
-    dateAdded: "Jul 10, 2025",
-    uploader: "Sohail Shabbir (Admin)"
-  },
-  {
-    id: "doc_3",
-    filename: "Oncology_Immunotherapy_Protocols.docx",
-    ext: "DOCX",
-    specialty: "Oncology",
-    chunks: 145,
-    size: "2.1 MB",
-    dateAdded: "Jul 08, 2025",
-    uploader: "Sohail Shabbir (Admin)"
-  },
-  {
-    id: "doc_4",
-    filename: "Antibiotic_Resistance_WHO_Report.txt",
-    ext: "TXT",
-    specialty: "Microbiology",
-    chunks: 98,
-    size: "680 KB",
-    dateAdded: "Jul 05, 2025",
-    uploader: "Sohail Shabbir (Admin)"
-  },
-  {
-    id: "doc_5",
-    filename: "Neurological_Stroke_Rehabilitation.pdf",
-    ext: "PDF",
-    specialty: "Neurology",
-    chunks: 184,
-    size: "5.4 MB",
-    dateAdded: "Jun 28, 2025",
-    uploader: "Sohail Shabbir (Admin)"
-  }
-];
-
 const SPECIALTY_OPTIONS = [
   "Cardiology",
   "Endocrinology",
@@ -90,10 +37,10 @@ const SPECIALTY_OPTIONS = [
 ];
 
 const INDEXING_STAGES = [
-  { label: "Uploading file...", pct: 15 },
-  { label: "Splitting into chunks...", pct: 30 },
-  { label: "Creating vector embeddings... This may take several minutes for large files.", pct: 65 },
-  { label: "Storing in Qdrant vector database...", pct: 90 },
+  { label: "Uploading file...", pct: 20 },
+  { label: "Splitting into chunks...", pct: 40 },
+  { label: "Creating vector embeddings...", pct: 60 },
+  { label: "Storing in Qdrant vector database...", pct: 80 },
   { label: "Rebuilding BM25 hybrid index...", pct: 100 }
 ];
 
@@ -103,7 +50,7 @@ export default function DocumentManager() {
 
   // State Management
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [docs, setDocs] = useState(INITIAL_DOCUMENTS);
+  const [docs, setDocs] = useState([]);
 
   // Drag & File Selected State
   const [selectedFile, setSelectedFile] = useState(null);
@@ -121,6 +68,32 @@ export default function DocumentManager() {
   const [searchQuery, setSearchQuery] = useState("");
   const [specialtyFilter, setSpecialtyFilter] = useState("All");
   const [deleteConfirmDoc, setDeleteConfirmDoc] = useState(null);
+
+  // Load live documents from backend
+  const loadDocs = async () => {
+    try {
+      const res = await axios.get("/api/admin/documents");
+      const docNames = res.data.documents || [];
+      const totalChunks = res.data.total_chunks || 0;
+      const formatted = docNames.map((name, i) => ({
+        id: "doc_" + i,
+        filename: name,
+        ext: name.split(".").pop().toUpperCase(),
+        specialty: "General",
+        chunks: docNames.length ? Math.round(totalChunks / docNames.length) : 0,
+        size: "Indexed",
+        dateAdded: "Active",
+        uploader: "Admin"
+      }));
+      setDocs(formatted);
+    } catch (err) {
+      console.error("Failed to load documents:", err.message);
+    }
+  };
+
+  useEffect(() => {
+    loadDocs();
+  }, []);
 
   // Handle File Selection
   const handleFileSelect = (file) => {
@@ -152,51 +125,54 @@ export default function DocumentManager() {
     );
   };
 
-  // Simulate Sequential Upload & Indexing
-  const handleStartIndexing = () => {
+  // Real Upload & Indexing to Backend
+  const handleStartIndexing = async () => {
     if (!selectedFile || uploading) return;
 
     setUploading(true);
     setCurrentStageIdx(0);
-    setProgressPct(15);
+    setProgressPct(20);
     setUploadError("");
     setUploadSuccess(null);
 
-    // Sequential stage progression timer
-    let step = 0;
-    const timer = setInterval(() => {
-      step += 1;
-      if (step < INDEXING_STAGES.length) {
-        setCurrentStageIdx(step);
-        setProgressPct(INDEXING_STAGES[step].pct);
-      } else {
-        clearInterval(timer);
-        setUploading(false);
-        setUploadSuccess(`Successfully indexed "${selectedFile.name}" with ${Math.floor(Math.random() * 150 + 100)} vector chunks!`);
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    if (selectedTags.length > 0) {
+      formData.append("specialties", selectedTags.join(","));
+    }
 
-        // Add to documents list
-        const ext = selectedFile.name.split(".").pop().toUpperCase();
-        const newDoc = {
-          id: "doc_" + Date.now(),
-          filename: selectedFile.name,
-          ext: ext,
-          specialty: selectedTags.join(", ") || "General",
-          chunks: Math.floor(Math.random() * 150 + 100),
-          size: `${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB`,
-          dateAdded: "Just now",
-          uploader: "Sohail Shabbir (Admin)"
-        };
+    try {
+      setCurrentStageIdx(2);
+      setProgressPct(60);
 
-        setDocs(prev => [newDoc, ...prev]);
-        setSelectedFile(null);
-      }
-    }, 1100);
+      const res = await axios.post("/api/admin/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 300000,
+      });
+
+      setCurrentStageIdx(4);
+      setProgressPct(100);
+      setUploadSuccess(`Successfully indexed "${selectedFile.name}" with ${res.data.chunks_created || 0} vector chunks!`);
+      setSelectedFile(null);
+      loadDocs();
+    } catch (err) {
+      console.error("Upload error:", err);
+      setUploadError(err.response?.data?.error || err.response?.data?.detail || err.message || "Indexing failed.");
+    } finally {
+      setUploading(false);
+    }
   };
 
-  // Handle Document Delete
-  const handleDeleteDoc = (id) => {
-    setDocs(prev => prev.filter(d => d.id !== id));
-    setDeleteConfirmDoc(null);
+  // Handle Document Delete from Backend
+  const handleDeleteDoc = async (doc) => {
+    if (!doc) return;
+    try {
+      await axios.delete("/api/admin/documents/" + encodeURIComponent(doc.filename));
+      setDeleteConfirmDoc(null);
+      loadDocs();
+    } catch (err) {
+      alert("Failed to delete document: " + (err.response?.data?.error || err.message));
+    }
   };
 
   // Filtered Documents
@@ -584,7 +560,7 @@ export default function DocumentManager() {
                                   Cancel
                                 </button>
                                 <button
-                                  onClick={() => handleDeleteDoc(doc.id)}
+                                  onClick={() => handleDeleteDoc(doc)}
                                   className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors shadow-sm"
                                 >
                                   Delete permanently

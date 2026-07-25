@@ -148,3 +148,28 @@ def search(query_vector: list[float], top_k: int = 20) -> list[dict]:
         })
 
     return matches
+
+
+def delete_document_by_source(source_name: str) -> bool:
+    """Delete all chunks matching a document source from Qdrant."""
+    from qdrant_client.models import Filter, FieldCondition, MatchValue, FilterSelector
+    client = get_client()
+    try:
+        client.delete(
+            collection_name=COLLECTION_NAME,
+            points_selector=FilterSelector(
+                filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="source",
+                            match=MatchValue(value=source_name)
+                        )
+                    ]
+                )
+            )
+        )
+        print(f"  Deleted all points for document '{source_name}' from Qdrant.")
+        return True
+    except Exception as e:
+        print(f"  Error deleting points for '{source_name}': {e}")
+        return False

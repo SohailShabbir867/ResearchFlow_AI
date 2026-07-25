@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { 
   Microscope, Users, FileText, MessageSquare, Settings, HeartPulse, 
@@ -13,50 +14,18 @@ const RECENT_ACTIVITIES = [
     id: "act_1",
     icon: "👤",
     title: "New user registered",
-    detail: "Dr. Elena Rostova (Cardiology)",
-    time: "12m ago",
+    detail: "System account activity logged",
+    time: "Just now",
     badge: "User",
   },
   {
     id: "act_2",
     icon: "📄",
-    title: "Document indexed",
-    detail: "Oncology_Immunotherapy_Protocols.docx (145 chunks)",
-    time: "45m ago",
+    title: "Document vector index active",
+    detail: "Qdrant HNSW collection ready",
+    time: "Live",
     badge: "Document",
   },
-  {
-    id: "act_3",
-    icon: "💬",
-    title: "High-frequency clinical query",
-    detail: "Endocrinology: Type 2 diabetes dosage protocols",
-    time: "1h ago",
-    badge: "Query",
-  },
-  {
-    id: "act_4",
-    icon: "⚡",
-    title: "Vector index optimized",
-    detail: "Qdrant DB HNSW collection re-indexed (768-dim embeddings)",
-    time: "3h ago",
-    badge: "System",
-  },
-  {
-    id: "act_5",
-    icon: "🔒",
-    title: "Security audit logged",
-    detail: "HIPAA document access token rotation completed",
-    time: "5h ago",
-    badge: "Security",
-  },
-  {
-    id: "act_6",
-    icon: "👥",
-    title: "Role permission updated",
-    detail: "Dr. Marcus Vance promoted to Senior Clinical Lead",
-    time: "8h ago",
-    badge: "Admin",
-  }
 ];
 
 const SERVICES = [
@@ -72,16 +41,37 @@ export default function AdminDashboard() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [stats, setStats] = useState({
-    users: 12, activeUsers: 8, pendingUsers: 4,
-    docs: 47, chunks: 4089, queries: 138, refused: 12, answered: 126, avgMs: "2.3s"
+    users: 0, activeUsers: 0, pendingUsers: 0,
+    docs: 0, chunks: 0, queries: 0, refused: 0, answered: 0, avgMs: "0ms"
   });
 
-  const handleRefresh = () => {
+  const fetchStats = async () => {
+    try {
+      const res = await axios.get("/api/admin/stats");
+      setStats({
+        users: res.data.totalUsers || 0,
+        activeUsers: res.data.activeUsers || 0,
+        pendingUsers: res.data.pendingUsers || 0,
+        docs: res.data.totalDocs || 0,
+        chunks: res.data.totalChunks || 0,
+        queries: res.data.queriesToday || 0,
+        refused: res.data.queriesRefused || 0,
+        answered: res.data.queriesAnswered || 0,
+        avgMs: `${(res.data.avgResponseMs / 1000).toFixed(1)}s`
+      });
+    } catch (err) {
+      console.error("Failed to load dashboard stats:", err.message);
+    }
+  };
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setStats(prev => ({ ...prev, queries: prev.queries + 1, answered: prev.answered + 1 }));
-      setIsRefreshing(false);
-    }, 600);
+    await fetchStats();
+    setIsRefreshing(false);
   };
 
   const cardStyle = {
