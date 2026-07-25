@@ -235,7 +235,7 @@ export default function SystemHealth() {
         <div className="rounded-2xl bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.10)] p-4 backdrop-blur-md mb-8">
           <div className="flex flex-wrap items-center justify-between gap-4 text-xs font-semibold">
             <div className="flex items-center gap-2">
-              <Database className="w-4 h-4 text-[#E21B70]" />
+              <Database className="w-4 h-4" style={{ color: "var(--brand-primary)" }} />
               <span className="text-gray-400">Total chunks:</span>
               <span className="font-mono text-white font-bold">4,089</span>
             </div>
@@ -267,7 +267,7 @@ export default function SystemHealth() {
           {/* Header & Auto-refresh Indicator */}
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/10">
             <div className="flex items-center gap-2 text-gray-300">
-              <Terminal className="w-4 h-4 text-[#E21B70]" />
+              <Terminal className="w-4 h-4" style={{ color: "var(--brand-primary)" }} />
               <span className="font-bold text-white text-sm">Server Telemetry Logs</span>
             </div>
 

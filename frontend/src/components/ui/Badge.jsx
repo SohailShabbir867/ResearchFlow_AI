@@ -1,7 +1,7 @@
 import React from "react";
 
 const VARIANTS = {
-  primary: "bg-[#E21B70]/20 text-[#E21B70] border border-[#E21B70]/30",
+  primary: "bg-[var(--bg-badge)] text-[var(--brand-primary)] border border-[var(--border-color)]",
   success: "bg-emerald-500/15 text-emerald-500 border border-emerald-500/30",
   warning: "bg-amber-500/15 text-amber-500 border border-amber-500/30",
   error:   "bg-red-500/15 text-red-500 border border-red-500/30",

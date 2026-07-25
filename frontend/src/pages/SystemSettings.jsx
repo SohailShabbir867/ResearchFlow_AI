@@ -167,7 +167,7 @@ export default function SystemSettings() {
             
             {/* Section Header */}
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-white/10">
-              <div className="w-9 h-9 rounded-xl bg-[#E21B70]/20 border border-[#E21B70]/30 text-[#E21B70] flex items-center justify-center shrink-0">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--bg-badge)", border: "1px solid var(--border-color)", color: "var(--brand-primary)" }}>
                 <ShieldCheck className="w-5 h-5 stroke-[2.2]" />
               </div>
               <div>
@@ -279,8 +279,8 @@ export default function SystemSettings() {
                   </div>
 
                   {/* Default Box with Stepper Controls */}
-                  <div className="p-3 rounded-xl bg-white/5 border border-[#E21B70]/40 text-center relative">
-                    <span className="text-[10px] text-[#E21B70] uppercase block mb-1 font-semibold">default</span>
+                  <div className="p-3 rounded-xl bg-white/5 border text-center relative" style={{ borderColor: "var(--border-color)" }}>
+                    <span className="text-[10px] uppercase block mb-1 font-semibold" style={{ color: "var(--brand-primary)" }}>default</span>
                     <div className="flex items-center justify-between">
                       <button
                         type="button"
@@ -305,7 +305,8 @@ export default function SystemSettings() {
                   <button
                     type="button"
                     onClick={handleSaveGuardrails}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white font-semibold text-xs shadow-sm hover:opacity-95 transition-all"
+                    className="w-full py-2.5 rounded-xl text-white font-semibold text-xs shadow-sm hover:opacity-95 transition-all cursor-pointer"
+                style={{ background: "var(--brand-primary)" }}
                   >
                     Save Guardrail Settings
                   </button>
@@ -465,7 +466,8 @@ export default function SystemSettings() {
             <button
               onClick={handleSaveAll}
               disabled={saveLoading}
-              className="w-full h-[52px] rounded-xl bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white font-semibold text-base shadow-lg shadow-[#E21B70]/25 hover:opacity-95 active:scale-[0.99] transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full h-[52px] rounded-xl text-white font-semibold text-base shadow-lg hover:opacity-95 active:scale-[0.99] transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+              style={{ background: "var(--brand-primary)" }}
             >
               <Save className="w-5 h-5" />
               <span>{saveLoading ? "Saving..." : "Save All Settings"}</span>

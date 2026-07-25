@@ -285,7 +285,7 @@ export default function QueryAuditLog() {
                           {/* Hover Tooltip Card */}
                           {isHoveredQuestion && (
                             <div className="absolute left-4 top-full mt-1 z-40 p-3 rounded-xl bg-[#1A1230] border border-white/20 text-white text-xs shadow-2xl max-w-md w-max pointer-events-none animate-fade-in">
-                              <p className="font-semibold text-[#E21B70] text-[10px] uppercase mb-1">Full Question Text:</p>
+                              <p className="font-semibold text-[10px] uppercase mb-1" style={{ color: "var(--brand-primary)" }}>Full Question Text:</p>
                               <p className="leading-relaxed">{log.question}</p>
                             </div>
                           )}
@@ -323,7 +323,8 @@ export default function QueryAuditLog() {
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
                         <button
                           onClick={() => setSelectedLog(log)}
-                          className="text-xs font-semibold text-[#E21B70] hover:underline hover:text-[#c4155f] flex items-center justify-end gap-1 ml-auto transition-colors"
+                          className="text-xs font-semibold hover:underline flex items-center justify-end gap-1 ml-auto transition-colors"
+                          style={{ color: "var(--brand-primary)" }}
                         >
                           <span>View full conversation</span>
                           <ChevronRight className="w-3 h-3" />
@@ -455,8 +456,8 @@ export default function QueryAuditLog() {
                     <span className="text-[10px] text-gray-500 block">LLM Gen</span>
                     <span className="font-mono font-bold text-gray-200">{selectedLog.breakdown.llm}ms</span>
                   </div>
-                  <div className="p-2 rounded bg-[#E21B70]/20 border border-[#E21B70]/30">
-                    <span className="text-[10px] text-[#E21B70] font-bold block">Total</span>
+                  <div className="p-2 rounded" style={{ background: "var(--bg-badge)", border: "1px solid var(--border-color)" }}>
+                    <span className="text-[10px] font-bold block" style={{ color: "var(--brand-primary)" }}>Total</span>
                     <span className="font-mono font-bold text-white">{selectedLog.breakdown.total}ms</span>
                   </div>
                 </div>
@@ -464,7 +465,8 @@ export default function QueryAuditLog() {
 
               <button
                 onClick={() => setSelectedLog(null)}
-                className="w-full py-2.5 rounded-xl bg-[#E21B70] text-white text-sm font-semibold hover:bg-[#c4155f] transition-colors"
+                className="w-full py-2.5 rounded-xl text-white text-sm font-semibold transition-colors cursor-pointer"
+                style={{ background: "var(--brand-primary)" }}
               >
                 Close Inspection
               </button>

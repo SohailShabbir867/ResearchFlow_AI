@@ -90,7 +90,7 @@ export default function Documents() {
       case "Endocrinology":
         return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
       case "Oncology":
-        return "bg-[#E21B70]/20 text-[#E21B70] border-[#E21B70]/30";
+        return "bg-[var(--bg-badge)] text-[var(--brand-primary)] border-[var(--border-color)]";
       case "Neurology":
         return "bg-purple-500/20 text-purple-400 border-purple-500/30";
       case "Pulmonology":
@@ -107,7 +107,10 @@ export default function Documents() {
     switch (ext) {
       case "PDF":
         return (
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#E21B70] to-[#A53860] flex items-center justify-center text-white font-bold text-xs shadow-md shadow-pink-950/30">
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-xs shadow-md"
+            style={{ background: "var(--brand-primary)" }}
+          >
             PDF
           </div>
         );
@@ -133,7 +136,7 @@ export default function Documents() {
   };
 
   return (
-    <div className="flex h-screen w-full bg-[#0F0A1E] font-sans antialiased text-gray-100 overflow-hidden selection:bg-[#E21B70]/30 selection:text-white">
+    <div className="flex h-screen w-full font-sans antialiased overflow-hidden" style={{ background: "var(--bg-page)", color: "var(--text-primary)" }}>
       
       {/* Mobile Sidebar Backdrop Overlay */}
       {mobileMenuOpen && (
@@ -152,7 +155,10 @@ export default function Documents() {
         {/* Top Header */}
         <div className="p-4 flex items-center justify-between border-b border-white/5">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center text-white shrink-0 shadow-[0_0_15px_rgba(226,27,112,0.3)]">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm"
+              style={{ background: "var(--brand-primary)" }}
+            >
               <Microscope className="w-5 h-5 stroke-[2.2]" />
             </div>
             {!sidebarCollapsed && (
@@ -174,9 +180,10 @@ export default function Documents() {
         <div className="p-3">
           <button
             onClick={() => navigate("/")}
-            className={`w-full h-11 rounded-xl bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-md shadow-[#E21B70]/20 hover:opacity-95 active:scale-[0.98] transition-all duration-200 ${
+            className={`w-full h-11 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-md transition-all duration-200 ${
               sidebarCollapsed ? "px-0" : "px-4"
             }`}
+            style={{ background: "var(--brand-primary)" }}
           >
             <Plus className="w-5 h-5 stroke-[2.5]" />
             {!sidebarCollapsed && <span>New Chat</span>}
@@ -197,11 +204,12 @@ export default function Documents() {
 
           {/* Document Library Item (ACTIVE HIGHLIGHTED) */}
           <button
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium bg-gradient-to-r from-[#E21B70]/20 to-[#A53860]/10 border-l-[3px] border-[#E21B70] text-white shadow-sm transition-all ${
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-white shadow-sm transition-all ${
               sidebarCollapsed ? "justify-center" : ""
             }`}
+            style={{ background: "var(--bg-badge)", borderLeft: "3px solid var(--brand-primary)" }}
           >
-            <FolderOpen className="w-4 h-4 text-[#E21B70]" />
+            <FolderOpen className="w-4 h-4" style={{ color: "var(--brand-primary)" }} />
             {!sidebarCollapsed && <span className="font-semibold">Document Library</span>}
           </button>
         </div>
@@ -211,7 +219,10 @@ export default function Documents() {
           <div className={`flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer ${
             sidebarCollapsed ? "justify-center" : ""
           }`}>
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#E21B70] to-[#A53860] flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-md">
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-md"
+              style={{ background: "var(--brand-primary)" }}
+            >
               SS
             </div>
             {!sidebarCollapsed && (
@@ -260,9 +271,10 @@ export default function Documents() {
               onClick={() => setViewMode("grid")}
               className={`p-2 rounded-lg text-xs font-medium transition-all ${
                 viewMode === "grid" 
-                  ? "bg-[#E21B70] text-white shadow-sm" 
+                  ? "text-white shadow-sm" 
                   : "text-gray-400 hover:text-white"
               }`}
+              style={viewMode === "grid" ? { background: "var(--brand-primary)" } : {}}
               title="Grid View"
             >
               <LayoutGrid className="w-4 h-4" />
@@ -271,9 +283,10 @@ export default function Documents() {
               onClick={() => setViewMode("list")}
               className={`p-2 rounded-lg text-xs font-medium transition-all ${
                 viewMode === "list" 
-                  ? "bg-[#E21B70] text-white shadow-sm" 
+                  ? "text-white shadow-sm" 
                   : "text-gray-400 hover:text-white"
               }`}
+              style={viewMode === "list" ? { background: "var(--brand-primary)" } : {}}
               title="List View"
             >
               <List className="w-4 h-4" />
@@ -366,7 +379,10 @@ export default function Documents() {
         {/* ── EMPTY STATE (When no documents match or zero documents) ── */}
         {!loading && displayList.length === 0 && (
           <div className="flex flex-col items-center justify-center min-h-[400px] text-center p-8 border border-dashed border-white/10 rounded-2xl bg-white/[0.02]">
-            <div className="w-20 h-20 rounded-3xl bg-[#E21B70]/10 border border-[#E21B70]/20 flex items-center justify-center text-[#E21B70] mb-4 shadow-[0_0_30px_rgba(226,27,112,0.2)]">
+            <div
+              className="w-20 h-20 rounded-3xl flex items-center justify-center mb-4 shadow-md"
+              style={{ background: "var(--bg-badge)", border: "1px solid var(--border-color)", color: "var(--brand-primary)" }}
+            >
               <FolderOpen className="w-10 h-10 stroke-[1.8]" />
             </div>
             <h3 className="text-xl font-bold text-white mb-2">
@@ -416,7 +432,7 @@ export default function Documents() {
                   </span>
 
                   {/* View Details Button on Hover */}
-                  <div className="mt-3 opacity-0 group-hover:opacity-100 transition-opacity text-xs font-semibold text-[#E21B70] flex items-center gap-1">
+                  <div className="mt-3 opacity-0 group-hover:opacity-100 transition-opacity text-xs font-semibold flex items-center gap-1" style={{ color: "var(--brand-primary)" }}>
                     <span>View details</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </div>
@@ -467,7 +483,7 @@ export default function Documents() {
                       {doc.dateAdded}
                     </td>
                     <td className="py-3.5 px-4 text-right">
-                      <button className="text-xs text-[#E21B70] hover:underline font-semibold">
+                      <button className="text-xs hover:underline font-semibold" style={{ color: "var(--brand-primary)" }}>
                         View details →
                       </button>
                     </td>
@@ -526,7 +542,8 @@ export default function Documents() {
 
               <button
                 onClick={() => setSelectedDoc(null)}
-                className="w-full py-2.5 rounded-xl bg-[#E21B70] text-white text-sm font-semibold hover:bg-[#c4155f] transition-colors"
+                className="w-full py-2.5 rounded-xl text-white text-sm font-semibold transition-colors cursor-pointer"
+                style={{ background: "var(--brand-primary)" }}
               >
                 Close Details
               </button>

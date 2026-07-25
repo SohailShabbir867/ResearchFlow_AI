@@ -191,7 +191,10 @@ export default function DocumentManager() {
     switch (ext) {
       case "PDF":
         return (
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center text-white text-[10px] font-bold shrink-0 shadow-sm">
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[10px] font-bold shrink-0 shadow-sm"
+            style={{ background: "var(--brand-primary)" }}
+          >
             PDF
           </div>
         );
@@ -256,7 +259,7 @@ export default function DocumentManager() {
         <div className="rounded-2xl bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.10)] p-6 backdrop-blur-md mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-              <UploadCloud className="w-5 h-5 text-[#E21B70]" />
+              <UploadCloud className="w-5 h-5" style={{ color: "var(--brand-primary)" }} />
               <span>Upload & Index Document</span>
             </h2>
             <span className="text-[11px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full flex items-center gap-1">
@@ -278,8 +281,8 @@ export default function DocumentManager() {
             }}
             className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center transition-all duration-200 cursor-pointer ${
               isDragOver 
-                ? "border-[#E21B70] bg-[#E21B70]/10" 
-                : "border-white/15 bg-[#140E26] hover:border-white/30"
+                ? "border-[var(--brand-primary)] bg-[var(--bg-badge)]" 
+                : "border-white/15 bg-white/[0.02] hover:border-white/30"
             }`}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -298,7 +301,7 @@ export default function DocumentManager() {
             {/* Selected File State */}
             {selectedFile ? (
               <div className="flex items-center gap-4 bg-white/5 border border-white/10 p-4 rounded-xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-                <div className="w-10 h-10 rounded-xl bg-[#E21B70]/20 text-[#E21B70] flex items-center justify-center shrink-0">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--bg-badge)", color: "var(--brand-primary)" }}>
                   <File className="w-5 h-5" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -323,7 +326,14 @@ export default function DocumentManager() {
             ) : (
               /* Default Drag & Drop Prompt */
               <div className="text-center">
-                <div className="w-14 h-14 rounded-2xl bg-[#E21B70]/15 border border-[#E21B70]/30 text-[#E21B70] flex items-center justify-center mx-auto mb-3 shadow-[0_0_20px_rgba(226,27,112,0.2)]">
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-md"
+                  style={{
+                    background: "var(--bg-badge)",
+                    border: "1px solid var(--border-color)",
+                    color: "var(--brand-primary)",
+                  }}
+                >
                   <UploadCloud className="w-8 h-8" />
                 </div>
                 <p className="text-sm font-bold text-white mb-1">
@@ -348,7 +358,7 @@ export default function DocumentManager() {
               {/* Specialty Tag Multiselect */}
               <div>
                 <label className="block text-xs font-semibold text-gray-300 mb-2 flex items-center gap-1.5">
-                  <Tag className="w-3.5 h-3.5 text-[#E21B70]" />
+                  <Tag className="w-3.5 h-3.5" style={{ color: "var(--brand-primary)" }} />
                   <span>Specialty tag (Multiselect):</span>
                 </label>
                 <div className="flex flex-wrap gap-2">
@@ -361,9 +371,10 @@ export default function DocumentManager() {
                         onClick={() => toggleTag(tag)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
                           isSelected
-                            ? "bg-[#E21B70]/20 text-[#E21B70] border-[#E21B70] shadow-sm"
+                            ? "text-white border-transparent shadow-sm"
                             : "bg-white/5 text-gray-400 border-white/10 hover:text-white hover:bg-white/10"
                         }`}
+                        style={isSelected ? { background: "var(--brand-primary)" } : {}}
                       >
                         {isSelected ? `✓ ${tag}` : `+ ${tag}`}
                       </button>
@@ -377,7 +388,8 @@ export default function DocumentManager() {
                 type="button"
                 onClick={handleStartIndexing}
                 disabled={uploading}
-                className="w-full h-[48px] rounded-xl bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white font-semibold text-base shadow-md shadow-[#E21B70]/25 hover:opacity-95 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2"
+                className="w-full h-[48px] rounded-xl text-white font-semibold text-base shadow-md hover:opacity-95 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2"
+                style={{ background: "var(--brand-primary)" }}
               >
                 <span>Index Document</span>
               </button>
@@ -391,7 +403,7 @@ export default function DocumentManager() {
                 <span className="text-gray-300">
                   {INDEXING_STAGES[currentStageIdx]?.label}
                 </span>
-                <span className={`font-mono font-bold ${progressPct === 100 ? "text-emerald-400" : "text-[#E21B70]"}`}>
+                <span className={`font-mono font-bold ${progressPct === 100 ? "text-emerald-400" : ""}`} style={progressPct !== 100 ? { color: "var(--brand-primary)" } : {}}>
                   {progressPct}%
                 </span>
               </div>
@@ -400,9 +412,9 @@ export default function DocumentManager() {
               <div className="w-full h-[1.5px] bg-white/10 rounded-full overflow-hidden mb-2">
                 <div
                   className={`h-full transition-all duration-500 ${
-                    progressPct === 100 ? "bg-emerald-400" : "bg-[#E21B70]"
+                    progressPct === 100 ? "bg-emerald-400" : ""
                   }`}
-                  style={{ width: `${progressPct}%` }}
+                  style={{ width: `${progressPct}%`, background: progressPct !== 100 ? "var(--brand-primary)" : undefined }}
                 />
               </div>
 

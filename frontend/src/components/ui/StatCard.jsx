@@ -2,7 +2,7 @@ import React from "react";
 import { TrendingUp, TrendingDown } from "lucide-react";
 
 const GLOW_COLORS = {
-  pink:    "rgba(226, 27, 112, 0.25)",
+  pink:    "var(--brand-glow-subtle)",
   blue:    "rgba(59, 130, 246, 0.25)",
   green:   "rgba(16, 185, 129, 0.25)",
   amber:   "rgba(245, 158, 11, 0.25)",
@@ -12,7 +12,7 @@ const GLOW_COLORS = {
 };
 
 const ICON_BG = {
-  pink:    "rgba(226, 27, 112, 0.15)",
+  pink:    "var(--bg-badge)",
   blue:    "rgba(59, 130, 246, 0.15)",
   green:   "rgba(16, 185, 129, 0.15)",
   amber:   "rgba(245, 158, 11, 0.15)",
@@ -22,7 +22,7 @@ const ICON_BG = {
 };
 
 const ICON_COLOR = {
-  pink:    "#E21B70",
+  pink:    "var(--brand-primary)",
   blue:    "#3B82F6",
   green:   "#10B981",
   amber:   "#F59E0B",
