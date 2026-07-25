@@ -27,45 +27,18 @@ import {
   Globe,
   Microscope,
 } from "lucide-react";
+import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import { useSelector, useDispatch } from "react-redux";
 import { logoutUser } from "../store/authSlice.js";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
-/* ─── General Research Sample / Demo Data ──────────────────────────── */
+/* ─── Suggestion Prompts (shown on empty chat state) ─────────────── */
 const SUGGESTIONS = [
   "Summarize the latest breakthroughs in AI and Quantum Computing",
   "Analyze recent trends in renewable energy and global market impact",
   "Synthesize key takeaways from my uploaded research paper dataset",
   "Compare transformer architecture variations for domain-specific RAG",
-];
-
-const SAMPLE_CHATS = {
-  today: [
-    { id: "c1", title: "What are the core advances in LLM reasoning in 2026?", time: "10m ago", active: true },
-    { id: "c2", title: "Compare solar vs wind energy grid integration methods", time: "1h ago", active: false },
-  ],
-  yesterday: [
-    { id: "c3", title: "Key economic indicators and 2026 growth forecasts...", time: "1d ago", active: false },
-    { id: "c4", title: "Explain retrieval-augmented generation chunking techniques...", time: "1d ago", active: false },
-  ],
-};
-
-const DEFAULT_MESSAGES = [
-  {
-    id: "msg_1",
-    role: "user",
-    text: "What are the core advances in LLM reasoning in 2026?",
-    time: "09:55 AM",
-  },
-  {
-    id: "msg_2",
-    role: "assistant",
-    isRefused: false,
-    text: "Key advances in LLM reasoning in 2026 focus on multi-step chain-of-thought verification, hybrid neuro-symbolic reasoning engines, and real-time retrieval augmented generation (RAG) with dynamic confidence scoring. Models now integrate live web knowledge streams with private vector databases for zero-hallucination research outputs.",
-    sources: ["LLM_Reasoning_Survey_2026.pdf", "RAG_Vector_Search_Benchmark.pdf"],
-    time: "09:55 AM",
-  },
 ];
 
 /* ─── Detail Levels → mapped to backend answer_style values ─────── */
@@ -95,15 +68,10 @@ export default function Research() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hoveredChatId, setHoveredChatId] = useState(null);
 
-  // Chat data
-  const [chats, setChats] = useState(SAMPLE_CHATS);
-  const [activeChatId, setActiveChatId] = useState("c1");
-  const [messagesMap, setMessagesMap] = useState({
-    c1: DEFAULT_MESSAGES,
-    c2: [],
-    c3: [],
-    c4: [],
-  });
+  // Chat data — start empty, populated as user creates chats
+  const [chats, setChats] = useState({ today: [], yesterday: [] });
+  const [activeChatId, setActiveChatId] = useState(null);
+  const [messagesMap, setMessagesMap] = useState({});
 
   // Input & UI state
   const [input, setInput] = useState("");
@@ -121,6 +89,27 @@ export default function Research() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [currentMessages, isTyping]);
+
+  useEffect(() => {
+    const fetchUserChats = async () => {
+      try {
+        const res = await axios.get("/api/research/chats");
+        if (Array.isArray(res.data) && res.data.length > 0) {
+          setChats({
+            today: res.data.map(c => ({
+              id: c._id,
+              title: c.title,
+              time: c.updatedAt ? new Date(c.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Just now"
+            })),
+            yesterday: []
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load chats:", err.message);
+      }
+    };
+    fetchUserChats();
+  }, []);
 
   /* ── Handlers ──────────────────────────────────────────────────── */
   const handleNewChat = () => {
@@ -163,10 +152,14 @@ export default function Research() {
         text: (m.text || "").substring(0, 500),
       }));
 
-      // Call Python RAG directly via stream endpoint
-      const response = await fetch("http://localhost:8000/stream", {
+      // Call Node proxy stream endpoint (authenticated)
+      const token = localStorage.getItem("medresearch_token");
+      const response = await fetch(`/api/research/chats/${chatId}/stream`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           question,
           top_k: 5,

@@ -61,7 +61,7 @@ export const askQuestion = createAsyncThunk(
 // Uses fetch() + ReadableStream to consume SSE tokens one by one.
 // Dispatches appendStreamToken on each token, then finalizeStream with sources.
 
-export const askQuestionStream = (question, answer_style = "classical") => async (dispatch, getState) => {
+export const askQuestionStream = (chatId, question, answer_style = "classical") => async (dispatch, getState) => {
   // Push user message immediately
   dispatch(pushUserMessage(question));
   // Open a blank assistant message to stream into
@@ -74,10 +74,16 @@ export const askQuestionStream = (question, answer_style = "classical") => async
     ? recentMsgs.map(m => ({ role: m.role, text: (m.text || "").substring(0, 500) }))
     : null;
 
+  // Get JWT token for auth header
+  const token = localStorage.getItem("medresearch_token");
+
   try {
-    const response = await fetch(`http://localhost:8000/stream`, {
+    const response = await fetch(`/api/research/chats/${chatId}/stream`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({ question, top_k: 5, answer_style, history })
     });
 

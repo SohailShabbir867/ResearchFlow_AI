@@ -32,7 +32,8 @@ async function connectDB() {
       }
     }
   }
-  console.error("❌ Could not connect to MongoDB after maximum retries. Server starting without DB.");
+  console.error("❌ Could not connect to MongoDB after maximum retries. Exiting.");
+  process.exit(1);
 }
 
 connectDB();

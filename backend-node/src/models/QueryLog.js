@@ -24,7 +24,7 @@ const QueryLogSchema = new mongoose.Schema({
     default: "",
   },
   sources: {
-    type: [String],
+    type: [mongoose.Schema.Types.Mixed],
     default: [],
   },
   status: {

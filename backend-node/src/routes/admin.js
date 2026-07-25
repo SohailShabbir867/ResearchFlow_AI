@@ -5,6 +5,7 @@ const multer = require("multer");
 const User = require("../models/User");
 const Chat = require("../models/Chat");
 const QueryLog = require("../models/QueryLog");
+const AppSettings = require("../models/AppSettings");
 const authMiddleware = require("../middleware/auth");
 const { requireRole } = require("../middleware/role");
 
@@ -414,34 +415,23 @@ router.get("/health", async (req, res) => {
 // ─── GET /api/admin/settings ──────────────────────────────────────────────────
 router.get("/settings", async (req, res) => {
   try {
-    // Return defaults — in production these would be stored in a Settings collection
+    const saved = await AppSettings.findOne({ key: "global" });
     const defaults = {
-      guardrail: {
-        threshold: -2.0,
-        minChunks: 2,
-      },
-      rateLimiting: {
-        maxQueriesPerHour: 100,
-        maxUploadsPerDay: 20,
-      },
-      llm: {
-        model: "llama-3.1-8b-instant",
-        maxTokens: 1024,
-        temperature: 0.7,
-      },
+      guardrail:    { threshold: -2.0, minChunks: 2 },
+      rateLimiting: { maxQueriesPerHour: 100, maxUploadsPerDay: 20 },
+      llm:          { model: "llama-3.3-70b-versatile", maxTokens: 1024, temperature: 0.2 },
     };
+    const result = saved ? saved.data : defaults;
 
-    // Try to get from Python
+    // Merge any live Python overrides
     try {
       const pyRes = await axios.get(`${PYTHON_URL()}/settings`, { timeout: 5000 });
-      if (pyRes.data) {
-        Object.assign(defaults, pyRes.data);
-      }
+      if (pyRes.data) Object.assign(result, pyRes.data);
     } catch {
-      // Use defaults if Python is down
+      // Python may be down — use DB values
     }
 
-    return res.json(defaults);
+    return res.json(result);
   } catch (err) {
     console.error("Admin get settings error:", err.message);
     return res.status(500).json({ error: "Failed to fetch settings." });
@@ -453,18 +443,23 @@ router.post("/settings", async (req, res) => {
   try {
     const settings = req.body;
 
-    // Forward guardrail settings to Python if possible
+    // Persist to MongoDB (upsert — creates if first time, updates otherwise)
+    await AppSettings.findOneAndUpdate(
+      { key: "global" },
+      { key: "global", data: settings, updatedAt: new Date() },
+      { upsert: true, new: true }
+    );
+
+    // Forward guardrail settings to Python
     if (settings.guardrail) {
       try {
         await axios.post(`${PYTHON_URL()}/settings`, settings.guardrail, { timeout: 5000 });
       } catch {
-        // Non-fatal — save locally still succeeds
+        // Non-fatal — DB save already succeeded
       }
     }
 
-    // In production, persist to a Settings model
-    // For now, acknowledge the save
-    return res.json({ success: true, message: "Settings saved.", settings });
+    return res.json({ success: true, message: "Settings saved successfully.", settings });
   } catch (err) {
     console.error("Admin save settings error:", err.message);
     return res.status(500).json({ error: "Failed to save settings." });

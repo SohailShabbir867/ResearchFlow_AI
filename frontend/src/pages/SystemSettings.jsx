@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { 
   Microscope, 
@@ -46,9 +47,60 @@ export default function SystemSettings() {
   const [maxTokens, setMaxTokens] = useState(2048);
   const [temperature, setTemperature] = useState(0.2);
 
+  // Loading state
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [saveLoading, setSaveLoading] = useState(false);
+
   // UI Toast State
   const [showToast, setShowToast] = useState(false);
   const [guardrailSavedMsg, setGuardrailSavedMsg] = useState("");
+
+  // ─── Load settings from API on mount ─────────────────────────────────────
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await axios.get("/api/admin/settings");
+        const data = res.data;
+        if (data.guardrail) {
+          if (data.guardrail.threshold !== undefined) setThreshold(data.guardrail.threshold);
+          if (data.guardrail.minChunks !== undefined) setMinChunks(data.guardrail.minChunks);
+        }
+        if (data.rateLimiting) {
+          if (data.rateLimiting.maxQueriesPerHour !== undefined) setMaxQueriesPerHour(data.rateLimiting.maxQueriesPerHour);
+          if (data.rateLimiting.maxUploadsPerDay !== undefined) setMaxUploadsPerDay(data.rateLimiting.maxUploadsPerDay);
+        }
+        if (data.llm) {
+          if (data.llm.model !== undefined) setSelectedModel(data.llm.model);
+          if (data.llm.maxTokens !== undefined) setMaxTokens(data.llm.maxTokens);
+          if (data.llm.temperature !== undefined) setTemperature(data.llm.temperature);
+        }
+      } catch (err) {
+        console.error("Failed to load settings:", err.message);
+      } finally {
+        setLoadingSettings(false);
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  // ─── Save all settings to API ────────────────────────────────────────────────
+  const handleSaveAll = async () => {
+    setSaveLoading(true);
+    try {
+      await axios.post("/api/admin/settings", {
+        guardrail: { threshold, minChunks },
+        rateLimiting: { maxQueriesPerHour, maxUploadsPerDay },
+        llm: { model: selectedModel, maxTokens, temperature },
+      });
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (err) {
+      console.error("Failed to save settings:", err.message);
+      alert("Failed to save settings. Please try again.");
+    } finally {
+      setSaveLoading(false);
+    }
+  };
 
   // Helper for Zone Badge Info
   const getZoneBadge = (val) => {
@@ -65,15 +117,6 @@ export default function SystemSettings() {
   };
 
   const zoneInfo = getZoneBadge(threshold);
-
-  // Handle Save All Settings
-  const handleSaveAll = (e) => {
-    if (e) e.preventDefault();
-    setShowToast(true);
-    setTimeout(() => {
-      setShowToast(false);
-    }, 3000);
-  };
 
   // Handle Guardrail Save Only
   const handleSaveGuardrails = () => {
@@ -421,10 +464,11 @@ export default function SystemSettings() {
           <div className="pt-2 pb-12">
             <button
               onClick={handleSaveAll}
-              className="w-full h-[52px] rounded-xl bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white font-semibold text-base shadow-lg shadow-[#E21B70]/25 hover:opacity-95 active:scale-[0.99] transition-all duration-200 flex items-center justify-center gap-2"
+              disabled={saveLoading}
+              className="w-full h-[52px] rounded-xl bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white font-semibold text-base shadow-lg shadow-[#E21B70]/25 hover:opacity-95 active:scale-[0.99] transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Save className="w-5 h-5" />
-              <span>Save All Settings</span>
+              <span>{saveLoading ? "Saving..." : "Save All Settings"}</span>
             </button>
           </div>
 

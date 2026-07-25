@@ -230,6 +230,55 @@ router.post("/feedback/:chatId/:messageIndex", async (req, res) => {
   }
 });
 
+// ─── POST /api/research/chats/:id/stream ────────────────────────────────────────
+// Proxies SSE streaming from Python RAG with auth check
+router.post("/chats/:id/stream", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const chat = await Chat.findById(id);
+    if (!chat) return res.status(404).json({ error: "Chat not found." });
+    if (chat.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: "Access denied." });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to validate chat." });
+  }
+
+  // Set SSE headers
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  try {
+    const { question, top_k, answer_style, history } = req.body;
+    const pyResponse = await axios.post(
+      `${PYTHON_URL()}/stream`,
+      { question, top_k: top_k || 5, answer_style: answer_style || "classical", history },
+      { responseType: "stream", timeout: 120000 }
+    );
+
+    pyResponse.data.on("data", (chunk) => {
+      res.write(chunk);
+    });
+
+    pyResponse.data.on("end", () => {
+      res.end();
+    });
+
+    pyResponse.data.on("error", (err) => {
+      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.end();
+    });
+  } catch (err) {
+    let msg = "RAG stream service error.";
+    if (err.code === "ECONNREFUSED") msg = "RAG service is offline.";
+    res.write(`data: ${JSON.stringify({ error: msg })}\n\n`);
+    res.end();
+  }
+});
+
 // ─── GET /api/research/health ─────────────────────────────────────────────────
 router.get("/health", async (_req, res) => {
   try {

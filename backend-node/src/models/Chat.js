@@ -11,7 +11,7 @@ const MessageSchema = new mongoose.Schema({
     required: true,
   },
   sources: {
-    type: [String],
+    type: [mongoose.Schema.Types.Mixed],
     default: [],
   },
   feedback: {
