@@ -178,16 +178,33 @@ export default function Research() {
   useEffect(() => {
     const fetchUserChats = async () => {
       try {
-        const res = await axios.get("/api/research/chats");
-        if (Array.isArray(res.data) && res.data.length > 0) {
-          setChats({
-            today: res.data.map(c => ({
+        const token = localStorage.getItem("medresearch_token");
+        const res = await axios.get("/api/research/chats", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (Array.isArray(res.data)) {
+          const today = [];
+          const yesterday = [];
+
+          const now = new Date();
+          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+          res.data.forEach((c) => {
+            const chatTime = new Date(c.updatedAt || c.createdAt).getTime();
+            const formatted = {
               id: c._id,
-              title: c.title,
-              time: c.updatedAt ? new Date(c.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Just now"
-            })),
-            yesterday: []
+              title: c.title || "Untitled Chat",
+              time: c.updatedAt ? new Date(c.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Just now",
+            };
+
+            if (chatTime >= startOfToday) {
+              today.push(formatted);
+            } else {
+              yesterday.push(formatted);
+            }
           });
+
+          setChats({ today, yesterday });
         }
       } catch (err) {
         console.error("Failed to load chats:", err.message);
@@ -197,6 +214,56 @@ export default function Research() {
   }, []);
 
   /* ── Handlers ──────────────────────────────────────────────────── */
+  const handleSelectChat = async (chatId) => {
+    setActiveChatId(chatId);
+    if (chatId && !messagesMap[chatId]) {
+      try {
+        const token = localStorage.getItem("medresearch_token");
+        const res = await axios.get(`/api/research/chats/${chatId}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.data && Array.isArray(res.data.messages)) {
+          const formattedMsgs = res.data.messages.map((m, idx) => ({
+            id: m._id || `msg_${idx}_${Date.now()}`,
+            role: m.role,
+            text: m.text,
+            sources: m.sources || [],
+            time: m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
+          }));
+          setMessagesMap((prev) => ({ ...prev, [chatId]: formattedMsgs }));
+        }
+      } catch (err) {
+        console.error("Failed to load chat messages:", err.message);
+      }
+    }
+  };
+
+  const handleDeleteChat = async (e, group, chatId) => {
+    if (e) e.stopPropagation();
+    try {
+      const token = localStorage.getItem("medresearch_token");
+      if (chatId && !chatId.startsWith("c_")) {
+        await axios.delete(`/api/research/chats/${chatId}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+      }
+      setChats((prev) => ({
+        ...prev,
+        [group]: (prev[group] || []).filter((c) => c.id !== chatId),
+      }));
+      setMessagesMap((prev) => {
+        const next = { ...prev };
+        delete next[chatId];
+        return next;
+      });
+      if (activeChatId === chatId) {
+        setActiveChatId(null);
+      }
+    } catch (err) {
+      console.error("Failed to delete chat:", err.message);
+    }
+  };
+
   const handleNewChat = () => {
     setActiveChatId(null);
     setInput("");
@@ -358,12 +425,6 @@ export default function Research() {
       }));
     }
     setIsTyping(false);
-  };
-
-  const handleDeleteChat = (e, groupKey, chatId) => {
-    e.stopPropagation();
-    setChats((prev) => ({ ...prev, [groupKey]: prev[groupKey].filter((c) => c.id !== chatId) }));
-    if (activeChatId === chatId) setActiveChatId(null);
   };
 
   const handleCopy = (id, text) => {
@@ -541,7 +602,7 @@ export default function Research() {
                       return (
                         <div
                           key={c.id}
-                          onClick={() => setActiveChatId(c.id)}
+                          onClick={() => handleSelectChat(c.id)}
                           onMouseEnter={() => setHoveredChatId(c.id)}
                           onMouseLeave={() => setHoveredChatId(null)}
                           className="group relative flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer transition-all duration-150 mb-0.5"
@@ -588,7 +649,7 @@ export default function Research() {
                       return (
                         <div
                           key={c.id}
-                          onClick={() => setActiveChatId(c.id)}
+                          onClick={() => handleSelectChat(c.id)}
                           onMouseEnter={() => setHoveredChatId(c.id)}
                           onMouseLeave={() => setHoveredChatId(null)}
                           className="group relative flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer transition-all duration-150 mb-0.5"

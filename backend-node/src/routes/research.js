@@ -268,9 +268,19 @@ router.post("/chats/:id/stream", async (req, res) => {
   res.flushHeaders();
 
   try {
+    const AppSettings = require("../models/AppSettings");
+    const appSettings = await AppSettings.findOne({ key: "global" }).lean();
+    const maxTokens = appSettings?.data?.llm?.maxTokens ? parseInt(appSettings.data.llm.maxTokens) : 2500;
+
     const pyResponse = await axios.post(
       `${PYTHON_URL()}/stream`,
-      { question: question.trim(), top_k: top_k || 5, answer_style: answer_style || "classical", history },
+      {
+        question: question.trim(),
+        top_k: top_k || 5,
+        answer_style: answer_style || "classical",
+        history,
+        max_tokens: maxTokens,
+      },
       { responseType: "stream", timeout: 120000 }
     );
 

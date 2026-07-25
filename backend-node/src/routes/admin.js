@@ -450,13 +450,11 @@ router.post("/settings", async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // Forward guardrail settings to Python
-    if (settings.guardrail) {
-      try {
-        await axios.post(`${PYTHON_URL()}/settings`, settings.guardrail, { timeout: 5000 });
-      } catch {
-        // Non-fatal — DB save already succeeded
-      }
+    // Forward settings (guardrails + llm maxTokens) to Python
+    try {
+      await axios.post(`${PYTHON_URL()}/settings`, settings, { timeout: 5000 });
+    } catch (err) {
+      console.warn("Failed to sync settings to Python:", err.message);
     }
 
     return res.json({ success: true, message: "Settings saved successfully.", settings });

@@ -84,11 +84,12 @@ ANSWER_STYLES = {
             "- Include a final `## Summary` heading with 3-5 bullet-point takeaways.\n"
             "- Cover all relevant details from the documents without padding."
         ),
-        "max_tokens": 1024,
+        "max_tokens": 2500,
     },
 }
 
 DEFAULT_STYLE = "classical"
+GLOBAL_MAX_TOKENS = 2500
 
 
 # ─── Guardrail functions ──────────────────────────────────────────────────────

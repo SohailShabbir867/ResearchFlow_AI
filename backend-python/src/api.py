@@ -58,6 +58,7 @@ class QueryRequest(BaseModel):
     top_k: int = 5
     history: Optional[list[HistoryMessage]] = Field(default=None, description="Previous conversation turns for context")
     answer_style: Optional[str] = Field(default=None, description="short | detailed | classical")
+    max_tokens: Optional[int] = Field(default=None, description="Max generation tokens limit")
 
 class QueryResponse(BaseModel):
     answer: str
@@ -229,11 +230,15 @@ async def stream_query(request: QueryRequest):
 
             # Step 7: Stream from Groq
             client = Groq(api_key=GROQ_API_KEY)
+            effective_max_tokens = request.max_tokens or getattr(rag, "GLOBAL_MAX_TOKENS", None) or style["max_tokens"]
+            if style_name == "detailed":
+                effective_max_tokens = max(effective_max_tokens, 2500)
+
             stream = client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
-                max_tokens=style["max_tokens"],
+                max_tokens=effective_max_tokens,
                 stream=True
             )
 
@@ -360,6 +365,10 @@ def delete_document(source: str):
 class SettingsUpdate(BaseModel):
     threshold: Optional[float] = None
     minChunks: Optional[int] = None
+    max_tokens: Optional[int] = None
+    maxTokens: Optional[int] = None
+    llm: Optional[dict] = None
+    guardrail: Optional[dict] = None
 
 
 @app.get("/settings")
@@ -370,30 +379,47 @@ def get_settings():
         "guardrail": {
             "threshold": rag.RELEVANCE_THRESHOLD,
             "minChunks": rag.MIN_RELEVANT_CHUNKS,
-        }
+        },
+        "max_tokens": getattr(rag, "GLOBAL_MAX_TOKENS", 2500)
     }
 
 
 @app.post("/settings")
 def update_settings(update: SettingsUpdate):
-    """Update runtime guardrail settings dynamically."""
+    """Update runtime guardrail & max_tokens settings dynamically."""
     import src.rag_pipeline as rag
 
     if update.threshold is not None:
         rag.RELEVANCE_THRESHOLD = float(update.threshold)
         print(f"  [Runtime Settings] Updated RELEVANCE_THRESHOLD = {rag.RELEVANCE_THRESHOLD}")
+    elif update.guardrail and "threshold" in update.guardrail:
+        rag.RELEVANCE_THRESHOLD = float(update.guardrail["threshold"])
+        print(f"  [Runtime Settings] Updated RELEVANCE_THRESHOLD = {rag.RELEVANCE_THRESHOLD}")
 
     if update.minChunks is not None:
         rag.MIN_RELEVANT_CHUNKS = int(update.minChunks)
         print(f"  [Runtime Settings] Updated MIN_RELEVANT_CHUNKS = {rag.MIN_RELEVANT_CHUNKS}")
+    elif update.guardrail and "minChunks" in update.guardrail:
+        rag.MIN_RELEVANT_CHUNKS = int(update.guardrail["minChunks"])
+        print(f"  [Runtime Settings] Updated MIN_RELEVANT_CHUNKS = {rag.MIN_RELEVANT_CHUNKS}")
+
+    new_max = update.max_tokens or update.maxTokens
+    if not new_max and update.llm and "maxTokens" in update.llm:
+        new_max = int(update.llm["maxTokens"])
+
+    if new_max:
+        rag.GLOBAL_MAX_TOKENS = int(new_max)
+        rag.ANSWER_STYLES["detailed"]["max_tokens"] = int(new_max)
+        print(f"  [Runtime Settings] Updated GLOBAL_MAX_TOKENS = {rag.GLOBAL_MAX_TOKENS}")
 
     return {
         "status": "ok",
-        "message": "Runtime guardrail settings updated",
+        "message": "Runtime settings updated",
         "guardrail": {
             "threshold": rag.RELEVANCE_THRESHOLD,
             "minChunks": rag.MIN_RELEVANT_CHUNKS,
-        }
+        },
+        "max_tokens": getattr(rag, "GLOBAL_MAX_TOKENS", 2500)
     }
 
 
