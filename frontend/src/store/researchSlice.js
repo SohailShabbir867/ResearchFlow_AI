@@ -43,9 +43,13 @@ export const deleteChat = createAsyncThunk("research/deleteChat", async (chatId,
 
 export const askQuestion = createAsyncThunk(
   "research/askQuestion",
-  async ({ chatId, question }, { rejectWithValue }) => {
+  async ({ chatId, question, answer_style }, { rejectWithValue }) => {
     try {
-      const res = await axios.post(`${API}/chats/${chatId}/ask`, { question }, { timeout: 120000 });
+      const res = await axios.post(
+        `${API}/chats/${chatId}/ask`,
+        { question, answer_style: answer_style || "classical" },
+        { timeout: 120000 }
+      );
       return res.data;
     } catch (err) {
       return rejectWithValue(err.response?.data?.error || "Server error.");
@@ -57,17 +61,24 @@ export const askQuestion = createAsyncThunk(
 // Uses fetch() + ReadableStream to consume SSE tokens one by one.
 // Dispatches appendStreamToken on each token, then finalizeStream with sources.
 
-export const askQuestionStream = (question) => async (dispatch) => {
+export const askQuestionStream = (question, answer_style = "classical") => async (dispatch, getState) => {
   // Push user message immediately
   dispatch(pushUserMessage(question));
   // Open a blank assistant message to stream into
   dispatch(openAssistantMessage());
 
+  // Build conversation history from current messages for context
+  const { messages } = getState().research;
+  const recentMsgs = messages.slice(-7, -1); // exclude the just-pushed user msg
+  const history = recentMsgs.length > 0
+    ? recentMsgs.map(m => ({ role: m.role, text: (m.text || "").substring(0, 500) }))
+    : null;
+
   try {
     const response = await fetch(`http://localhost:8000/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, top_k: 5 })
+      body: JSON.stringify({ question, top_k: 5, answer_style, history })
     });
 
     if (!response.ok) {
@@ -95,8 +106,13 @@ export const askQuestionStream = (question) => async (dispatch) => {
             return;
           }
 
+          if (payload.replace) {
+            // Layer 3 guardrail: replace streamed text with refusal
+            dispatch(replaceStreamText(payload.replace));
+          }
+
           if (payload.done) {
-            dispatch(finalizeStream(payload.sources || []));
+            dispatch(finalizeStream({ sources: payload.sources || [], refused: payload.refused || false }));
             return;
           }
 
@@ -160,10 +176,19 @@ const researchSlice = createSlice({
       }
     },
 
+    replaceStreamText(state, action) {
+      const last = state.messages[state.messages.length - 1];
+      if (last && last.role === "assistant") {
+        last.text = action.payload;
+        last.isRefused = true;
+      }
+    },
+
     finalizeStream(state, action) {
       const last = state.messages[state.messages.length - 1];
       if (last && last.role === "assistant") {
-        last.sources = action.payload;
+        last.sources = action.payload.sources || action.payload;
+        if (action.payload.refused) last.isRefused = true;
       }
       state.streaming = false;
     },
@@ -248,6 +273,7 @@ export const {
   pushUserMessage,
   openAssistantMessage,
   appendStreamToken,
+  replaceStreamText,
   finalizeStream,
   streamError
 } = researchSlice.actions;

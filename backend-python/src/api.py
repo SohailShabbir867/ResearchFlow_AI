@@ -1,26 +1,31 @@
 """
-FastAPI REST API for MedResearch AI RAG Service.
-v2.1.0 — Upgrades applied:
-  - BM25 index pre-built on startup (no cold-start delay on first query)
-  - /upload endpoint: upload PDF/TXT/DOCX directly from browser, auto-indexes
-  - /stream endpoint: streaming SSE responses (token-by-token like ChatGPT)
-  - Full Groq-specific error handling
+FastAPI REST API for ResearchAI RAG Service.
+v3.0.0 — Upgrades:
+  - Conversation memory: history param for context-aware follow-ups
+  - Answer style control: short / detailed / classical
+  - Startup warmup: pre-loads embedding + reranker models
+  - Stream endpoint: full guardrail parity with /query
+  - Embedding cache: repeated queries return instantly
 """
 import os
 import json
-import shutil
 import time
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Optional
 from dotenv import load_dotenv
 
-from src.rag_pipeline import answer, build_prompt
+from src.rag_pipeline import (
+    answer, build_prompt, check_guardrails, filter_chunks_by_threshold,
+    detect_off_document_answer, enrich_query, REFUSAL_MSG, RELEVANCE_THRESHOLD,
+    MIN_RELEVANT_CHUNKS, ANSWER_STYLES, DEFAULT_STYLE,
+)
 from src.vector_store import get_collection_info, get_indexed_sources
 from src.hybrid_search import rebuild_bm25_index, _build_bm25_index
-from src.embedder import get_embedding
+from src.embedder import get_embedding, warmup as warmup_embedder
 
 load_dotenv()
 
@@ -29,9 +34,9 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 app = FastAPI(
-    title="MedResearch AI — RAG Service",
-    description="Hybrid search + reranking + Groq LLM · v2.1.0",
-    version="2.1.0"
+    title="ResearchAI — RAG Service",
+    description="Hybrid search + reranking + Groq LLM · v3.0.0",
+    version="3.0.0"
 )
 
 app.add_middleware(
@@ -44,23 +49,44 @@ app.add_middleware(
 
 # ─── Pydantic Models ─────────────────────────────────────────────────────────
 
+class HistoryMessage(BaseModel):
+    role: str
+    text: str
+
 class QueryRequest(BaseModel):
     question: str
     top_k: int = 5
-
+    history: Optional[list[HistoryMessage]] = Field(default=None, description="Previous conversation turns for context")
+    answer_style: Optional[str] = Field(default=None, description="short | detailed | classical")
 
 class QueryResponse(BaseModel):
     answer: str
     sources: list[str]
 
 
-# ─── Startup: pre-build BM25 index ──────────────────────────────────────────
-# Fix #2: Build BM25 on server start so the FIRST query has zero cold-start delay
+# ─── Startup: pre-load models + BM25 index ──────────────────────────────────
 
 @app.on_event("startup")
 async def startup_event():
     print("=" * 50)
-    print("MedResearch AI — RAG Service starting...")
+    print("ResearchAI — RAG Service starting...")
+
+    # 1. Pre-load embedding model (eliminates ~3s cold start on first query)
+    print("Warming up embedding model...")
+    try:
+        warmup_embedder()
+    except Exception as e:
+        print(f"Warning: Embedder warmup failed ({e})")
+
+    # 2. Pre-load reranker model
+    print("Warming up reranker model...")
+    try:
+        from src.reranker import _get_reranker
+        _get_reranker()
+    except Exception as e:
+        print(f"Warning: Reranker warmup failed ({e})")
+
+    # 3. Pre-build BM25 index
     print("Pre-building BM25 index from Qdrant...")
     try:
         _build_bm25_index()
@@ -69,6 +95,7 @@ async def startup_event():
         print(f"BM25 index ready — {points} chunks indexed.")
     except Exception as e:
         print(f"Warning: BM25 pre-build failed ({e}). Will retry on first query.")
+
     print("Server ready.")
     print("=" * 50)
 
@@ -80,9 +107,11 @@ def health():
     info = get_collection_info()
     return {
         "status": "ok",
-        "service": "medresearch-python",
-        "version": "2.1.0",
-        "pipeline": "FastEmbed (local) → Hybrid Search → Reranker → Groq 70b",
+        "service": "researchai-python",
+        "version": "3.0.0",
+        "pipeline": "FastEmbed (cached) → Hybrid Search → Reranker → Groq LLM",
+        "features": ["embedding_cache", "conversation_memory", "answer_styles"],
+        "answer_styles": list(ANSWER_STYLES.keys()),
         "collection": info
     }
 
@@ -104,12 +133,22 @@ def list_documents():
 
 @app.post("/query", response_model=QueryResponse)
 def query(request: QueryRequest):
-    """Standard RAG query — returns full answer after complete generation."""
+    """Standard RAG query with conversation memory and answer style control."""
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
+    # Convert history models to dicts
+    history = None
+    if request.history:
+        history = [{"role": m.role, "text": m.text} for m in request.history]
+
     try:
-        result = answer(request.question, top_k=request.top_k)
+        result = answer(
+            request.question,
+            top_k=request.top_k,
+            history=history,
+            answer_style=request.answer_style,
+        )
     except Exception as e:
         _handle_groq_error(e)
 
@@ -119,18 +158,14 @@ def query(request: QueryRequest):
     )
 
 
-# ─── Stream (Fix #5 — token-by-token SSE streaming) ─────────────────────────
+# ─── Stream (token-by-token SSE with full guardrails) ────────────────────────
 
 @app.post("/stream")
 async def stream_query(request: QueryRequest):
     """
     Streaming RAG query using Server-Sent Events (SSE).
-    Tokens arrive one-by-one like ChatGPT — no waiting for full response.
-    Frontend consumes with fetch() + ReadableStream.
-    
-    Event format:
-      data: {"token": "..."}        ← each token as it arrives
-      data: {"done": true, "sources": [...]}  ← final event with sources
+    Full guardrail parity with /query endpoint.
+    Supports conversation memory and answer style control.
     """
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
@@ -141,72 +176,98 @@ async def stream_query(request: QueryRequest):
             detail="GROQ_API_KEY not configured in backend-python/.env"
         )
 
+    # Resolve answer style
+    style_name = request.answer_style if request.answer_style in ANSWER_STYLES else DEFAULT_STYLE
+    style = ANSWER_STYLES[style_name]
+
+    # Convert history
+    history = None
+    if request.history:
+        history = [{"role": m.role, "text": m.text} for m in request.history]
+
     async def generate():
         from groq import Groq
         from src.hybrid_search import hybrid_search
         from src.reranker import rerank
 
         try:
-            # Step 1: Embed query
-            query_vector = get_embedding(request.question, is_query=True)
+            # Step 1: Enrich query with conversation context
+            search_query = enrich_query(request.question, history)
 
-            # Step 2: Hybrid search
-            candidates = hybrid_search(query_vector, request.question)
+            # Step 2: Embed query (cached)
+            query_vector = get_embedding(search_query, is_query=True)
+
+            # Step 3: Hybrid search
+            candidates = hybrid_search(query_vector, search_query)
 
             if not candidates:
-                yield f"data: {json.dumps({'token': 'Sorry, I am not trained for that purpose.'})}\n\n"
-                yield f"data: {json.dumps({'done': True, 'sources': []})}\n\n"
+                yield f"data: {json.dumps({'token': REFUSAL_MSG})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'sources': [], 'refused': True})}\n\n"
                 return
 
-            # Step 3: Rerank
+            # Step 4: Rerank
             reranked = rerank(request.question, candidates, top_k=request.top_k)
 
-            # Step 4: Guardrail check
-            top_score = reranked[0].get("rerank_score", -99.0) if reranked else -99.0
-            if top_score < -4.5:
-                yield f"data: {json.dumps({'token': 'Sorry, I am not trained for that purpose.'})}\n\n"
-                yield f"data: {json.dumps({'done': True, 'sources': []})}\n\n"
+            # Step 5: Full guardrail check (Layer 1 + Layer 2)
+            should_refuse, refuse_reason = check_guardrails(reranked)
+            if should_refuse:
+                print(f"  [Stream Guardrail BLOCKED] {refuse_reason}")
+                yield f"data: {json.dumps({'token': REFUSAL_MSG})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'sources': [], 'refused': True})}\n\n"
                 return
 
-            # Step 5: Build prompt
-            prompt = build_prompt(request.question, reranked)
+            # Only pass chunks that cleared the threshold
+            passing_chunks = filter_chunks_by_threshold(reranked)
 
-            # Step 6: Stream from Groq
+            # Step 6: Build prompt with history + style
+            prompt = build_prompt(
+                request.question,
+                passing_chunks,
+                history=history,
+                answer_style=style_name,
+            )
+
+            # Step 7: Stream from Groq
             client = Groq(api_key=GROQ_API_KEY)
             stream = client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=1024,
-                stream=True   # ← key flag
+                temperature=0.0,
+                max_tokens=style["max_tokens"],
+                stream=True
             )
 
+            full_response = ""
             for chunk in stream:
                 token = chunk.choices[0].delta.content or ""
                 if token:
+                    full_response += token
                     yield f"data: {json.dumps({'token': token})}\n\n"
 
-            # Step 7: Send sources at the very end
-            sources = list({c["source"] for c in reranked})
-            yield f"data: {json.dumps({'done': True, 'sources': sources})}\n\n"
+            # Step 8: Layer 3 — detect off-document answer
+            if detect_off_document_answer(full_response):
+                print("  [Stream Guardrail L3] Off-document answer detected")
+                yield f"data: {json.dumps({'replace': REFUSAL_MSG})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'sources': [], 'refused': True})}\n\n"
+                return
+
+            # Step 9: Send sources
+            sources = list({c["source"] for c in passing_chunks})
+            yield f"data: {json.dumps({'done': True, 'sources': sources, 'refused': False})}\n\n"
 
         except Exception as e:
             error_msg = str(e)
+            print(f"  [Stream Error] {error_msg}")
             yield f"data: {json.dumps({'error': error_msg})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-# ─── Upload (Fix #4 — PDF upload from browser, auto-indexes) ────────────────
+# ─── Upload ──────────────────────────────────────────────────────────────────
 
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
-    """
-    Upload a PDF, TXT, or DOCX file from the browser.
-    Automatically chunks, embeds, and stores in Qdrant.
-    Rebuilds BM25 index after indexing.
-    """
-    # Validate file type
+    """Upload a PDF, TXT, or DOCX file. Auto-chunks, embeds, stores in Qdrant."""
     allowed = {".pdf", ".txt", ".docx"}
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in allowed:
@@ -215,16 +276,11 @@ async def upload_document(file: UploadFile = File(...)):
             detail=f"Unsupported file type '{ext}'. Allowed: PDF, TXT, DOCX"
         )
 
-    # Validate file size (max 50MB)
     MAX_SIZE = 50 * 1024 * 1024
     content = await file.read()
     if len(content) > MAX_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail="File too large. Maximum size is 50MB."
-        )
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 50MB.")
 
-    # Save to documents folder
     os.makedirs(DOCS_FOLDER, exist_ok=True)
     save_path = os.path.join(DOCS_FOLDER, file.filename)
 
@@ -233,7 +289,6 @@ async def upload_document(file: UploadFile = File(...)):
 
     print(f"Uploaded: {file.filename} ({len(content) / 1024:.1f} KB)")
 
-    # Auto-index the uploaded file
     try:
         from src.chunker import load_document, chunk_document
         from src.embedder import embed_chunks
@@ -244,15 +299,12 @@ async def upload_document(file: UploadFile = File(...)):
             os.remove(save_path)
             raise HTTPException(
                 status_code=422,
-                detail="No text could be extracted from the file. "
-                       "Make sure it is not a scanned image-only PDF."
+                detail="No text could be extracted from the file."
             )
 
         chunks = chunk_document(pages, source_name=file.filename)
         embedded = embed_chunks(chunks)
         store_chunks(embedded)
-
-        # Rebuild BM25 to include the new document
         rebuild_bm25_index()
 
         return {
@@ -260,61 +312,40 @@ async def upload_document(file: UploadFile = File(...)):
             "chunks_created": len(chunks),
             "file_size_kb": round(len(content) / 1024, 1)
         }
-
     except HTTPException:
         raise
     except Exception as e:
-        # Clean up saved file if indexing fails
         if os.path.exists(save_path):
             os.remove(save_path)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Indexing failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}")
 
 
 # ─── Index Rebuild ───────────────────────────────────────────────────────────
 
 @app.post("/rebuild-index")
 def rebuild_index():
-    """Rebuild the in-memory BM25 index from Qdrant (run after bulk re-indexing)."""
+    """Rebuild the in-memory BM25 index from Qdrant."""
     try:
         rebuild_bm25_index()
         info = get_collection_info()
-        return {
-            "status": "ok",
-            "message": "BM25 index rebuilt successfully",
-            "collection": info
-        }
+        return {"status": "ok", "message": "BM25 index rebuilt successfully", "collection": info}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ─── Error handler helper ────────────────────────────────────────────────────
+# ─── Error handler ───────────────────────────────────────────────────────────
 
 def _handle_groq_error(e: Exception):
     """Convert known Groq/pipeline errors into clean HTTP responses."""
     error_msg = str(e)
 
     if "GROQ_API_KEY not set" in error_msg or "your_groq_api_key_here" in error_msg:
-        raise HTTPException(
-            status_code=503,
-            detail="Groq API key not configured. Add GROQ_API_KEY to backend-python/.env"
-        )
+        raise HTTPException(status_code=503, detail="Groq API key not configured.")
     if "rate_limit" in error_msg.lower():
-        raise HTTPException(
-            status_code=429,
-            detail="Groq rate limit reached. Wait a moment and try again."
-        )
+        raise HTTPException(status_code=429, detail="Groq rate limit reached. Wait a moment.")
     if "model_decommissioned" in error_msg:
-        raise HTTPException(
-            status_code=502,
-            detail="Groq model decommissioned. Update GROQ_MODEL in .env"
-        )
+        raise HTTPException(status_code=502, detail="Groq model decommissioned. Update GROQ_MODEL in .env")
     if "No relevant documents" in error_msg:
-        raise HTTPException(
-            status_code=404,
-            detail="No documents indexed. Run: python scripts/index_documents.py"
-        )
+        raise HTTPException(status_code=404, detail="No documents indexed.")
 
     raise HTTPException(status_code=500, detail=f"RAG pipeline error: {error_msg}")

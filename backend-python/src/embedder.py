@@ -2,8 +2,12 @@
 Local embedding using FastEmbed (ONNX runtime).
 Runs entirely on CPU — no VPS, no GPU, no network required.
 Supports batch embedding for fast indexing of large document sets.
+
+v2.1 — Added LRU query cache (128 entries) for instant repeated queries.
 """
 import os
+import hashlib
+from collections import OrderedDict
 from dotenv import load_dotenv
 from fastembed import TextEmbedding
 
@@ -15,6 +19,10 @@ EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "32"))  # Safe for 8GB RAM
 # Lazy-load model (downloads ~140MB on first run, cached after that)
 _model = None
 
+# ─── LRU Query Embedding Cache ───────────────────────────────────────────────
+_CACHE_MAX = 128
+_query_cache = OrderedDict()
+
 
 def _get_model() -> TextEmbedding:
     global _model
@@ -25,18 +33,46 @@ def _get_model() -> TextEmbedding:
     return _model
 
 
+def warmup():
+    """Pre-load embedding model so first real query is instant."""
+    _get_model()
+    print("Embedder warmed up.")
+
+
+def _cache_key(text: str) -> str:
+    """Fast hash for cache lookup."""
+    return hashlib.md5(text.encode("utf-8")).hexdigest()
+
+
 def get_embedding(text: str, is_query: bool = True) -> list[float]:
     """
     Embed a single text string locally using FastEmbed ONNX.
     Uses task-specific prefixes for nomic-embed-text (search_query / search_document).
+    Query embeddings are cached (LRU-128) for instant repeated lookups.
     """
-    model = _get_model()
     prefix = "search_query: " if is_query else "search_document: "
     prefixed = prefix + text
 
+    # Check cache for queries
+    if is_query:
+        key = _cache_key(prefixed)
+        if key in _query_cache:
+            _query_cache.move_to_end(key)
+            return _query_cache[key]
+
+    model = _get_model()
+
     # FastEmbed returns a generator, convert to list
     embeddings = list(model.embed([prefixed]))
-    return embeddings[0].tolist()
+    result = embeddings[0].tolist()
+
+    # Store in cache for queries
+    if is_query:
+        _query_cache[key] = result
+        if len(_query_cache) > _CACHE_MAX:
+            _query_cache.popitem(last=False)
+
+    return result
 
 
 def embed_chunks(chunks: list[dict]) -> list[dict]:

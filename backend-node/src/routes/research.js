@@ -88,7 +88,7 @@ router.delete("/chats/:id", async (req, res) => {
 
 // ─── POST /api/research/chats/:id/ask ────────────────────────────────────────
 router.post("/chats/:id/ask", async (req, res) => {
-  const { question } = req.body;
+  const { question, answer_style } = req.body;
   const { id } = req.params;
 
   if (!question || !question.trim()) {
@@ -107,7 +107,14 @@ router.post("/chats/:id/ask", async (req, res) => {
     chat.messages.push({ role: "user", text: question.trim(), timestamp: new Date() });
     await chat.save();
 
-    // Forward to Python RAG
+    // Build conversation history (last 6 messages for context)
+    const recentMessages = chat.messages.slice(-7, -1); // exclude the just-added user msg
+    const history = recentMessages.map(m => ({
+      role: m.role,
+      text: (m.text || "").substring(0, 500), // truncate for efficiency
+    }));
+
+    // Forward to Python RAG with history + answer_style
     let answerText = "No response from service.";
     let sources = [];
     let status = "answered";
@@ -118,7 +125,12 @@ router.post("/chats/:id/ask", async (req, res) => {
       const startTime = Date.now();
       const response = await axios.post(
         `${PYTHON_URL()}/query`,
-        { question: question.trim(), top_k: 5 },
+        {
+          question: question.trim(),
+          top_k: 5,
+          history: history.length > 0 ? history : null,
+          answer_style: answer_style || "classical",
+        },
         { timeout: 120000 }
       );
       timing.totalMs = Date.now() - startTime;

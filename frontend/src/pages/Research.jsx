@@ -68,8 +68,12 @@ const DEFAULT_MESSAGES = [
   },
 ];
 
-/* ─── Detail Levels ──────────────────────────────────────────────── */
-const DETAIL_LEVELS = ["Quick", "Standard", "Detailed", "Deep"];
+/* ─── Detail Levels → mapped to backend answer_style values ─────── */
+const DETAIL_LEVELS = [
+  { label: "Short",     value: "short" },
+  { label: "Classical", value: "classical" },
+  { label: "Detailed",  value: "detailed" },
+];
 
 export default function Research() {
   const navigate = useNavigate();
@@ -106,7 +110,7 @@ export default function Research() {
   const [isTyping, setIsTyping] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [feedbacks, setFeedbacks] = useState({});
-  const [detailLevel, setDetailLevel] = useState("Detailed");
+  const [detailLevel, setDetailLevel] = useState("classical");
   const [sourcesOpen, setSourcesOpen] = useState({});
 
   const bottomRef = useRef(null);
@@ -125,7 +129,7 @@ export default function Research() {
     setIsTyping(false);
   };
 
-  const handleSend = (queryText) => {
+  const handleSend = async (queryText) => {
     const question = (queryText || input).trim();
     if (!question) return;
 
@@ -151,29 +155,130 @@ export default function Research() {
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     setIsTyping(true);
 
-    setTimeout(() => {
-      let aiText, sources = [], isRefused = false;
-      const q = question.toLowerCase();
-      if (q.includes("contraindication") || q.includes("ace")) {
-        aiText = "### Contraindications for ACE Inhibitors\n\n- **History of Angioedema**: Prior angioedema related to previous ACE inhibitor treatment.\n- **Pregnancy**: Absolute contraindication (FDA Black Box Warning).\n- **Bilateral Renal Artery Stenosis**: Risk of severe acute renal failure.\n- **Concomitant Aliskiren Use**: In diabetic patients due to hyperkalemia risk.";
-        sources = ["JNC_8_Hypertension_Guidelines.pdf", "Cardiovascular_Pharmacology_2025.pdf"];
-      } else if (q.includes("diabetes")) {
-        aiText = "### Type 2 Diabetes Management\nFirst-line therapy remains **Metformin** combined with lifestyle modifications. SGLT2 inhibitors and GLP-1 receptor agonists are prioritized for patients with established ASCVD or heart failure.";
-        sources = ["endocrinology_guidelines.pdf"];
-      } else {
-        isRefused = true;
-        aiText = "I can only answer questions based on the uploaded documents. The indexed medical documents do not contain authoritative data matching this query.";
+    try {
+      // Build conversation history from current messages
+      const currentMsgs = messagesMap[chatId] || [];
+      const history = currentMsgs.slice(-6).map(m => ({
+        role: m.role,
+        text: (m.text || "").substring(0, 500),
+      }));
+
+      // Call Python RAG directly via stream endpoint
+      const response = await fetch("http://localhost:8000/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          top_k: 5,
+          answer_style: detailLevel,
+          history: history.length > 0 ? history : null,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Stream request failed");
       }
 
+      // Add empty assistant message to stream into
+      const assistantId = "a_" + Date.now();
       setMessagesMap((prev) => ({
         ...prev,
         [chatId]: [
           ...(prev[chatId] || []),
-          { id: "a_" + Date.now(), role: "assistant", isRefused, text: aiText, sources, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
+          { id: assistantId, role: "assistant", text: "", sources: [], time: now },
         ],
       }));
-      setIsTyping(false);
-    }, 1600);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value, { stream: true });
+        const lines = text.split("\n").filter((l) => l.startsWith("data: "));
+
+        for (const line of lines) {
+          try {
+            const payload = JSON.parse(line.replace("data: ", ""));
+
+            if (payload.error) {
+              setMessagesMap((prev) => {
+                const msgs = [...(prev[chatId] || [])];
+                const last = msgs[msgs.length - 1];
+                if (last && last.role === "assistant") {
+                  last.text = `⚠️ ${payload.error}`;
+                  last.isRefused = true;
+                }
+                return { ...prev, [chatId]: msgs };
+              });
+              setIsTyping(false);
+              return;
+            }
+
+            if (payload.replace) {
+              fullText = payload.replace;
+              setMessagesMap((prev) => {
+                const msgs = [...(prev[chatId] || [])];
+                const last = msgs[msgs.length - 1];
+                if (last && last.role === "assistant") {
+                  last.text = payload.replace;
+                  last.isRefused = true;
+                }
+                return { ...prev, [chatId]: msgs };
+              });
+            }
+
+            if (payload.done) {
+              setMessagesMap((prev) => {
+                const msgs = [...(prev[chatId] || [])];
+                const last = msgs[msgs.length - 1];
+                if (last && last.role === "assistant") {
+                  last.sources = payload.sources || [];
+                  if (payload.refused) last.isRefused = true;
+                }
+                return { ...prev, [chatId]: msgs };
+              });
+              setIsTyping(false);
+              return;
+            }
+
+            if (payload.token) {
+              fullText += payload.token;
+              const captured = fullText;
+              setMessagesMap((prev) => {
+                const msgs = [...(prev[chatId] || [])];
+                const last = msgs[msgs.length - 1];
+                if (last && last.role === "assistant") {
+                  last.text = captured;
+                }
+                return { ...prev, [chatId]: msgs };
+              });
+            }
+          } catch {
+            // Ignore malformed SSE lines
+          }
+        }
+      }
+    } catch (err) {
+      setMessagesMap((prev) => ({
+        ...prev,
+        [chatId]: [
+          ...(prev[chatId] || []),
+          {
+            id: "a_" + Date.now(),
+            role: "assistant",
+            isRefused: true,
+            text: `⚠️ ${err.message || "Failed to connect to RAG service. Make sure the Python backend is running."}`,
+            sources: [],
+            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ],
+      }));
+    }
+    setIsTyping(false);
   };
 
   const handleDeleteChat = (e, groupKey, chatId) => {
@@ -923,18 +1028,18 @@ export default function Research() {
                 <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
                   Detail:
                 </span>
-                {DETAIL_LEVELS.map((level) => (
+                {DETAIL_LEVELS.map(({ label, value }) => (
                   <button
-                    key={level}
-                    onClick={() => setDetailLevel(level)}
+                    key={value}
+                    onClick={() => setDetailLevel(value)}
                     className="px-3 py-1 rounded-full text-xs font-medium border transition-all"
                     style={
-                      detailLevel === level
+                      detailLevel === value
                         ? { background: "var(--brand-primary)", color: "#FFFFFF", borderColor: "var(--brand-primary)" }
                         : { background: "transparent", color: "var(--text-muted)", borderColor: "var(--border-color)" }
                     }
                   >
-                    {level}
+                    {label}
                   </button>
                 ))}
               </div>
