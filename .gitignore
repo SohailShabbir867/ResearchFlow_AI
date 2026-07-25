@@ -52,3 +52,4 @@ backend-python/models/
 # Local data (documents are added manually, not tracked in git)
 backend-python/data/documents/*
 !backend-python/data/documents/.gitkeep
+backend-python/qdrant_storage/

@@ -25,6 +25,7 @@ import {
   CheckCircle2,
   X,
   Globe,
+  Microscope,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useSelector, useDispatch } from "react-redux";
