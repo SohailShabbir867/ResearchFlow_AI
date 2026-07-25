@@ -33,7 +33,7 @@
   --bg-user-msg:    #012D1D;
   --bg-ai-msg:      #FFFFFF;
   --bg-chat-area:   #F4F1EA;
-  --bg-input-bar:   #FFFFFF;
+  --bg-input-bar:   #F4F1EA;
 
   /* Borders */
   --border-color:        #E6E0D4;
@@ -103,7 +103,7 @@
   --bg-user-msg:    #2F2F2F;
   --bg-ai-msg:      transparent;
   --bg-chat-area:   #212121;
-  --bg-input-bar:   #2F2F2F;
+  --bg-input-bar:   #212121;
 
   /* Borders */
   --border-color:        rgba(255, 255, 255, 0.10);
