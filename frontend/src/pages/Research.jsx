@@ -794,7 +794,7 @@ export default function Research() {
 
         {/* ── Scrollable chat messages ── */}
         <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 space-y-6 sidebar-scroll">
-          <div className="max-w-3xl mx-auto w-full">
+          <div className="max-w-5xl mx-auto w-full">
 
             {/* Empty state / Welcome screen */}
             {currentMessages.length === 0 && !isTyping && (
@@ -871,7 +871,7 @@ export default function Research() {
                     </div>
                   )}
 
-                  <div className={`flex flex-col ${isUser ? "items-end max-w-[65%]" : "items-start max-w-[80%] w-full"}`}>
+                  <div className={`flex flex-col ${isUser ? "items-end max-w-[75%]" : "items-start w-full"}`}>
 
                     {/* USER bubble — deep forest green (#012D1D) */}
                     {isUser && (
@@ -890,19 +890,12 @@ export default function Research() {
                       </>
                     )}
 
-                    {/* AI bubble */}
+                    {/* AI message — clean, uncontained presentation matching Image 2 */}
                     {!isUser && (
                       <>
                         <div
-                          className="w-full rounded-2xl rounded-tl-sm p-4 text-sm leading-relaxed"
-                          style={{
-                            background: isRefused ? "rgba(245,158,11,0.08)" : "var(--bg-card)",
-                            border: isRefused
-                              ? "1px solid rgba(245,158,11,0.3)"
-                              : "1px solid var(--border-color)",
-                            boxShadow: "var(--shadow-card)",
-                            color: "var(--text-ai-msg)",
-                          }}
+                          className="w-full text-sm leading-relaxed"
+                          style={{ color: "var(--text-primary)" }}
                         >
                           {isRefused && (
                             <div className="flex items-center gap-1.5 text-amber-500 text-xs font-bold uppercase tracking-wide mb-2">
@@ -913,31 +906,63 @@ export default function Research() {
                           <MarkdownContent text={msg.text} streaming={isStreaming} />
                         </div>
 
-                        {/* Sources row */}
-                        {msg.sources && msg.sources.length > 0 && (
-                          <div
-                            className="mt-2 w-full rounded-xl p-3 flex items-center justify-between"
-                            style={{ border: "1px solid var(--border-color)", background: "var(--bg-card)" }}
+                        {/* Clean bottom action bar (Copy, Feedback, Sources button) */}
+                        <div className="flex items-center gap-2 mt-3 flex-wrap">
+                          <button
+                            onClick={() => handleCopy(msg.id, msg.text)}
+                            className="p-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors hover:bg-white/5"
+                            style={{ color: "var(--text-muted)" }}
+                            title="Copy response"
                           >
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-                                Sources: {msg.sources.length} documents
-                              </span>
-                              <button
-                                onClick={() => setSourcesOpen((p) => ({ ...p, [msg.id]: !p[msg.id] }))}
-                                className="text-xs px-2 py-0.5 rounded-full border transition-colors"
-                                style={{ borderColor: "var(--border-color)", color: "var(--text-muted)" }}
-                              >
-                                {sourcesOpen[msg.id] ? "▲" : "▼"}
-                              </button>
-                            </div>
-                            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                              {msg.time}
-                            </span>
-                          </div>
-                        )}
+                            {copiedId === msg.id ? (
+                              <>
+                                <Check className="w-4 h-4 text-emerald-500" />
+                                <span className="text-emerald-500">Copied</span>
+                              </>
+                            ) : (
+                              <Copy className="w-4 h-4" />
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => setFeedbacks((p) => ({ ...p, [msg.id]: "up" }))}
+                            className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
+                            style={{ color: feedbacks[msg.id] === "up" ? "#10B981" : "var(--text-muted)" }}
+                            title="Good response"
+                          >
+                            <ThumbsUp className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            onClick={() => setFeedbacks((p) => ({ ...p, [msg.id]: "down" }))}
+                            className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
+                            style={{ color: feedbacks[msg.id] === "down" ? "#EF4444" : "var(--text-muted)" }}
+                            title="Bad response"
+                          >
+                            <ThumbsDown className="w-4 h-4" />
+                          </button>
+
+                          {/* Sources pill button if available */}
+                          {msg.sources && msg.sources.length > 0 && (
+                            <button
+                              onClick={() => setSourcesOpen((p) => ({ ...p, [msg.id]: !p[msg.id] }))}
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-colors border"
+                              style={{
+                                borderColor: "var(--border-color)",
+                                color: "var(--text-muted)",
+                                background: "transparent",
+                              }}
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>Sources ({msg.sources.length})</span>
+                              <span>{sourcesOpen[msg.id] ? "▲" : "▼"}</span>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Expanded sources list */}
                         {sourcesOpen[msg.id] && msg.sources && msg.sources.length > 0 && (
-                          <div className="mt-1 flex flex-wrap gap-2 pl-1">
+                          <div className="mt-2 flex flex-wrap gap-2 pl-1">
                             {msg.sources.map((src, i) => (
                               <div
                                 key={i}
@@ -953,43 +978,6 @@ export default function Research() {
                             ))}
                           </div>
                         )}
-
-                        {/* Action buttons */}
-                        <div className="flex items-center gap-1 mt-2">
-                          <button
-                            onClick={() => handleCopy(msg.id, msg.text)}
-                            className="px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors"
-                            style={{ color: "var(--text-muted)" }}
-                            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
-                            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-                          >
-                            {copiedId === msg.id ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                <span className="text-emerald-500">Copied</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5" />
-                                <span>Copy</span>
-                              </>
-                            )}
-                          </button>
-                          <button
-                            onClick={() => setFeedbacks((p) => ({ ...p, [msg.id]: "up" }))}
-                            className="p-1.5 rounded-lg transition-colors"
-                            style={{ color: feedbacks[msg.id] === "up" ? "#10B981" : "var(--text-muted)" }}
-                          >
-                            <ThumbsUp className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => setFeedbacks((p) => ({ ...p, [msg.id]: "down" }))}
-                            className="p-1.5 rounded-lg transition-colors"
-                            style={{ color: feedbacks[msg.id] === "down" ? "#EF4444" : "var(--text-muted)" }}
-                          >
-                            <ThumbsDown className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
                       </>
                     )}
                   </div>
@@ -1042,11 +1030,11 @@ export default function Research() {
         <div
           className="shrink-0 px-4 sm:px-8 pt-3 pb-4 z-20"
           style={{
-            borderTop: "1px solid var(--border-color-subtle)",
+            borderTop: "none",
             background: "var(--bg-input-bar)",
           }}
         >
-          <div className="max-w-3xl mx-auto">
+          <div className="max-w-5xl mx-auto">
             <div
               className="flex items-center gap-3 rounded-2xl px-3 py-2 transition-all"
               style={{

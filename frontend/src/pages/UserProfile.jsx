@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSelector } from "react-redux";
 import { 
   Microscope, 
   Plus, 
@@ -8,14 +9,11 @@ import {
   ChevronLeft, 
   ChevronRight, 
   ArrowLeft, 
-  Lock, 
   Eye, 
   EyeOff, 
   AlertTriangle, 
   CheckCircle2, 
   User, 
-  Mail, 
-  Stethoscope, 
   Key, 
   Save, 
   FolderOpen,
@@ -27,15 +25,16 @@ import ThemeToggle from "../components/ThemeToggle.jsx";
 
 export default function UserProfile() {
   const navigate = useNavigate();
+  const user = useSelector((s) => s.auth.user);
 
   // Sidebar State
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Profile Form State
-  const [fullName, setFullName] = useState("Dr. Sohail Shabbir");
-  const [email] = useState("sohail.shabbir@medresearch.ai"); // Read-only
-  const [specialty, setSpecialty] = useState("Cardiology & Medical AI");
+  const [fullName, setFullName] = useState(user?.name || "Dr. Sohail Shabbir");
+  const [email] = useState(user?.email || "sohail.shabbir@medresearch.ai");
+  const [specialty, setSpecialty] = useState(user?.specialty || "Cardiology & Medical AI");
   const [profileSuccessMsg, setProfileSuccessMsg] = useState("");
 
   // Password Form State
@@ -52,7 +51,14 @@ export default function UserProfile() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
-  // Calculate Password Strength (0: none, 1: weak, 2: medium, 3: strong)
+  const userInitials = (fullName || "U")
+    .split(" ")
+    .map(w => w[0])
+    .join("")
+    .substring(0, 2)
+    .toUpperCase();
+
+  // Calculate Password Strength
   const getPasswordStrength = (pass) => {
     if (!pass) return { score: 0, label: "", color: "" };
     let score = 0;
@@ -67,14 +73,12 @@ export default function UserProfile() {
 
   const pwStrength = getPasswordStrength(newPassword);
 
-  // Save Profile Changes
   const handleSaveProfile = (e) => {
     if (e) e.preventDefault();
     setProfileSuccessMsg("Profile information updated successfully!");
     setTimeout(() => setProfileSuccessMsg(""), 3000);
   };
 
-  // Change Password Action
   const handleChangePassword = (e) => {
     e.preventDefault();
     setPasswordErrorMsg("");
@@ -97,48 +101,62 @@ export default function UserProfile() {
     setTimeout(() => setPasswordSuccessMsg(""), 3000);
   };
 
-  // Permanent Delete Account Action
   const handleConfirmDelete = () => {
-    if (deleteConfirmText.trim() === "DELETE") {
-      alert("Your account has been deleted. Redirecting to login...");
-      navigate("/login");
-    }
+    if (deleteConfirmText.trim() !== "DELETE") return;
+    alert("Account deletion request submitted.");
+    setShowDeleteModal(false);
+    navigate("/login");
   };
 
-  const isPasswordFormValid = currentPassword.trim() !== "" && newPassword.trim() !== "" && confirmPassword.trim() !== "";
+  const isPasswordFormValid = currentPassword && newPassword && confirmPassword && newPassword === confirmPassword;
 
   return (
-    <div className="flex h-screen w-full bg-[#0F0A1E] font-sans antialiased text-gray-100 overflow-hidden selection:bg-[#E21B70]/30 selection:text-white">
-      
-      {/* Mobile Sidebar Backdrop Overlay */}
+    <div
+      className="flex h-screen w-full font-sans antialiased overflow-hidden"
+      style={{ background: "var(--bg-page)", color: "var(--text-primary)" }}
+    >
+      {/* ── Mobile backdrop ── */}
       {mobileMenuOpen && (
-        <div 
+        <div
           onClick={() => setMobileMenuOpen(false)}
-          className="fixed inset-0 bg-black/70 backdrop-blur-xs z-40 lg:hidden"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
         />
       )}
 
-      {/* ── LEFT SIDEBAR (Research Chat Sidebar style) ── */}
-      <aside 
-        className={`bg-[#0A0614] border-r border-white/10 flex flex-col justify-between transition-all duration-300 z-50 shrink-0 fixed lg:static inset-y-0 left-0 ${
+      {/* ── SIDEBAR ── */}
+      <aside
+        style={{
+          background: "var(--bg-sidebar)",
+          borderRight: "1px solid var(--border-color-subtle)",
+          width: sidebarCollapsed ? "64px" : "260px",
+          transition: "width 0.25s ease",
+        }}
+        className={`flex flex-col h-full shrink-0 z-50 fixed lg:static inset-y-0 left-0 ${
           mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        } ${sidebarCollapsed ? "w-16" : "w-[280px]"}`}
+        }`}
       >
-        {/* Top Header */}
-        <div className="p-4 flex items-center justify-between border-b border-white/5">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#E21B70] to-[#A53860] flex items-center justify-center text-white shrink-0 shadow-[0_0_15px_rgba(226,27,112,0.3)]">
-              <Microscope className="w-5 h-5 stroke-[2.2]" />
+        {/* Logo header */}
+        <div
+          className="flex items-center justify-between px-4 h-14 shrink-0"
+          style={{ borderBottom: "1px solid var(--border-color-subtle)" }}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm text-white"
+              style={{ background: "var(--brand-primary)" }}
+            >
+              <Microscope className="w-4 h-4" strokeWidth={2.2} />
             </div>
             {!sidebarCollapsed && (
-              <span className="font-bold text-white text-base tracking-tight truncate">
+              <span className="font-bold text-sm tracking-tight truncate" style={{ color: "var(--text-heading)" }}>
                 ResearchAI
               </span>
             )}
           </div>
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+            className="p-1.5 rounded-lg transition-colors"
+            style={{ color: "var(--text-muted)" }}
             title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {sidebarCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
@@ -149,9 +167,10 @@ export default function UserProfile() {
         <div className="p-3">
           <button
             onClick={() => navigate("/")}
-            className={`w-full h-11 rounded-xl bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-md shadow-[#E21B70]/20 hover:opacity-95 active:scale-[0.98] transition-all duration-200 ${
+            className={`w-full h-11 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-md transition-all duration-200 ${
               sidebarCollapsed ? "px-0" : "px-4"
             }`}
+            style={{ background: "var(--brand-primary)" }}
           >
             <Plus className="w-5 h-5 stroke-[2.5]" />
             {!sidebarCollapsed && <span>New Chat</span>}
@@ -162,55 +181,65 @@ export default function UserProfile() {
         <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
           <button
             onClick={() => navigate("/")}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all"
+            style={{ color: "var(--text-muted)" }}
           >
-            <Microscope className="w-4 h-4 text-gray-400" />
+            <Microscope className="w-4 h-4" />
             {!sidebarCollapsed && <span>Research Chat</span>}
           </button>
 
           <button
             onClick={() => navigate("/documents")}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all"
+            style={{ color: "var(--text-muted)" }}
           >
-            <FolderOpen className="w-4 h-4 text-gray-400" />
+            <FolderOpen className="w-4 h-4" />
             {!sidebarCollapsed && <span>Document Library</span>}
           </button>
 
           <button
             onClick={() => navigate("/admin")}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all"
+            style={{ color: "var(--text-muted)" }}
           >
-            <Settings className="w-4 h-4 text-gray-400" />
+            <Settings className="w-4 h-4" />
             {!sidebarCollapsed && <span>Admin Dashboard</span>}
           </button>
         </div>
 
         {/* User Footer (HIGHLIGHTED FOR PROFILE) */}
-        <div className="p-3 border-t border-white/10 bg-[#0A0614]">
+        <div className="p-3 shrink-0" style={{ borderTop: "1px solid var(--border-color-subtle)", background: "var(--bg-sidebar)" }}>
           <div 
             onClick={() => navigate("/profile")}
-            className={`flex items-center gap-3 p-2 rounded-xl bg-[#E21B70]/15 border border-[#E21B70]/30 cursor-pointer transition-colors ${
+            className={`flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-colors ${
               sidebarCollapsed ? "justify-center" : ""
             }`}
+            style={{
+              background: "var(--bg-badge)",
+              border: "1px solid var(--border-color)",
+            }}
           >
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#E21B70] to-[#A53860] flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-md">
-              SS
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-md"
+              style={{ background: "var(--brand-primary)" }}
+            >
+              {userInitials}
             </div>
             {!sidebarCollapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-white truncate">Dr. Sohail Shabbir</p>
-                <p className="text-[10px] text-gray-400 truncate">Clinical Researcher</p>
+                <p className="text-xs font-semibold truncate" style={{ color: "var(--text-heading)" }}>{fullName}</p>
+                <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{specialty}</p>
               </div>
             )}
             {!sidebarCollapsed && (
-              <span className="text-xs text-[#E21B70] font-bold">Profile</span>
+              <span className="text-xs font-bold" style={{ color: "var(--brand-primary)" }}>Profile</span>
             )}
           </div>
         </div>
       </aside>
 
       {/* ── MAIN CONTENT AREA ── */}
-      <main className="flex-1 flex flex-col h-full bg-[#0F0A1E] relative overflow-y-auto p-6 lg:p-8">
+      <main className="flex-1 flex flex-col h-full relative overflow-y-auto p-6 lg:p-8" style={{ background: "var(--bg-page)" }}>
         <div className="max-w-[900px] w-full mx-auto space-y-6">
           
           {/* Page Header */}
@@ -218,12 +247,13 @@ export default function UserProfile() {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="lg:hidden p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white transition-colors"
+                className="lg:hidden p-2 rounded-xl border transition-colors"
+                style={{ background: "var(--bg-card)", borderColor: "var(--border-color-subtle)", color: "var(--text-muted)" }}
                 title="Open menu"
               >
                 <Menu className="w-5 h-5" />
               </button>
-              <h1 className="text-[24px] font-bold text-white tracking-tight">
+              <h1 className="text-[24px] font-bold tracking-tight" style={{ color: "var(--text-heading)" }}>
                 User Profile
               </h1>
             </div>
@@ -231,7 +261,8 @@ export default function UserProfile() {
               <ThemeToggle />
               <button
                 onClick={() => navigate("/")}
-                className="px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-gray-400 hover:text-white transition-colors flex items-center gap-1.5"
+                className="px-3.5 py-2 rounded-xl border text-xs font-semibold transition-colors flex items-center gap-1.5"
+                style={{ background: "var(--bg-card)", borderColor: "var(--border-color)", color: "var(--text-muted)" }}
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>Back to Chat</span>
@@ -239,34 +270,39 @@ export default function UserProfile() {
             </div>
           </div>
 
-
-          {/* ── SECTION 1 — PROFILE SECTION (Glass Card) ── */}
-          <div className="rounded-2xl bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.10)] p-6 backdrop-blur-md relative">
-            
+          {/* ── SECTION 1 — PERSONAL INFORMATION ── */}
+          <div
+            className="rounded-2xl p-6 backdrop-blur-md relative"
+            style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)" }}
+          >
             {/* Top-Right Save Changes Button */}
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/10">
-              <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                <User className="w-5 h-5 text-[#E21B70]" />
+            <div className="flex items-center justify-between mb-6 pb-4" style={{ borderBottom: "1px solid var(--border-color-subtle)" }}>
+              <h2 className="text-base font-bold tracking-tight flex items-center gap-2" style={{ color: "var(--text-heading)" }}>
+                <User className="w-5 h-5" style={{ color: "var(--brand-primary)" }} />
                 <span>Personal Information</span>
               </h2>
 
               <button
                 onClick={handleSaveProfile}
-                className="h-10 px-5 rounded-xl bg-gradient-to-r from-[#E21B70] to-[#A53860] text-white font-semibold text-xs shadow-md shadow-[#E21B70]/25 hover:opacity-95 active:scale-[0.98] transition-all flex items-center gap-1.5 cursor-pointer"
+                className="h-10 px-5 rounded-xl text-white font-semibold text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                style={{ background: "var(--brand-primary)" }}
               >
                 <Save className="w-3.5 h-3.5" />
                 <span>Save Changes</span>
               </button>
             </div>
 
-            {/* Profile Content Layout (Avatar on Left, Form on Right) */}
+            {/* Profile Content Layout */}
             <div className="flex flex-col sm:flex-row items-start gap-8">
               
-              {/* Left Side: Large 72px Avatar + Edit Photo Label */}
+              {/* Left Side: Avatar */}
               <div className="flex flex-col items-center shrink-0">
                 <div className="relative group">
-                  <div className="w-[72px] h-[72px] rounded-full bg-gradient-to-br from-[#E21B70] to-[#A53860] flex items-center justify-center text-white font-bold text-2xl shadow-xl shadow-pink-950/30">
-                    SS
+                  <div
+                    className="w-[72px] h-[72px] rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-xl"
+                    style={{ background: "var(--brand-primary)" }}
+                  >
+                    {userInitials}
                   </div>
                   <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer">
                     <Camera className="w-6 h-6 text-white" />
@@ -276,7 +312,8 @@ export default function UserProfile() {
                 <button
                   type="button"
                   onClick={() => alert("Photo upload dialog opened.")}
-                  className="text-xs text-[#E21B70] hover:underline font-medium mt-2"
+                  className="text-xs hover:underline font-medium mt-2"
+                  style={{ color: "var(--brand-primary)" }}
                 >
                   Edit photo
                 </button>
@@ -285,53 +322,68 @@ export default function UserProfile() {
               {/* Right Side: Form Fields */}
               <div className="flex-1 w-full space-y-4">
                 
-                {/* Full Name (Editable, required) */}
+                {/* Full Name */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-semibold text-gray-300">
+                    <label className="block text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
                       Full name
                     </label>
-                    <span className="text-[11px] font-bold text-[#E21B70]">required</span>
+                    <span className="text-[11px] font-bold" style={{ color: "var(--brand-primary)" }}>required</span>
                   </div>
                   <input
                     type="text"
                     required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className="w-full h-11 px-4 text-sm text-white bg-white/5 border border-white/10 rounded-xl outline-none focus:border-[#E21B70] focus:ring-1 focus:ring-[#E21B70]/20 transition-all"
+                    className="w-full h-11 px-4 text-sm rounded-xl outline-none transition-all"
+                    style={{
+                      background: "var(--bg-input)",
+                      border: "1px solid var(--border-input)",
+                      color: "var(--text-primary)",
+                    }}
                   />
                 </div>
 
-                {/* Email Address (Read-only) */}
+                {/* Email Address */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--text-secondary)" }}>
                     Email address
                   </label>
                   <input
                     type="email"
                     readOnly
                     value={email}
-                    className="w-full h-11 px-4 text-sm text-gray-400 bg-white/5 border border-white/10 rounded-xl outline-none cursor-not-allowed opacity-75 font-mono"
+                    className="w-full h-11 px-4 text-sm rounded-xl outline-none cursor-not-allowed opacity-75 font-mono"
+                    style={{
+                      background: "var(--bg-input)",
+                      border: "1px solid var(--border-input)",
+                      color: "var(--text-muted)",
+                    }}
                   />
-                  <p className="text-xs text-gray-500 italic mt-1">
+                  <p className="text-xs italic mt-1" style={{ color: "var(--text-muted)" }}>
                     Read-only — contact admin to change
                   </p>
                 </div>
 
-                {/* Medical Specialty (Optional) */}
+                {/* Medical Specialty */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-semibold text-gray-300">
+                    <label className="block text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
                       Medical specialty
                     </label>
-                    <span className="text-[11px] text-gray-500">optional</span>
+                    <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>optional</span>
                   </div>
                   <input
                     type="text"
                     value={specialty}
                     onChange={(e) => setSpecialty(e.target.value)}
                     placeholder="e.g. Cardiology, Oncology"
-                    className="w-full h-11 px-4 text-sm text-white bg-white/5 border border-white/10 rounded-xl outline-none focus:border-[#E21B70] focus:ring-1 focus:ring-[#E21B70]/20 transition-all"
+                    className="w-full h-11 px-4 text-sm rounded-xl outline-none transition-all"
+                    style={{
+                      background: "var(--bg-input)",
+                      border: "1px solid var(--border-input)",
+                      color: "var(--text-primary)",
+                    }}
                   />
                 </div>
 
@@ -349,25 +401,27 @@ export default function UserProfile() {
           </div>
 
 
-          {/* ── SECTION 2 — PASSWORD SECTION (Glass Card) ── */}
-          <div className="rounded-2xl bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.10)] p-6 backdrop-blur-md">
-            
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/10">
-              <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                <Key className="w-5 h-5 text-[#E21B70]" />
+          {/* ── SECTION 2 — PASSWORD SECTION ── */}
+          <div
+            className="rounded-2xl p-6 backdrop-blur-md"
+            style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)" }}
+          >
+            <div className="flex items-center justify-between mb-6 pb-4" style={{ borderBottom: "1px solid var(--border-color-subtle)" }}>
+              <h2 className="text-base font-bold tracking-tight flex items-center gap-2" style={{ color: "var(--text-heading)" }}>
+                <Key className="w-5 h-5" style={{ color: "var(--brand-primary)" }} />
                 <span>Change Password</span>
               </h2>
             </div>
 
             <form onSubmit={handleChangePassword} className="space-y-4">
               
-              {/* 1. Current Password */}
+              {/* Current Password */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold text-gray-300">
+                  <label className="block text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
                     Current password
                   </label>
-                  <span className="text-[11px] font-bold text-[#E21B70]">required</span>
+                  <span className="text-[11px] font-bold" style={{ color: "var(--brand-primary)" }}>required</span>
                 </div>
                 <div className="relative">
                   <input
@@ -375,25 +429,31 @@ export default function UserProfile() {
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full h-11 pl-4 pr-11 text-sm text-white bg-white/5 border border-white/10 rounded-xl outline-none focus:border-[#E21B70] transition-all"
+                    className="w-full h-11 pl-4 pr-11 text-sm rounded-xl outline-none transition-all"
+                    style={{
+                      background: "var(--bg-input)",
+                      border: "1px solid var(--border-input)",
+                      color: "var(--text-primary)",
+                    }}
                   />
                   <button
                     type="button"
                     onClick={() => setShowCurrentPw(!showCurrentPw)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white p-1 transition-colors"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 transition-colors"
+                    style={{ color: "var(--text-muted)" }}
                   >
                     {showCurrentPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
 
-              {/* 2. New Password with Strength Indicator */}
+              {/* New Password */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold text-gray-300">
+                  <label className="block text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
                     New password
                   </label>
-                  <span className="text-[11px] text-gray-500">optional</span>
+                  <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>optional</span>
                 </div>
                 <div className="relative">
                   <input
@@ -401,22 +461,28 @@ export default function UserProfile() {
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full h-11 pl-4 pr-11 text-sm text-white bg-white/5 border border-white/10 rounded-xl outline-none focus:border-[#E21B70] transition-all"
+                    className="w-full h-11 pl-4 pr-11 text-sm rounded-xl outline-none transition-all"
+                    style={{
+                      background: "var(--bg-input)",
+                      border: "1px solid var(--border-input)",
+                      color: "var(--text-primary)",
+                    }}
                   />
                   <button
                     type="button"
                     onClick={() => setShowNewPw(!showNewPw)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white p-1 transition-colors"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 transition-colors"
+                    style={{ color: "var(--text-muted)" }}
                   >
                     {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
 
-                {/* Strength Bar Indicator */}
+                {/* Strength Indicator */}
                 {newPassword && (
                   <div className="mt-2.5 space-y-1">
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-gray-400">Password strength:</span>
+                      <span style={{ color: "var(--text-muted)" }}>Password strength:</span>
                       <span className={`font-semibold ${pwStrength.text}`}>{pwStrength.label}</span>
                     </div>
                     <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden flex gap-1">
@@ -434,13 +500,13 @@ export default function UserProfile() {
                 )}
               </div>
 
-              {/* 3. Confirm New Password */}
+              {/* Confirm Password */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold text-gray-300">
+                  <label className="block text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
                     Confirm new password
                   </label>
-                  <span className="text-[11px] text-gray-500">optional</span>
+                  <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>optional</span>
                 </div>
                 <div className="relative">
                   <input
@@ -448,12 +514,18 @@ export default function UserProfile() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full h-11 pl-4 pr-11 text-sm text-white bg-white/5 border border-white/10 rounded-xl outline-none focus:border-[#E21B70] transition-all"
+                    className="w-full h-11 pl-4 pr-11 text-sm rounded-xl outline-none transition-all"
+                    style={{
+                      background: "var(--bg-input)",
+                      border: "1px solid var(--border-input)",
+                      color: "var(--text-primary)",
+                    }}
                   />
                   <button
                     type="button"
                     onClick={() => setShowConfirmPw(!showConfirmPw)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white p-1 transition-colors"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 transition-colors"
+                    style={{ color: "var(--text-muted)" }}
                   >
                     {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -475,12 +547,16 @@ export default function UserProfile() {
                 </div>
               )}
 
-              {/* Action Button: Disabled until all 3 fields filled */}
               <div className="pt-2">
                 <button
                   type="submit"
                   disabled={!isPasswordFormValid}
-                  className="px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  className="px-5 py-2.5 rounded-xl border text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  style={{
+                    background: "var(--bg-card-hover)",
+                    borderColor: "var(--border-color)",
+                    color: "var(--text-primary)",
+                  }}
                 >
                   Change Password
                 </button>
@@ -490,21 +566,19 @@ export default function UserProfile() {
           </div>
 
 
-          {/* ── SECTION 3 — DANGER ZONE SECTION (Red Tinted Glass Card) ── */}
+          {/* ── SECTION 3 — DANGER ZONE ── */}
           <div className="rounded-2xl bg-red-500/5 border-l-[3px] border-red-500 border-t border-r border-b border-red-500/20 p-6 backdrop-blur-md mb-8">
-            
             <div className="flex items-center gap-2 mb-2">
               <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
-              <h2 className="text-base font-bold text-white tracking-tight">
+              <h2 className="text-base font-bold tracking-tight" style={{ color: "var(--text-heading)" }}>
                 Danger Zone
               </h2>
             </div>
 
-            <p className="text-xs text-gray-400 leading-relaxed mb-6">
+            <p className="text-xs leading-relaxed mb-6" style={{ color: "var(--text-muted)" }}>
               Permanently delete your account and all associated chat history. This action cannot be undone.
             </p>
 
-            {/* Dark Red Delete Account Button (NOT Pink) */}
             <button
               type="button"
               onClick={() => {
@@ -516,18 +590,21 @@ export default function UserProfile() {
               <Trash2 className="w-4 h-4" />
               <span>Delete my account</span>
             </button>
-
           </div>
 
         </div>
 
-        {/* ── CONFIRMATION MODAL FOR ACCOUNT DELETION ── */}
+        {/* ── CONFIRMATION MODAL ── */}
         {showDeleteModal && (
           <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="w-full max-w-md rounded-2xl bg-[#180C14] border border-red-500/30 p-6 relative shadow-2xl animate-fade-in">
+            <div
+              className="w-full max-w-md rounded-2xl p-6 relative shadow-2xl animate-fade-in"
+              style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)" }}
+            >
               <button
                 onClick={() => setShowDeleteModal(false)}
-                className="absolute right-4 top-4 text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+                className="absolute right-4 top-4 p-1 rounded-lg transition-colors"
+                style={{ color: "var(--text-muted)" }}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -536,10 +613,10 @@ export default function UserProfile() {
                 <AlertTriangle className="w-6 h-6" />
               </div>
 
-              <h3 className="text-lg font-bold text-white text-center mb-2">
+              <h3 className="text-lg font-bold text-center mb-2" style={{ color: "var(--text-heading)" }}>
                 Delete Account Permanently?
               </h3>
-              <p className="text-xs text-gray-300 text-center mb-6 leading-relaxed">
+              <p className="text-xs text-center mb-6 leading-relaxed" style={{ color: "var(--text-muted)" }}>
                 This action is destructive and irreversible. To confirm, please type <span className="font-mono font-bold text-red-400">DELETE</span> below:
               </p>
 
@@ -548,14 +625,16 @@ export default function UserProfile() {
                 value={deleteConfirmText}
                 onChange={(e) => setDeleteConfirmText(e.target.value)}
                 placeholder="Type DELETE to confirm"
-                className="w-full h-11 px-4 text-sm text-center text-white bg-black/40 border border-red-500/40 rounded-xl outline-none focus:border-red-500 mb-6 font-mono"
+                className="w-full h-11 px-4 text-sm text-center bg-black/40 border border-red-500/40 rounded-xl outline-none focus:border-red-500 mb-6 font-mono"
+                style={{ color: "var(--text-primary)" }}
               />
 
               <div className="flex gap-3">
                 <button
                   type="button"
                   onClick={() => setShowDeleteModal(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white font-semibold text-xs hover:bg-white/10 transition-colors"
+                  className="flex-1 py-2.5 rounded-xl border text-xs font-semibold transition-colors"
+                  style={{ background: "var(--bg-card-hover)", borderColor: "var(--border-color)", color: "var(--text-primary)" }}
                 >
                   Cancel
                 </button>
