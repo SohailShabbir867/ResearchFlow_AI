@@ -1,11 +1,17 @@
 """
-FastAPI REST API for ResearchAI RAG Service.
-v3.0.0 — Upgrades:
-  - Conversation memory: history param for context-aware follow-ups
-  - Answer style control: short / detailed / classical
-  - Startup warmup: pre-loads embedding + reranker models
-  - Stream endpoint: full guardrail parity with /query
-  - Embedding cache: repeated queries return instantly
+CyberSecAI — FastAPI REST Service
+v4.0.0 — Ethical Hacking & Cybersecurity Expert RAG API
+
+Endpoints:
+  GET  /health          — Service status and config
+  GET  /documents       — List indexed cybersec documents
+  POST /query           — Standard RAG query (full response)
+  POST /stream          — Streaming RAG query (SSE token-by-token)
+  POST /upload          — Upload cybersec document (PDF/TXT/DOCX/MD)
+  DELETE /documents/:s  — Delete document and its vectors
+  GET  /settings        — Get active guardrail config
+  POST /settings        — Update runtime settings
+  POST /rebuild-index   — Rebuild BM25 keyword index
 """
 import os
 import json
@@ -29,14 +35,18 @@ from src.embedder import get_embedding, warmup as warmup_embedder
 
 load_dotenv()
 
-DOCS_FOLDER = os.path.join(os.path.dirname(__file__), "../data/documents")
+DOCS_FOLDER  = os.path.join(os.path.dirname(__file__), "../data/documents")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL   = os.getenv("GROQ_MODEL",   "llama-3.3-70b-versatile")
 
 app = FastAPI(
-    title="ResearchAI — RAG Service",
-    description="Hybrid search + reranking + Groq LLM · v3.0.0",
-    version="3.0.0"
+    title="CyberSecAI — Ethical Hacking Expert RAG Service",
+    description=(
+        "Elite cybersecurity knowledge retrieval powered by BGE-base embeddings, "
+        "hybrid BM25+vector search, cross-encoder reranking, and Groq LLM. "
+        "Supports Python, Bash, C/C++, JavaScript, PowerShell, Ruby, SQL, Assembly."
+    ),
+    version="4.0.0"
 )
 
 app.add_middleware(
@@ -47,98 +57,116 @@ app.add_middleware(
 )
 
 
-# ─── Pydantic Models ─────────────────────────────────────────────────────────
+# ─── Pydantic Models ──────────────────────────────────────────────────────────
 
 class HistoryMessage(BaseModel):
     role: str
     text: str
 
 class QueryRequest(BaseModel):
-    question: str
-    top_k: int = 5
-    history: Optional[list[HistoryMessage]] = Field(default=None, description="Previous conversation turns for context")
-    answer_style: Optional[str] = Field(default=None, description="short | detailed | classical")
-    max_tokens: Optional[int] = Field(default=None, description="Max generation tokens limit")
+    question:     str
+    top_k:        int           = 8
+    history:      Optional[list[HistoryMessage]] = Field(
+        default=None,
+        description="Previous conversation turns for context-aware follow-ups"
+    )
+    answer_style: Optional[str] = Field(
+        default=None,
+        description="short | technical | detailed | ctf"
+    )
+    max_tokens:   Optional[int] = Field(
+        default=None,
+        description="Override max LLM generation tokens"
+    )
 
 class QueryResponse(BaseModel):
-    answer: str
+    answer:  str
     sources: list[str]
 
 
-# ─── Startup: pre-load models + BM25 index ──────────────────────────────────
+# ─── Startup: pre-load models + BM25 index ───────────────────────────────────
 
 @app.on_event("startup")
 async def startup_event():
-    print("=" * 50)
-    print("ResearchAI — RAG Service starting...")
+    print("=" * 60)
+    print("CyberSecAI — Ethical Hacking Expert RAG Service v4.0.0")
+    print("=" * 60)
 
-    # 1. Pre-load embedding model (eliminates ~3s cold start on first query)
-    print("Warming up embedding model...")
+    print("Step 1/3: Warming up BGE-base embedding model...")
     try:
         warmup_embedder()
     except Exception as e:
-        print(f"Warning: Embedder warmup failed ({e})")
+        print(f"  Warning: Embedder warmup failed ({e})")
 
-    # 2. Pre-load reranker model
-    print("Warming up reranker model...")
+    print("Step 2/3: Warming up cross-encoder reranker...")
     try:
         from src.reranker import _get_reranker
         _get_reranker()
     except Exception as e:
-        print(f"Warning: Reranker warmup failed ({e})")
+        print(f"  Warning: Reranker warmup failed ({e})")
 
-    # 3. Pre-build BM25 index
-    print("Pre-building BM25 index from Qdrant...")
+    print("Step 3/3: Pre-building BM25 index from Qdrant...")
     try:
         _build_bm25_index()
-        info = get_collection_info()
+        info   = get_collection_info()
         points = info.get("points_count", 0)
-        print(f"BM25 index ready — {points} chunks indexed.")
+        print(f"  BM25 index ready — {points} cybersec chunks indexed.")
     except Exception as e:
-        print(f"Warning: BM25 pre-build failed ({e}). Will retry on first query.")
+        print(f"  Warning: BM25 pre-build failed ({e}). Will retry on first query.")
 
-    print("Server ready.")
-    print("=" * 50)
+    print("=" * 60)
+    print("CyberSecAI is ready. All models loaded.")
+    print("=" * 60)
 
 
-# ─── Health ──────────────────────────────────────────────────────────────────
+# ─── Health ───────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
     info = get_collection_info()
     return {
-        "status": "ok",
-        "service": "researchai-python",
-        "version": "3.0.0",
-        "pipeline": "FastEmbed (cached) → Hybrid Search → Reranker → Groq LLM",
-        "features": ["embedding_cache", "conversation_memory", "answer_styles"],
+        "status":        "ok",
+        "service":       "cybersecai-python",
+        "version":       "4.0.0",
+        "pipeline":      "BGE-base (cached) → Hybrid Search + Query Expansion → Cross-Encoder → Groq LLM",
+        "features":      [
+            "semantic_chunking",
+            "code_block_preservation",
+            "query_expansion_50_acronyms",
+            "bge_base_embeddings",
+            "hybrid_bm25_vector_rrf",
+            "cross_encoder_reranking",
+            "conversation_memory",
+            "multi_language_codegen",
+            "answer_styles",
+        ],
         "answer_styles": list(ANSWER_STYLES.keys()),
-        "collection": info
+        "languages":     ["python", "bash", "c/c++", "javascript", "powershell", "ruby", "sql", "assembly"],
+        "collection":    info,
     }
 
 
-# ─── Documents ───────────────────────────────────────────────────────────────
+# ─── Documents ────────────────────────────────────────────────────────────────
 
 @app.get("/documents")
 def list_documents():
-    """List all indexed document sources and total chunk count."""
+    """List all indexed cybersecurity document sources and total chunk count."""
     sources = get_indexed_sources()
-    info = get_collection_info()
+    info    = get_collection_info()
     return {
-        "documents": sources,
-        "total_chunks": info.get("points_count", 0)
+        "documents":    sources,
+        "total_chunks": info.get("points_count", 0),
     }
 
 
-# ─── Query (standard — full response at once) ────────────────────────────────
+# ─── Query (standard — full response at once) ─────────────────────────────────
 
 @app.post("/query", response_model=QueryResponse)
 def query(request: QueryRequest):
-    """Standard RAG query with conversation memory and answer style control."""
+    """Standard CyberSecAI RAG query with conversation memory and answer style control."""
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
-    # Convert history models to dicts
     history = None
     if request.history:
         history = [{"role": m.role, "text": m.text} for m in request.history]
@@ -159,14 +187,13 @@ def query(request: QueryRequest):
     )
 
 
-# ─── Stream (token-by-token SSE with full guardrails) ────────────────────────
+# ─── Stream (token-by-token SSE with full guardrails) ─────────────────────────
 
 @app.post("/stream")
 async def stream_query(request: QueryRequest):
     """
-    Streaming RAG query using Server-Sent Events (SSE).
-    Full guardrail parity with /query endpoint.
-    Supports conversation memory and answer style control.
+    Streaming CyberSecAI RAG query using Server-Sent Events (SSE).
+    Full guardrail parity with /query. Supports conversation memory, answer styles.
     """
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
@@ -177,11 +204,9 @@ async def stream_query(request: QueryRequest):
             detail="GROQ_API_KEY not configured in backend-python/.env"
         )
 
-    # Resolve answer style
     style_name = request.answer_style if request.answer_style in ANSWER_STYLES else DEFAULT_STYLE
-    style = ANSWER_STYLES[style_name]
+    style      = ANSWER_STYLES[style_name]
 
-    # Convert history
     history = None
     if request.history:
         history = [{"role": m.role, "text": m.text} for m in request.history]
@@ -190,12 +215,13 @@ async def stream_query(request: QueryRequest):
         from groq import Groq
         from src.hybrid_search import hybrid_search
         from src.reranker import rerank
+        import src.rag_pipeline as rag
 
         try:
-            # Step 1: Enrich query with conversation context
+            # Step 1: Enrich query
             search_query = enrich_query(request.question, history)
 
-            # Step 2: Embed query (cached)
+            # Step 2: Embed (BGE-base, cached)
             query_vector = get_embedding(search_query, is_query=True)
 
             # Step 3: Hybrid search
@@ -209,7 +235,7 @@ async def stream_query(request: QueryRequest):
             # Step 4: Rerank
             reranked = rerank(request.question, candidates, top_k=request.top_k)
 
-            # Step 5: Full guardrail check (Layer 1 + Layer 2)
+            # Step 5: Guardrails
             should_refuse, refuse_reason = check_guardrails(reranked)
             if should_refuse:
                 print(f"  [Stream Guardrail BLOCKED] {refuse_reason}")
@@ -217,10 +243,9 @@ async def stream_query(request: QueryRequest):
                 yield f"data: {json.dumps({'done': True, 'sources': [], 'refused': True})}\n\n"
                 return
 
-            # Only pass chunks that cleared the threshold
             passing_chunks = filter_chunks_by_threshold(reranked)
 
-            # Step 6: Build prompt with history + style
+            # Step 6: Build prompt
             prompt = build_prompt(
                 request.question,
                 passing_chunks,
@@ -230,14 +255,18 @@ async def stream_query(request: QueryRequest):
 
             # Step 7: Stream from Groq
             client = Groq(api_key=GROQ_API_KEY)
-            effective_max_tokens = request.max_tokens or getattr(rag, "GLOBAL_MAX_TOKENS", None) or style["max_tokens"]
+            effective_max_tokens = (
+                request.max_tokens
+                or getattr(rag, "GLOBAL_MAX_TOKENS", None)
+                or style["max_tokens"]
+            )
             if style_name == "detailed":
-                effective_max_tokens = max(effective_max_tokens, 2500)
+                effective_max_tokens = max(effective_max_tokens, 4000)
 
             stream = client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
+                temperature=0.1,
                 max_tokens=effective_max_tokens,
                 stream=True
             )
@@ -249,14 +278,13 @@ async def stream_query(request: QueryRequest):
                     full_response += token
                     yield f"data: {json.dumps({'token': token})}\n\n"
 
-            # Step 8: Layer 3 — detect off-document answer
+            # Step 8: Layer 3 off-document detection
             if detect_off_document_answer(full_response):
                 print("  [Stream Guardrail L3] Off-document answer detected")
                 yield f"data: {json.dumps({'replace': REFUSAL_MSG})}\n\n"
                 yield f"data: {json.dumps({'done': True, 'sources': [], 'refused': True})}\n\n"
                 return
 
-            # Step 9: Send sources
             sources = list({c["source"] for c in passing_chunks})
             yield f"data: {json.dumps({'done': True, 'sources': sources, 'refused': False})}\n\n"
 
@@ -268,21 +296,24 @@ async def stream_query(request: QueryRequest):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-# ─── Upload ──────────────────────────────────────────────────────────────────
+# ─── Upload ───────────────────────────────────────────────────────────────────
 
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
-    """Upload a PDF, TXT, or DOCX file. Auto-chunks, embeds, stores in Qdrant."""
-    allowed = {".pdf", ".txt", ".docx"}
-    ext = os.path.splitext(file.filename)[1].lower()
+    """
+    Upload a cybersecurity document (PDF, TXT, DOCX, MD).
+    Auto-chunks with semantic boundaries, embeds with BGE-base, stores in Qdrant.
+    """
+    allowed = {".pdf", ".txt", ".docx", ".md"}
+    ext     = os.path.splitext(file.filename)[1].lower()
     if ext not in allowed:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type '{ext}'. Allowed: PDF, TXT, DOCX"
+            detail=f"Unsupported file type '{ext}'. Allowed: PDF, TXT, DOCX, MD"
         )
 
-    MAX_SIZE = 50 * 1024 * 1024
-    content = await file.read()
+    MAX_SIZE = 50 * 1024 * 1024  # 50MB
+    content  = await file.read()
     if len(content) > MAX_SIZE:
         raise HTTPException(status_code=413, detail="File too large. Maximum size is 50MB.")
 
@@ -304,18 +335,24 @@ async def upload_document(file: UploadFile = File(...)):
             os.remove(save_path)
             raise HTTPException(
                 status_code=422,
-                detail="No text could be extracted from the file."
+                detail="No text could be extracted from the file. Is it a scanned PDF?"
             )
 
-        chunks = chunk_document(pages, source_name=file.filename)
+        chunks   = chunk_document(pages, source_name=file.filename)
         embedded = embed_chunks(chunks)
-        store_chunks(embedded)
+        store_chunks(embedded, recreate=False)   # Incremental — don't wipe existing
         rebuild_bm25_index()
 
+        # Count interesting chunk types
+        code_chunks = sum(1 for c in chunks if c["metadata"].get("content_type") == "code")
+        cve_chunks  = sum(1 for c in chunks if c["metadata"].get("cves"))
+
         return {
-            "message": f"Successfully indexed '{file.filename}'",
+            "message":        f"Successfully indexed '{file.filename}'",
             "chunks_created": len(chunks),
-            "file_size_kb": round(len(content) / 1024, 1)
+            "code_chunks":    code_chunks,
+            "cve_chunks":     cve_chunks,
+            "file_size_kb":   round(len(content) / 1024, 1),
         }
     except HTTPException:
         raise
@@ -325,24 +362,17 @@ async def upload_document(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}")
 
 
-# ─── Delete Document ─────────────────────────────────────────────────────────
+# ─── Delete Document ──────────────────────────────────────────────────────────
 
 @app.delete("/documents/{source}")
 def delete_document(source: str):
-    """
-    Delete a document and all its vector chunks from Qdrant and disk.
-    Rebuilds BM25 index after deletion.
-    """
+    """Delete a cybersec document and all its vector chunks from Qdrant."""
     from src.vector_store import delete_document_by_source
 
-    unquoted_source = source
-    print(f"Deleting document: '{unquoted_source}'...")
+    print(f"Deleting document: '{source}'...")
+    deleted_from_qdrant = delete_document_by_source(source)
 
-    # 1. Delete points from Qdrant
-    deleted_from_qdrant = delete_document_by_source(unquoted_source)
-
-    # 2. Delete physical file on disk if present
-    file_path = os.path.join(DOCS_FOLDER, unquoted_source)
+    file_path = os.path.join(DOCS_FOLDER, source)
     if os.path.exists(file_path):
         try:
             os.remove(file_path)
@@ -350,37 +380,38 @@ def delete_document(source: str):
         except Exception as e:
             print(f"  Warning: could not delete file '{file_path}': {e}")
 
-    # 3. Rebuild BM25 index
     rebuild_bm25_index()
 
     return {
-        "status": "ok",
-        "message": f"Successfully deleted document '{unquoted_source}'",
-        "deleted_from_qdrant": deleted_from_qdrant
+        "status":               "ok",
+        "message":              f"Successfully deleted document '{source}'",
+        "deleted_from_qdrant":  deleted_from_qdrant,
     }
 
 
-# ─── Settings (Dynamic Guardrail Tuning) ─────────────────────────────────────
+# ─── Settings ─────────────────────────────────────────────────────────────────
 
 class SettingsUpdate(BaseModel):
-    threshold: Optional[float] = None
-    minChunks: Optional[int] = None
-    max_tokens: Optional[int] = None
-    maxTokens: Optional[int] = None
-    llm: Optional[dict] = None
-    guardrail: Optional[dict] = None
+    threshold:  Optional[float] = None
+    minChunks:  Optional[int]   = None
+    max_tokens: Optional[int]   = None
+    maxTokens:  Optional[int]   = None
+    llm:        Optional[dict]  = None
+    guardrail:  Optional[dict]  = None
 
 
 @app.get("/settings")
 def get_settings():
-    """Get current active RAG runtime thresholds."""
+    """Get current active CyberSecAI runtime thresholds."""
     import src.rag_pipeline as rag
     return {
         "guardrail": {
             "threshold": rag.RELEVANCE_THRESHOLD,
             "minChunks": rag.MIN_RELEVANT_CHUNKS,
         },
-        "max_tokens": getattr(rag, "GLOBAL_MAX_TOKENS", 2500)
+        "max_tokens":    getattr(rag, "GLOBAL_MAX_TOKENS", 4000),
+        "answer_styles": list(ANSWER_STYLES.keys()),
+        "default_style": DEFAULT_STYLE,
     }
 
 
@@ -391,17 +422,15 @@ def update_settings(update: SettingsUpdate):
 
     if update.threshold is not None:
         rag.RELEVANCE_THRESHOLD = float(update.threshold)
-        print(f"  [Runtime Settings] Updated RELEVANCE_THRESHOLD = {rag.RELEVANCE_THRESHOLD}")
+        print(f"  [Runtime] RELEVANCE_THRESHOLD = {rag.RELEVANCE_THRESHOLD}")
     elif update.guardrail and "threshold" in update.guardrail:
         rag.RELEVANCE_THRESHOLD = float(update.guardrail["threshold"])
-        print(f"  [Runtime Settings] Updated RELEVANCE_THRESHOLD = {rag.RELEVANCE_THRESHOLD}")
 
     if update.minChunks is not None:
         rag.MIN_RELEVANT_CHUNKS = int(update.minChunks)
-        print(f"  [Runtime Settings] Updated MIN_RELEVANT_CHUNKS = {rag.MIN_RELEVANT_CHUNKS}")
+        print(f"  [Runtime] MIN_RELEVANT_CHUNKS = {rag.MIN_RELEVANT_CHUNKS}")
     elif update.guardrail and "minChunks" in update.guardrail:
         rag.MIN_RELEVANT_CHUNKS = int(update.guardrail["minChunks"])
-        print(f"  [Runtime Settings] Updated MIN_RELEVANT_CHUNKS = {rag.MIN_RELEVANT_CHUNKS}")
 
     new_max = update.max_tokens or update.maxTokens
     if not new_max and update.llm and "maxTokens" in update.llm:
@@ -410,24 +439,24 @@ def update_settings(update: SettingsUpdate):
     if new_max:
         rag.GLOBAL_MAX_TOKENS = int(new_max)
         rag.ANSWER_STYLES["detailed"]["max_tokens"] = int(new_max)
-        print(f"  [Runtime Settings] Updated GLOBAL_MAX_TOKENS = {rag.GLOBAL_MAX_TOKENS}")
+        print(f"  [Runtime] GLOBAL_MAX_TOKENS = {rag.GLOBAL_MAX_TOKENS}")
 
     return {
-        "status": "ok",
-        "message": "Runtime settings updated",
+        "status":  "ok",
+        "message": "CyberSecAI runtime settings updated",
         "guardrail": {
             "threshold": rag.RELEVANCE_THRESHOLD,
             "minChunks": rag.MIN_RELEVANT_CHUNKS,
         },
-        "max_tokens": getattr(rag, "GLOBAL_MAX_TOKENS", 2500)
+        "max_tokens": getattr(rag, "GLOBAL_MAX_TOKENS", 4000),
     }
 
 
-# ─── Index Rebuild ───────────────────────────────────────────────────────────
+# ─── Index Rebuild ────────────────────────────────────────────────────────────
 
 @app.post("/rebuild-index")
 def rebuild_index():
-    """Rebuild the in-memory BM25 index from Qdrant."""
+    """Rebuild the in-memory BM25 keyword index from Qdrant."""
     try:
         rebuild_bm25_index()
         info = get_collection_info()
@@ -436,7 +465,7 @@ def rebuild_index():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ─── Error handler ───────────────────────────────────────────────────────────
+# ─── Error handler ────────────────────────────────────────────────────────────
 
 def _handle_groq_error(e: Exception):
     """Convert known Groq/pipeline errors into clean HTTP responses."""
@@ -448,7 +477,5 @@ def _handle_groq_error(e: Exception):
         raise HTTPException(status_code=429, detail="Groq rate limit reached. Wait a moment.")
     if "model_decommissioned" in error_msg:
         raise HTTPException(status_code=502, detail="Groq model decommissioned. Update GROQ_MODEL in .env")
-    if "No relevant documents" in error_msg:
-        raise HTTPException(status_code=404, detail="No documents indexed.")
 
-    raise HTTPException(status_code=500, detail=f"RAG pipeline error: {error_msg}")
+    raise HTTPException(status_code=500, detail=f"CyberSecAI pipeline error: {error_msg}")

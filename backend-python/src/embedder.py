@@ -1,9 +1,15 @@
 """
-Local embedding using FastEmbed (ONNX runtime).
-Runs entirely on CPU — no VPS, no GPU, no network required.
-Supports batch embedding for fast indexing of large document sets.
+CyberSecAI — Local Embedding Engine
+Uses BAAI/bge-base-en-v1.5 via FastEmbed (ONNX runtime).
 
-v2.1 — Added LRU query cache (128 entries) for instant repeated queries.
+Why BGE-base over nomic-embed:
+  - Trained on technical English, code, and security content
+  - Much better recall for cybersec jargon (exploit, payload, shellcode, CVEs)
+  - 768-dim vectors — same size as nomic, no Qdrant collection recreation needed
+  - ~440MB model size — safe for 8GB RAM machines (i7 13th gen tested)
+  - BGE requires a task prefix for queries (handled automatically here)
+
+v4.0 — Cybersec-optimized with LRU cache (256 entries) for instant repeated lookups.
 """
 import os
 import hashlib
@@ -13,23 +19,29 @@ from fastembed import TextEmbedding
 
 load_dotenv()
 
-EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-ai/nomic-embed-text-v1.5")
-EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "32"))  # Safe for 8GB RAM
+# BGE-base-en-v1.5: 768-dim, 440MB, great for technical/security content
+EMBED_MODEL      = os.getenv("EMBED_MODEL", "BAAI/bge-base-en-v1.5")
+EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "16"))  # Safe for 8GB RAM
 
-# Lazy-load model (downloads ~140MB on first run, cached after that)
+# BGE query prefix — required for correct semantic search with BGE models
+# Documents use "Represent this sentence for searching relevant passages: " automatically
+BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+
+# Lazy-load model (downloads ~440MB on first run, cached after that)
 _model = None
 
 # ─── LRU Query Embedding Cache ───────────────────────────────────────────────
-_CACHE_MAX = 128
+_CACHE_MAX   = 256
 _query_cache = OrderedDict()
 
 
 def _get_model() -> TextEmbedding:
     global _model
     if _model is None:
-        print(f"Loading embedding model: {EMBED_MODEL} (first run downloads ~140MB)...")
+        print(f"Loading embedding model: {EMBED_MODEL}")
+        print(f"  (First run: ~440MB download — cached afterwards)")
         _model = TextEmbedding(model_name=EMBED_MODEL)
-        print("Embedding model loaded.")
+        print("Embedding model loaded successfully.")
     return _model
 
 
@@ -40,20 +52,23 @@ def warmup():
 
 
 def _cache_key(text: str) -> str:
-    """Fast hash for cache lookup."""
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
 def get_embedding(text: str, is_query: bool = True) -> list[float]:
     """
     Embed a single text string locally using FastEmbed ONNX.
-    Uses task-specific prefixes for nomic-embed-text (search_query / search_document).
-    Query embeddings are cached (LRU-128) for instant repeated lookups.
-    """
-    prefix = "search_query: " if is_query else "search_document: "
-    prefixed = prefix + text
 
-    # Check cache for queries
+    BGE models require a specific prefix for queries to align the embedding
+    space correctly. Documents are stored without the prefix (FastEmbed handles
+    the document-side prefix internally via the model config).
+
+    Query embeddings are cached (LRU-256) for instant repeated lookups.
+    """
+    # For BGE models: manually prepend query prefix so BM25 + vector queries align
+    prefixed = (BGE_QUERY_PREFIX + text) if is_query else text
+
+    # Check LRU cache for queries
     if is_query:
         key = _cache_key(prefixed)
         if key in _query_cache:
@@ -61,12 +76,9 @@ def get_embedding(text: str, is_query: bool = True) -> list[float]:
             return _query_cache[key]
 
     model = _get_model()
-
-    # FastEmbed returns a generator, convert to list
     embeddings = list(model.embed([prefixed]))
     result = embeddings[0].tolist()
 
-    # Store in cache for queries
     if is_query:
         _query_cache[key] = result
         if len(_query_cache) > _CACHE_MAX:
@@ -79,21 +91,22 @@ def embed_chunks(chunks: list[dict]) -> list[dict]:
     """
     Batch-embed all chunks locally using FastEmbed ONNX.
     Streams one batch at a time to stay within 8GB RAM limits.
+    Each text is embedded as a document (no query prefix) for best retrieval quality.
     """
     from tqdm import tqdm
 
     model = _get_model()
     total = len(chunks)
 
-    print(f"Embedding {total} chunks locally using {EMBED_MODEL}...")
-    print(f"  Batch size: {EMBED_BATCH_SIZE} (RAM-safe for 8GB)")
+    print(f"Embedding {total} chunks with {EMBED_MODEL}...")
+    print(f"  Batch size: {EMBED_BATCH_SIZE} (8GB RAM safe)")
 
-    # Process in explicit batches to avoid OOM — stream one batch at a time
     for start in tqdm(range(0, total, EMBED_BATCH_SIZE), desc="  Embedding", unit="batch"):
         batch = chunks[start: start + EMBED_BATCH_SIZE]
-        texts = ["search_document: " + c["text"] for c in batch]
+        # BGE-base uses "Represent this sentence for searching relevant passages: " for docs too
+        # but FastEmbed's internal model config applies this — we pass raw text
+        texts = [c["text"] for c in batch]
 
-        # embed() returns a generator — consume immediately, don't buffer all
         embeddings = list(model.embed(texts, batch_size=EMBED_BATCH_SIZE))
 
         for i, chunk in enumerate(batch):

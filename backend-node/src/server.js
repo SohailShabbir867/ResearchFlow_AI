@@ -11,7 +11,7 @@ const adminRoutes = require("./routes/admin");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/medresearch";
+const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/cybersec";
 
 // ─── MongoDB connection with retry ────────────────────────────────────────────
 let retries = 0;
@@ -89,8 +89,8 @@ app.use("/api/admin", adminRoutes);
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
-    service: "medresearch-node",
-    version: "1.1.0",
+    service: "cybersecai-node",
+    version: "4.0.0",
     port: PORT,
     mongodb: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
     env: process.env.NODE_ENV || "development",

@@ -12,3 +12,4 @@ tqdm
 python-docx
 tiktoken
 python-multipart
+nltk

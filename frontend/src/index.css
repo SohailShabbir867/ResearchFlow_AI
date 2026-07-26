@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,11 +7,6 @@
 /* ==========================================================================
    CSS CUSTOM PROPERTIES — DESIGN TOKENS
    Light mode is the DEFAULT (:root). Dark mode uses .dark-mode on <html>.
-========================================================================== */
-
-/* ==========================================================================
-   CSS CUSTOM PROPERTIES — DESIGN TOKENS
-   Light mode is the DEFAULT (:root / .light-mode). Dark mode uses .dark-mode on <html>.
 ========================================================================== */
 
 :root,
@@ -151,13 +146,19 @@
   }
 
   .dark-mode { color-scheme: dark; }
+  .light-mode { color-scheme: light; }
 
   body {
     background-color: var(--bg-page);
     color: var(--text-primary);
-    font-family: 'Inter', sans-serif;
+    font-family: 'Outfit', 'Inter', sans-serif;
     @apply antialiased;
     transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  /* Use JetBrains Mono for all code elements */
+  code, pre, kbd, samp, .font-mono {
+    font-family: 'JetBrains Mono', 'Courier New', monospace !important;
   }
 
   * { @apply box-border; }

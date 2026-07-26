@@ -36,17 +36,18 @@ import ThemeToggle from "../components/ThemeToggle.jsx";
 
 /* ─── Suggestion Prompts (shown on empty chat state) ─────────────── */
 const SUGGESTIONS = [
-  "Summarize the latest breakthroughs in AI and Quantum Computing",
-  "Analyze recent trends in renewable energy and global market impact",
-  "Synthesize key takeaways from my uploaded research paper dataset",
-  "Compare transformer architecture variations for domain-specific RAG",
+  "Explain how a buffer overflow exploit works and write a Python PoC",
+  "What is SQL injection? Show payloads in Python, Bash, and SQLmap",
+  "How does a reverse shell work? Give me Bash, Python, and PowerShell examples",
+  "Explain privilege escalation on Linux with step-by-step enumeration commands",
 ];
 
 /* ─── Detail Levels → mapped to backend answer_style values ─────── */
 const DETAIL_LEVELS = [
-  { label: "Short",     value: "short" },
-  { label: "Classical", value: "classical" },
-  { label: "Detailed",  value: "detailed" },
+  { label: "Short",     value: "short"     },
+  { label: "Technical", value: "technical"  },
+  { label: "Detailed",  value: "detailed"   },
+  { label: "CTF Mode",  value: "ctf"        },
 ];
 
 /* ─── Markdown renderer config ──────────────────────────────────────
@@ -163,7 +164,7 @@ export default function Research() {
   const [isTyping, setIsTyping] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [feedbacks, setFeedbacks] = useState({});
-  const [detailLevel, setDetailLevel] = useState("classical");
+  const [detailLevel, setDetailLevel] = useState("technical");
   const [sourcesOpen, setSourcesOpen] = useState({});
 
   const bottomRef = useRef(null);
@@ -525,10 +526,10 @@ export default function Research() {
               >
                 <Upload className="w-4 h-4 mx-auto mb-1" style={{ color: "var(--brand-primary)" }} />
                 <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
-                  Upload Custom RAG Dataset
+                  Upload Cybersec RAG Dataset
                 </p>
                 <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-                  PDF / TXT / DOCX · Max 50 MB
+                  PDF / TXT / DOCX / MD · Max 50 MB
                 </p>
               </div>
             ) : (
@@ -801,14 +802,14 @@ export default function Research() {
             </div>
             <div>
               <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                ResearchAI
+                CyberSecAI
               </p>
               <div className="flex items-center gap-1.5">
                 <span
                   className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(52,211,153,0.8)]"
                 />
                 <p className="text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
-                  REAL-TIME WEB INTELLIGENCE · QDRANT RAG · GROQ LLAMA 3.3 70B
+                  ETHICAL HACKING EXPERT · HYBRID RAG · GROQ LLAMA 3.3 70B
                 </p>
               </div>
             </div>
@@ -868,13 +869,14 @@ export default function Research() {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold mb-1" style={{ color: "var(--text-heading)" }}>
-                    ResearchAI Knowledge Assistant
+                    CyberSecAI — Ethical Hacking Expert
                   </h2>
                   <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                    Ask any question for real-time up-to-date information, or upload custom RAG datasets (Pro).
+                    Ask any question about ethical hacking, penetration testing, CVEs, or tools.
+                    Get answers with code in Python, Bash, C, PowerShell, Ruby, and Assembly.
                   </p>
                   <p className="text-xs mt-1 font-medium" style={{ color: "var(--brand-primary)" }}>
-                    Up-to-Date Web Intelligence · Custom Vector Datasets · Citation Traceability
+                    Hybrid RAG · Semantic Chunking · Multi-Language Code Generation · CTF Support
                   </p>
                 </div>
 

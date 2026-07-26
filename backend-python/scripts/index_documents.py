@@ -37,9 +37,10 @@ def main(incremental: bool = False):
     docs_folder = os.path.join(os.path.dirname(__file__), "../data/documents")
     t_total = time.time()
 
-    print("=" * 60)
-    print("  MedResearch AI — Document Indexing Pipeline v2.0")
-    print("=" * 60)
+    print("="*60)
+    print("  CyberSecAI — Document Indexing Pipeline v4.0")
+    print("  BGE-base embeddings · Semantic chunking · Cybersec tokenizer")
+    print("="*60)
     print(f"  Mode: {'Incremental (skip existing)' if incremental else 'Full re-index'}")
     print(f"  Documents folder: {docs_folder}")
     print()
@@ -51,7 +52,7 @@ def main(incremental: bool = False):
     all_chunks = load_all_documents(docs_folder)
 
     if not all_chunks:
-        print("  No documents found. Add PDF, TXT, or DOCX files to data/documents/")
+        print("  No documents found. Add PDF, TXT, DOCX, or MD files to data/documents/")
         return
 
     # Incremental mode: filter out already-indexed sources
@@ -113,7 +114,7 @@ def main(incremental: bool = False):
     print(f"  Embed time      : {format_time(t_embed)}")
     print(f"  Store time      : {format_time(t_store)}")
     print()
-    print("  Your documents are ready to query!")
+    print("  Your cybersec documents are ready to query!")
     print("  Run: venv\\Scripts\\uvicorn src.api:app --reload --port 8000")
     print("=" * 60)
 

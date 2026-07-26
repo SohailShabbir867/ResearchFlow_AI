@@ -1,6 +1,13 @@
 """
-Hybrid search combining dense vector search (Qdrant) with sparse keyword search (BM25).
-Results are fused using Reciprocal Rank Fusion (RRF) for optimal retrieval quality.
+CyberSecAI — Hybrid Search Engine
+Combines dense vector search (Qdrant/BGE) with sparse keyword search (BM25).
+Results fused via Reciprocal Rank Fusion (RRF) for maximum recall.
+
+v4.0 — Cybersec upgrades:
+  - Query expansion: auto-expand cybersec acronyms for better BM25 keyword hits
+  - Cybersec-aware BM25 tokenizer: removes generic stopwords, preserves tool names
+  - Increased candidate pool: 30 (up from 20) for richer reranker input
+  - Rich metadata pass-through: content_type, cves, section propagated to pipeline
 """
 import os
 import re
@@ -10,18 +17,121 @@ from src.vector_store import search as vector_search, get_client
 
 load_dotenv()
 
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "medresearch")
-HYBRID_CANDIDATE_COUNT = int(os.getenv("HYBRID_CANDIDATE_COUNT", "20"))
+COLLECTION_NAME        = os.getenv("COLLECTION_NAME",        "cybersec")
+HYBRID_CANDIDATE_COUNT = int(os.getenv("HYBRID_CANDIDATE_COUNT", "30"))
 
-# Module-level BM25 index cache
-_bm25_index = None
+# ─── Module-level BM25 index cache ───────────────────────────────────────────
+_bm25_index  = None
 _bm25_chunks = None
+
+# ─── Cybersec acronym expansion map ──────────────────────────────────────────
+# Expands common abbreviations so BM25 finds them in verbose document text
+_ACRONYM_MAP: dict[str, str] = {
+    "xss":    "cross site scripting xss",
+    "sqli":   "sql injection sqli",
+    "rce":    "remote code execution rce",
+    "lfi":    "local file inclusion lfi",
+    "rfi":    "remote file inclusion rfi",
+    "ssrf":   "server side request forgery ssrf",
+    "csrf":   "cross site request forgery csrf",
+    "xxe":    "xml external entity xxe",
+    "idor":   "insecure direct object reference idor",
+    "mitm":   "man in the middle mitm",
+    "dos":    "denial of service dos",
+    "ddos":   "distributed denial of service ddos",
+    "aslr":   "address space layout randomization aslr",
+    "dep":    "data execution prevention dep",
+    "nx":     "no execute nx bit",
+    "pie":    "position independent executable pie",
+    "ret2libc": "return to libc ret2libc",
+    "rop":    "return oriented programming rop",
+    "bof":    "buffer overflow bof",
+    "uaf":    "use after free uaf",
+    "oob":    "out of bounds oob",
+    "priv":   "privilege escalation privesc",
+    "privesc": "privilege escalation privesc",
+    "pe":     "privilege escalation pe",
+    "c2":     "command and control c2",
+    "c&c":    "command and control cnc",
+    "ioc":    "indicator of compromise ioc",
+    "ttp":    "tactics techniques procedures ttp",
+    "apt":    "advanced persistent threat apt",
+    "rat":    "remote access trojan rat",
+    "osint":  "open source intelligence osint",
+    "recon":  "reconnaissance recon",
+    "enum":   "enumeration enum",
+    "pe32":   "portable executable pe32",
+    "elf":    "executable linkable format elf",
+    "got":    "global offset table got",
+    "plt":    "procedure linkage table plt",
+    "heap":   "heap memory heap spray",
+    "rev":    "reverse engineering rev shell",
+    "webshell": "web shell webshell backdoor",
+    "lpe":    "local privilege escalation lpe",
+    "msfvenom": "metasploit venom payload msfvenom",
+    "msf":    "metasploit framework msf",
+    "smb":    "server message block smb",
+    "rdp":    "remote desktop protocol rdp",
+    "ldap":   "lightweight directory access protocol ldap",
+    "ad":     "active directory ad",
+    "dc":     "domain controller dc",
+    "gpo":    "group policy object gpo",
+    "wmi":    "windows management instrumentation wmi",
+    "lsass":  "local security authority subsystem lsass",
+    "ntlm":   "nt lan manager ntlm hash",
+    "sam":    "security account manager sam",
+    "kerberoasting": "kerberos ticket granting service kerberoasting",
+    "asrep":  "as rep roasting asrep",
+    "dce":    "distributed computing environment dce rpc",
+    "shellcode": "shellcode assembly exploit payload",
+}
+
+# Generic English stopwords to remove from BM25 — but KEEP security terms
+_GENERIC_STOPWORDS = {
+    "the", "and", "for", "are", "but", "not", "you", "all", "can",
+    "her", "was", "one", "our", "out", "day", "get", "has", "him",
+    "his", "how", "its", "may", "new", "now", "old", "see", "two",
+    "who", "did", "she", "too", "use", "dad", "let", "put", "say",
+    "she", "too", "use", "via", "very", "been", "that", "this",
+    "with", "have", "will", "from", "they", "know", "want", "been",
+    "good", "much", "some", "time", "very", "when", "come", "here",
+    "just", "like", "long", "make", "many", "more", "only", "over",
+    "such", "take", "than", "them", "well", "were",
+}
 
 
 def _tokenize(text: str) -> list[str]:
-    """Simple tokenizer: lowercase, split on non-alphanumeric, remove short tokens."""
-    tokens = re.findall(r'\b[a-z0-9]{2,}\b', text.lower())
-    return tokens
+    """
+    Cybersec-aware tokenizer:
+    - Lowercases everything
+    - Preserves hyphens in CVE IDs (CVE-2021-44228)
+    - Removes generic stopwords but keeps all security terms
+    - Min token length: 2
+    """
+    # Preserve CVE-YYYY-NNNN as single tokens
+    text_lower = text.lower()
+    tokens = re.findall(r'\bcve-\d{4}-\d+\b|[a-z0-9_&\-]{2,}', text_lower)
+    return [t for t in tokens if t not in _GENERIC_STOPWORDS]
+
+
+def _expand_query(query: str) -> str:
+    """
+    Expand cybersecurity acronyms in the query so BM25 can find verbose descriptions.
+    E.g.: "explain XSS" → "explain XSS cross site scripting xss"
+    """
+    expanded_terms = []
+    query_lower = query.lower()
+
+    for acronym, expansion in _ACRONYM_MAP.items():
+        if re.search(r'\b' + re.escape(acronym) + r'\b', query_lower):
+            expanded_terms.append(expansion)
+
+    if expanded_terms:
+        expanded = query + " " + " ".join(expanded_terms)
+        print(f"  [Query Expansion] '{query[:50]}' → added: {expanded_terms}")
+        return expanded
+
+    return query
 
 
 def _build_bm25_index():
@@ -29,16 +139,13 @@ def _build_bm25_index():
     global _bm25_index, _bm25_chunks
 
     client = get_client()
-
-    # Scroll through all points in the collection
     all_chunks = []
     offset = None
-    batch_size = 500
 
     while True:
         results = client.scroll(
             collection_name=COLLECTION_NAME,
-            limit=batch_size,
+            limit=500,
             offset=offset,
             with_payload=True,
             with_vectors=False
@@ -47,11 +154,14 @@ def _build_bm25_index():
 
         for point in points:
             all_chunks.append({
-                "id": point.id,
-                "text": point.payload.get("text", ""),
-                "source": point.payload.get("source", ""),
-                "chunk_index": point.payload.get("chunk_index", 0),
-                "pages": point.payload.get("pages", [1])
+                "id":           point.id,
+                "text":         point.payload.get("text",         ""),
+                "source":       point.payload.get("source",       ""),
+                "chunk_index":  point.payload.get("chunk_index",  0),
+                "pages":        point.payload.get("pages",        [1]),
+                "content_type": point.payload.get("content_type", "general"),
+                "cves":         point.payload.get("cves",         []),
+                "section":      point.payload.get("section",      ""),
             })
 
         if next_offset is None:
@@ -59,19 +169,18 @@ def _build_bm25_index():
         offset = next_offset
 
     if not all_chunks:
-        _bm25_index = None
+        _bm25_index  = None
         _bm25_chunks = []
         return
 
-    # Build BM25 corpus
     tokenized_corpus = [_tokenize(c["text"]) for c in all_chunks]
-    _bm25_index = BM25Okapi(tokenized_corpus)
+    _bm25_index  = BM25Okapi(tokenized_corpus)
     _bm25_chunks = all_chunks
-    print(f"  BM25 index built: {len(all_chunks)} chunks indexed")
+    print(f"  BM25 index built: {len(all_chunks)} chunks indexed (cybersec tokenizer)")
 
 
-def get_bm25_results(query: str, top_k: int = 20) -> list[dict]:
-    """Search using BM25 keyword matching."""
+def get_bm25_results(query: str, top_k: int = 30) -> list[dict]:
+    """Search using BM25 keyword matching with query expansion."""
     global _bm25_index, _bm25_chunks
 
     if _bm25_index is None:
@@ -80,10 +189,11 @@ def get_bm25_results(query: str, top_k: int = 20) -> list[dict]:
     if _bm25_index is None or not _bm25_chunks:
         return []
 
-    tokenized_query = _tokenize(query)
+    # Expand query for better keyword coverage
+    expanded = _expand_query(query)
+    tokenized_query = _tokenize(expanded)
     scores = _bm25_index.get_scores(tokenized_query)
 
-    # Get top-k indices
     scored = [(i, float(scores[i])) for i in range(len(scores))]
     scored.sort(key=lambda x: x[1], reverse=True)
     top = scored[:top_k]
@@ -93,12 +203,15 @@ def get_bm25_results(query: str, top_k: int = 20) -> list[dict]:
         if score > 0:
             chunk = _bm25_chunks[idx]
             results.append({
-                "text": chunk["text"],
-                "source": chunk["source"],
-                "chunk_index": chunk["chunk_index"],
-                "pages": chunk.get("pages", [1]),
-                "score": score,
-                "method": "bm25"
+                "text":         chunk["text"],
+                "source":       chunk["source"],
+                "chunk_index":  chunk["chunk_index"],
+                "pages":        chunk.get("pages",        [1]),
+                "content_type": chunk.get("content_type", "general"),
+                "cves":         chunk.get("cves",         []),
+                "section":      chunk.get("section",      ""),
+                "score":        score,
+                "method":       "bm25",
             })
 
     return results
@@ -106,39 +219,38 @@ def get_bm25_results(query: str, top_k: int = 20) -> list[dict]:
 
 def reciprocal_rank_fusion(
     vector_results: list[dict],
-    bm25_results: list[dict],
+    bm25_results:   list[dict],
     k: int = 60
 ) -> list[dict]:
     """
-    Reciprocal Rank Fusion (RRF) to merge results from vector search and BM25.
-    RRF score = sum( 1 / (k + rank) ) across all methods where the document appears.
+    Reciprocal Rank Fusion (RRF) to merge vector and BM25 results.
+    RRF score = Σ 1/(k + rank) across all retrieval methods.
+    Documents appearing in BOTH lists get a significant boost.
     """
-    # Use (source, chunk_index) as unique key
-    fused_scores = {}
-    chunk_data = {}
+    fused_scores: dict = {}
+    chunk_data:   dict = {}
 
     for rank, result in enumerate(vector_results):
         key = (result["source"], result["chunk_index"])
-        fused_scores[key] = fused_scores.get(key, 0) + 1.0 / (k + rank + 1)
-        chunk_data[key] = result
+        fused_scores[key] = fused_scores.get(key, 0.0) + 1.0 / (k + rank + 1)
+        chunk_data[key]   = result
         chunk_data[key]["vector_score"] = result.get("score", 0)
 
     for rank, result in enumerate(bm25_results):
         key = (result["source"], result["chunk_index"])
-        fused_scores[key] = fused_scores.get(key, 0) + 1.0 / (k + rank + 1)
+        fused_scores[key] = fused_scores.get(key, 0.0) + 1.0 / (k + rank + 1)
         if key not in chunk_data:
             chunk_data[key] = result
         chunk_data[key]["bm25_score"] = result.get("score", 0)
 
-    # Sort by fused score
     sorted_keys = sorted(fused_scores.keys(), key=lambda k: fused_scores[k], reverse=True)
 
     results = []
     for key in sorted_keys:
         data = chunk_data[key]
         data["rrf_score"] = round(fused_scores[key], 6)
-        data["score"] = data["rrf_score"]
-        data["method"] = "hybrid"
+        data["score"]     = data["rrf_score"]
+        data["method"]    = "hybrid"
         results.append(data)
 
     return results
@@ -146,10 +258,10 @@ def reciprocal_rank_fusion(
 
 def hybrid_search(query_vector: list[float], query_text: str, top_k: int = None) -> list[dict]:
     """
-    Perform hybrid search:
-    1. Dense vector search via Qdrant
-    2. BM25 keyword search
-    3. Reciprocal Rank Fusion to merge results
+    Full hybrid search:
+    1. Dense vector search (BGE embeddings, Qdrant HNSW)
+    2. BM25 keyword search (with cybersec query expansion)
+    3. RRF fusion of both result lists
     """
     if top_k is None:
         top_k = HYBRID_CANDIDATE_COUNT
@@ -159,10 +271,10 @@ def hybrid_search(query_vector: list[float], query_text: str, top_k: int = None)
     for r in vector_results:
         r["method"] = "vector"
 
-    # 2. BM25 search
+    # 2. BM25 search (with query expansion)
     bm25_results = get_bm25_results(query_text, top_k=top_k)
 
-    # 3. Fuse with RRF
+    # 3. Fuse
     fused = reciprocal_rank_fusion(vector_results, bm25_results)
 
     return fused
@@ -171,6 +283,6 @@ def hybrid_search(query_vector: list[float], query_text: str, top_k: int = None)
 def rebuild_bm25_index():
     """Force rebuild of BM25 index (call after re-indexing documents)."""
     global _bm25_index, _bm25_chunks
-    _bm25_index = None
+    _bm25_index  = None
     _bm25_chunks = None
     _build_bm25_index()

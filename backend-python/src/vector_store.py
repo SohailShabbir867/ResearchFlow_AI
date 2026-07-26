@@ -1,21 +1,27 @@
 """
-Qdrant vector store with HNSW indexing optimized for 20GB+ corpora.
-Supports batch uploads, incremental indexing, and high-recall search.
+CyberSecAI — Qdrant Vector Store
+HNSW-indexed vector database optimized for cybersecurity document corpora.
+
+v4.0 — Changes:
+  - Collection renamed to 'cybersec'
+  - Payload indexing on content_type, cves, section fields
+  - HNSW tuned for 768-dim BGE-base vectors
 """
 import os
 import uuid
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance, VectorParams, PointStruct,
-    HnswConfigDiff, OptimizersConfigDiff
+    HnswConfigDiff, OptimizersConfigDiff,
+    PayloadSchemaType
 )
 from dotenv import load_dotenv
 
 load_dotenv()
 
-QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "medresearch")
-VECTOR_SIZE = 768  # nomic-embed-text v1.5 outputs 768-dim vectors
+QDRANT_URL      = os.getenv("QDRANT_URL",      "http://localhost:6333")
+COLLECTION_NAME = os.getenv("COLLECTION_NAME", "cybersec")
+VECTOR_SIZE     = 768  # BAAI/bge-base-en-v1.5 outputs 768-dim vectors
 
 
 def get_client() -> QdrantClient:
@@ -23,7 +29,7 @@ def get_client() -> QdrantClient:
 
 
 def create_collection(recreate: bool = False):
-    """Create Qdrant collection with HNSW config optimized for 20GB+ scale."""
+    """Create Qdrant collection with HNSW config optimized for cybersec corpus."""
     client = get_client()
 
     if recreate:
@@ -43,14 +49,30 @@ def create_collection(recreate: bool = False):
                 distance=Distance.COSINE
             ),
             hnsw_config=HnswConfigDiff(
-                m=16,               # Graph connectivity (higher = better recall, more RAM)
-                ef_construct=200,   # Build-time quality (higher = slower build, better index)
+                m=16,               # Graph connectivity (16 = good recall/RAM balance)
+                ef_construct=300,   # Higher quality index build (better recall)
             ),
             optimizers_config=OptimizersConfigDiff(
-                indexing_threshold=50000,  # Start HNSW indexing after 50k points
+                indexing_threshold=10000,   # Start HNSW after 10k points
             )
         )
-        print(f"  Collection '{COLLECTION_NAME}' created with HNSW optimization.")
+        print(f"  Collection '{COLLECTION_NAME}' created (768-dim, COSINE, HNSW ef=300).")
+
+        # Create payload indexes for filtered search
+        try:
+            client.create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name="content_type",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+            client.create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name="source",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+            print("  Payload indexes created (content_type, source).")
+        except Exception as e:
+            print(f"  Warning: payload index creation failed ({e})")
     else:
         print(f"  Collection '{COLLECTION_NAME}' already exists.")
 
@@ -61,10 +83,10 @@ def get_collection_info() -> dict:
     try:
         info = client.get_collection(COLLECTION_NAME)
         return {
-            "name": COLLECTION_NAME,
-            "points_count": info.points_count,
+            "name":          COLLECTION_NAME,
+            "points_count":  info.points_count,
             "vectors_count": info.vectors_count,
-            "status": str(info.status),
+            "status":        str(info.status),
         }
     except Exception:
         return {"name": COLLECTION_NAME, "points_count": 0, "status": "not_found"}
@@ -74,7 +96,6 @@ def get_indexed_sources() -> list[str]:
     """Get list of unique source document names in the collection."""
     client = get_client()
     try:
-        # Scroll through and collect unique sources
         sources = set()
         offset = None
         while True:
@@ -97,7 +118,7 @@ def get_indexed_sources() -> list[str]:
 
 
 def store_chunks(embedded_chunks: list[dict], recreate: bool = True):
-    """Store all embedded chunks into Qdrant in batches."""
+    """Store all embedded chunks into Qdrant in batches with rich metadata."""
     from tqdm import tqdm
 
     client = get_client()
@@ -105,29 +126,32 @@ def store_chunks(embedded_chunks: list[dict], recreate: bool = True):
 
     points = []
     for chunk in embedded_chunks:
+        meta = chunk.get("metadata", {})
         points.append(
             PointStruct(
-                id=uuid.uuid4(),
+                id=str(uuid.uuid4()),
                 vector=chunk["embedding"],
                 payload={
-                    "text": chunk["text"],
-                    "source": chunk["metadata"]["source"],
-                    "chunk_index": chunk["metadata"]["chunk_index"],
-                    "pages": chunk["metadata"].get("pages", [1])
+                    "text":         chunk["text"],
+                    "source":       meta.get("source",       "unknown"),
+                    "chunk_index":  meta.get("chunk_index",  0),
+                    "pages":        meta.get("pages",        [1]),
+                    "content_type": meta.get("content_type", "general"),
+                    "cves":         meta.get("cves",         []),
+                    "section":      meta.get("section",      ""),
                 }
             )
         )
 
-    # Upload in batches of 500
     batch_size = 500
     for i in tqdm(range(0, len(points), batch_size), desc="  Storing", unit="batch"):
         batch = points[i: i + batch_size]
         client.upsert(collection_name=COLLECTION_NAME, points=batch)
 
-    print(f"  Total {len(points)} chunks stored in Qdrant.")
+    print(f"  Stored {len(points)} chunks in Qdrant collection '{COLLECTION_NAME}'.")
 
 
-def search(query_vector: list[float], top_k: int = 20) -> list[dict]:
+def search(query_vector: list[float], top_k: int = 30) -> list[dict]:
     """Dense vector search via Qdrant."""
     client = get_client()
 
@@ -140,11 +164,14 @@ def search(query_vector: list[float], top_k: int = 20) -> list[dict]:
     matches = []
     for r in results.points:
         matches.append({
-            "text": r.payload["text"],
-            "source": r.payload["source"],
-            "chunk_index": r.payload["chunk_index"],
-            "pages": r.payload.get("pages", [1]),
-            "score": round(r.score, 4)
+            "text":         r.payload["text"],
+            "source":       r.payload["source"],
+            "chunk_index":  r.payload["chunk_index"],
+            "pages":        r.payload.get("pages",        [1]),
+            "content_type": r.payload.get("content_type", "general"),
+            "cves":         r.payload.get("cves",         []),
+            "section":      r.payload.get("section",      ""),
+            "score":        round(r.score, 4)
         })
 
     return matches
@@ -168,7 +195,7 @@ def delete_document_by_source(source_name: str) -> bool:
                 )
             )
         )
-        print(f"  Deleted all points for document '{source_name}' from Qdrant.")
+        print(f"  Deleted all points for '{source_name}' from '{COLLECTION_NAME}'.")
         return True
     except Exception as e:
         print(f"  Error deleting points for '{source_name}': {e}")

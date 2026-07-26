@@ -1,27 +1,27 @@
 """
-Full RAG pipeline — document-strict mode with conversation memory.
+CyberSecAI — Elite Ethical Hacking & Cybersecurity RAG Pipeline
 
-v3.0 — Upgrades:
-  - Conversation memory: uses last N turns for context-aware follow-ups
-  - Adaptive answer style: detail / short / classical (user-controlled)
-  - Query enrichment: combines question with conversation context for better retrieval
-  - Concise default prompts for faster, tighter answers
-
-3-layer guardrail system:
-  Layer 1 — Reranker score threshold
-  Layer 2 — Chunk coverage check
-  Layer 3 — Strict prompt instruction + off-document detection
+v4.0 — Full Cybersec Expert System:
+  - CyberSecAI persona: ethical hacking, penetration testing, vulnerability research
+  - Multi-language code generation: Python, Bash, C/C++, JavaScript/Node.js,
+    PowerShell, Ruby, SQL, Assembly (x86/x64)
+  - 4 answer styles: short / technical / detailed / ctf
+  - Loosened guardrails: -3.5 threshold (cybersec jargon scores lower on rerankers)
+  - min_chunks=1: single CVE chunk is enough to answer CVE-specific questions
+  - 8 context chunks (up from 5) for complex multi-step attack explanations
+  - Conversation memory with cybersec-aware query enrichment
+  - Query expansion via hybrid_search module
 
 Pipeline flow:
-  1. Enrich query with conversation context (if history present)
-  2. Embed query locally (FastEmbed ONNX, cached)
-  3. Hybrid search: vector + BM25 + RRF → top 20 candidates
-  4. Rerank with cross-encoder → scored top 5
-  5. Layer 1 + Layer 2 guardrail check
-  6. Build adaptive prompt (with history + answer style)
+  1. Enrich query with conversation context + cybersec acronym awareness
+  2. Embed query locally (BGE-base ONNX, LRU-256 cached)
+  3. Hybrid search: BGE vector + BM25 (expanded) + RRF → top 30 candidates
+  4. Rerank with cross-encoder → top 8
+  5. Layer 1 + Layer 2 guardrail check (loosened for technical content)
+  6. Build cybersec-expert prompt (history + answer style + multi-lang)
   7. Call Groq LLM
-  8. Layer 3 — detect and block any off-document answer
-  9. Return answer + sources
+  8. Layer 3 — detect and block off-document hallucination
+  9. Return answer + sources + metadata
 """
 import os
 import time
@@ -33,64 +33,87 @@ from src.reranker import rerank
 load_dotenv()
 
 # ─── LLM config ──────────────────────────────────────────────────────────────
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-RERANKER_TOP_K = int(os.getenv("RERANKER_TOP_K", "5"))
+GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL     = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+RERANKER_TOP_K = int(os.getenv("RERANKER_TOP_K", "8"))
 
-# ─── Guardrail thresholds ─────────────────────────────────────────────────────
-RELEVANCE_THRESHOLD = float(os.getenv("RELEVANCE_THRESHOLD", "-2.0"))
-MIN_RELEVANT_CHUNKS = int(os.getenv("MIN_RELEVANT_CHUNKS", "2"))
+# ─── Guardrail thresholds (looser for technical cybersec content) ─────────────
+RELEVANCE_THRESHOLD = float(os.getenv("RELEVANCE_THRESHOLD", "-3.5"))
+MIN_RELEVANT_CHUNKS = int(os.getenv("MIN_RELEVANT_CHUNKS",   "1"))
 
 # Standard refusal message
 REFUSAL_MSG = (
-    "I can only answer questions based on the documents that have been uploaded "
-    "to this system. This topic is not covered in the current document collection. "
-    "Please upload relevant documents and try again."
+    "CyberSecAI can only answer questions based on the cybersecurity documents "
+    "that have been uploaded to this system. This topic is not covered in the "
+    "current document collection. Please upload relevant resources (books, "
+    "CVE reports, tool documentation, CTF writeups) and try again."
 )
 
-# ─── Answer style configs ─────────────────────────────────────────────────────
-# Every style now instructs the LLM to emit well-structured Markdown so the UI
-# can render headings, sub-headings, lists, and details cleanly with a typewriter
-# streaming effect. The frontend renders the raw markdown token-by-token.
+# ─── Answer styles ────────────────────────────────────────────────────────────
 ANSWER_STYLES = {
     "short": {
         "instruction": (
-            "Formulate a direct, impactful response in 1 to 3 concise sentences. "
-            "Focus exclusively on answering the query directly. "
-            "Highlight key medical/technical concepts with **bold text**. "
-            "Do NOT use headers, bullet points, or introductory filler."
+            "Deliver a concise, direct answer in 1-3 sentences or a short code block. "
+            "For commands or payloads, output them immediately in a code block. "
+            "Use **bold** for key terms. No introductory filler."
         ),
-        "max_tokens": 256,
+        "max_tokens": 300,
     },
-    "classical": {
+    "technical": {
         "instruction": (
-            "Structure your output cleanly using production Markdown:\n"
-            "- Begin with a single `##` title line summarizing the core subject.\n"
-            "- Write a crisp 2-sentence opening summary paragraph.\n"
-            "- Group relevant body details using `###` section headers.\n"
-            "- Use bullet points (`-`) for key attributes or list components.\n"
-            "- Emphasize key terms with **bold** typography."
+            "Provide a deeply technical response structured in clean Markdown:\n"
+            "- Open with a `## Title` heading.\n"
+            "- Explain the technical concept, vulnerability class, or attack vector.\n"
+            "- Show working code examples in ALL relevant languages requested. "
+            "Always use properly fenced code blocks:\n"
+            "  ```python\\n# Python exploit / tool code\\n```\n"
+            "  ```bash\\n# Bash/Shell commands\\n```\n"
+            "  ```c\\n// C/C++ exploit or shellcode\\n```\n"
+            "  ```javascript\\n// JavaScript/Node.js payload\\n```\n"
+            "  ```powershell\\n# PowerShell post-exploitation\\n```\n"
+            "  ```ruby\\n# Ruby / Metasploit module\\n```\n"
+            "  ```nasm\\n; x86/x64 Assembly shellcode\\n```\n"
+            "  ```sql\\n-- SQL injection payload\\n```\n"
+            "- Reference relevant CVEs, MITRE ATT&CK techniques (TxxXX), or tool flags.\n"
+            "- Use `### Subsection` headers to organize: Background, Mechanism, Code, Mitigations."
         ),
-        "max_tokens": 768,
+        "max_tokens": 3000,
     },
     "detailed": {
         "instruction": (
             "Provide an exhaustive, deeply structured analytical response in Markdown:\n"
-            "- Begin with a descriptive `##` title heading.\n"
-            "- Provide an executive summary paragraph introducing the findings.\n"
-            "- Divide the body into thematic `###` sub-headings covering all nuances.\n"
-            "- Use Markdown tables (`| Column 1 | Column 2 |`) for comparative data or attributes where applicable.\n"
-            "- Use bulleted (`-`) and numbered (`1.`) lists for steps or breakdowns.\n"
-            "- Wrap critical terms in **bold**.\n"
-            "- End with a dedicated `## Key Takeaways` section listing 3-5 bulleted core takeaways.\n"
-            "- Thoroughly detail all relevant context without conversational fluff."
+            "- Start with a descriptive `## Title` heading.\n"
+            "- Executive summary paragraph explaining the attack/concept.\n"
+            "- `### Background` — history, affected systems, CVE references.\n"
+            "- `### How It Works` — step-by-step technical breakdown.\n"
+            "- `### Exploitation` — code in Python, Bash, C/C++, PowerShell, and Assembly as appropriate:\n"
+            "  Use properly fenced ``` blocks with language tags.\n"
+            "- `### Tools` — relevant tools (Nmap, Metasploit, Burp, SQLmap, etc.) with flags/commands.\n"
+            "- `### Defense & Mitigation` — patches, configurations, detection signatures.\n"
+            "- `### MITRE ATT&CK` — relevant Tactic/Technique IDs if applicable.\n"
+            "- `## Key Takeaways` — 3-5 bulleted key points.\n"
+            "Use Markdown tables for comparing payloads, CVEs, or attack variants."
+        ),
+        "max_tokens": 4000,
+    },
+    "ctf": {
+        "instruction": (
+            "Structure your response as a CTF challenge guide in Markdown:\n"
+            "- `## Challenge Analysis` — identify the vulnerability type from context.\n"
+            "- `### Hints` — 3 progressive hints (spoiler-light → spoiler-heavy).\n"
+            "- `### Approach` — methodology and tools to use.\n"
+            "- `### Exploit / Payload` — working payload or script:\n"
+            "  ```python\\n# CTF exploit script\\n```\n"
+            "  ```bash\\n# Enumeration / exploitation commands\\n```\n"
+            "- `### Flag Format` — expected format and where to find it.\n"
+            "- `### Concepts` — what this challenge teaches (binary exploitation, web, forensics, crypto, etc.)."
         ),
         "max_tokens": 2500,
     },
 }
 
-DEFAULT_STYLE = "classical"
-GLOBAL_MAX_TOKENS = 2500
+DEFAULT_STYLE    = "technical"
+GLOBAL_MAX_TOKENS = 4000
 
 
 # ─── Guardrail functions ──────────────────────────────────────────────────────
@@ -115,7 +138,7 @@ def check_guardrails(reranked: list[dict]) -> tuple[bool, str]:
         return True, f"Top chunk score {top_score:.4f} below threshold {RELEVANCE_THRESHOLD}"
 
     passing = filter_chunks_by_threshold(reranked)
-    print(f"  [Guardrail L2] {len(passing)}/{len(reranked)} chunks passed threshold (min required: {MIN_RELEVANT_CHUNKS})")
+    print(f"  [Guardrail L2] {len(passing)}/{len(reranked)} chunks passed threshold (min: {MIN_RELEVANT_CHUNKS})")
 
     if len(passing) < MIN_RELEVANT_CHUNKS:
         return True, f"Only {len(passing)} chunk(s) passed relevance threshold (need {MIN_RELEVANT_CHUNKS})"
@@ -123,17 +146,20 @@ def check_guardrails(reranked: list[dict]) -> tuple[bool, str]:
     return False, ""
 
 
-# ─── Query enrichment with conversation context ──────────────────────────────
+# ─── Query enrichment ─────────────────────────────────────────────────────────
 
 def enrich_query(question: str, history: list[dict] = None) -> str:
     """
-    Enrich the search query with conversation context for better retrieval.
-    Takes the last assistant answer and combines key terms with the current question.
+    Enrich the search query with:
+    1. Conversation context (last assistant turn for follow-up awareness)
+    2. Cybersec acronym expansion is handled by hybrid_search module
+
+    Short follow-up questions are prefixed with the last assistant context
+    so the retrieval system understands what "it" or "that" refers to.
     """
     if not history:
         return question
 
-    # Get the last assistant message for context
     last_assistant = None
     for msg in reversed(history):
         if msg.get("role") == "assistant":
@@ -143,12 +169,11 @@ def enrich_query(question: str, history: list[dict] = None) -> str:
     if not last_assistant or len(last_assistant) < 10:
         return question
 
-    # For short follow-up questions, prepend context from last answer
-    if len(question.split()) <= 8:
-        # Take first 100 chars of last answer as context
-        context_snippet = last_assistant[:150].replace("\n", " ").strip()
+    # For short follow-ups, inject context from last answer
+    if len(question.split()) <= 10:
+        context_snippet = last_assistant[:200].replace("\n", " ").strip()
         enriched = f"{context_snippet} {question}"
-        print(f"  [Memory] Enriched short query: '{question}' → '{enriched[:80]}...'")
+        print(f"  [Memory] Enriched query: '{question[:60]}' → context prepended")
         return enriched
 
     return question
@@ -157,39 +182,51 @@ def enrich_query(question: str, history: list[dict] = None) -> str:
 # ─── Prompt builder ───────────────────────────────────────────────────────────
 
 def build_prompt(
-    question: str,
+    question:       str,
     context_chunks: list[dict],
-    history: list[dict] = None,
-    answer_style: str = None,
+    history:        list[dict] = None,
+    answer_style:   str = None,
 ) -> str:
     """
-    Build a document-grounded prompt utilizing state-of-the-art prompt engineering:
-    1. Role Persona Assignment (Research & Medical Intelligence Expert)
-    2. Structural XML Containers (<context_documents>, <conversation_history>, <user_query>)
-    3. Strict Grounding Mandate & Zero-Hallucination Fallback (<refusal_protocol>)
-    4. Executive Markdown Formatting Rules
-    5. Adaptive Style Directives
+    Build a cybersecurity-expert, document-grounded prompt.
+
+    Uses structured XML containers to clearly delineate:
+      - System persona and directives (CyberSecAI expert)
+      - Context documents from the RAG pipeline
+      - Conversation history (memory)
+      - User query
+      - Response style instruction
     """
     if answer_style not in ANSWER_STYLES:
         answer_style = DEFAULT_STYLE
 
     style = ANSWER_STYLES[answer_style]
 
-    # Build XML document context
+    # Build XML document context with rich metadata
     context_blocks = []
     for i, chunk in enumerate(context_chunks):
-        source_name = chunk.get("source", f"Document {i+1}")
-        text_content = chunk.get("text", "").strip()
+        source_name   = chunk.get("source",       f"Document {i+1}")
+        text_content  = chunk.get("text",         "").strip()
+        content_type  = chunk.get("content_type", "general")
+        cves          = chunk.get("cves",         [])
+        section       = chunk.get("section",      "")
+
+        meta_attrs = f'index="{i+1}" source="{source_name}" type="{content_type}"'
+        if cves:
+            meta_attrs += f' cves="{",".join(cves)}"'
+        if section:
+            meta_attrs += f' section="{section[:80]}"'
+
         context_blocks.append(
-            f'<document index="{i+1}" source="{source_name}">\n{text_content}\n</document>'
+            f'<document {meta_attrs}>\n{text_content}\n</document>'
         )
     context_text = "\n\n".join(context_blocks)
 
-    # Build XML conversation history
+    # Build conversation history XML
     history_xml = ""
     if history:
         recent = history[-6:]
-        turns = []
+        turns  = []
         for msg in recent:
             role = "user" if msg.get("role") == "user" else "assistant"
             text = (msg.get("text") or "").strip()[:400]
@@ -198,24 +235,39 @@ def build_prompt(
             history_xml = "<conversation_history>\n" + "\n".join(turns) + "\n</conversation_history>\n\n"
 
     return f"""<system_instructions>
-You are ResearchAI, an elite Domain Research & Medical Intelligence System.
-Your objective is to provide executive-grade, perfectly formatted, highly accurate answers strictly grounded in the provided document context.
+You are CyberSecAI — an elite Ethical Hacking & Cybersecurity Intelligence System trained on authoritative security resources including penetration testing books, CVE databases, CTF writeups, and tool documentation.
 
 <core_directives>
-1. GROUNDING MANDATE: Base all technical concepts, logic, APIs, and rules strictly on <context_documents>.
-2. CODE GENERATION & SYNTHESIS: When the user asks for Python code, algorithms, or scripts based on uploaded documents, generate NEW, customized, production-ready Python code tailored to the user's exact query. Adapt the concepts, formulas, schemas, or reference snippets in the documents into clean, working Python code with helpful comments.
-3. REFUSAL PROTOCOL: If the concept or topic required to answer <user_query> cannot be derived from <context_documents>, respond with EXACTLY:
+1. GROUNDING MANDATE: All answers must be grounded in <context_documents>. Extract and synthesize technical facts, attack techniques, tool usage, and code examples directly from the provided context.
+
+2. MULTI-LANGUAGE CODE GENERATION: When asked for code, scripts, tools, exploits, or payloads, generate NEW, complete, production-quality code in the requested language. Adapt concepts from the documents into working implementations. Support ALL of these languages with proper fenced code blocks:
+   - Python    → ```python ... ```
+   - Bash/Shell → ```bash ... ```
+   - C/C++     → ```c ... ``` or ```cpp ... ```
+   - JavaScript/Node.js → ```javascript ... ```
+   - PowerShell → ```powershell ... ```
+   - Ruby/Metasploit → ```ruby ... ```
+   - SQL       → ```sql ... ```
+   - Assembly (x86/x64) → ```nasm ... ```
+   Always add comments explaining what each section does. Include example usage.
+
+3. CYBERSECURITY DEPTH: Reference CVEs, MITRE ATT&CK techniques (TxxXX/TAxxXX), tool flags (nmap -sV -sC, msfconsole, etc.), and specific payload constructions when relevant.
+
+4. REFUSAL PROTOCOL: If the concept CANNOT be derived from <context_documents>, respond with EXACTLY:
    INSUFFICIENT_DOCUMENT_COVERAGE
-4. ZERO META-TALK: Never mention "based on the documents", "according to document 1", or "in the text". Present facts and code directly.
-5. SPATIAL & VISUAL ELEGANCE: Use clean GitHub-flavored Markdown. Enclose all Python code in formatted ```python ... ``` code blocks with explanatory comments.
+
+5. ZERO META-TALK: Never say "according to the documents" or "based on the context". Present knowledge directly as an expert would.
+
+6. ETHICAL FRAMING: All offensive techniques should be framed for ethical hacking, CTF, and authorized penetration testing ONLY. Never provide assistance for illegal activities.
 </core_directives>
 
 <formatting_rules>
-- Heading Level 2 (`## Topic Title`) for the main title of your response.
-- Heading Level 3 (`### Subsection Title`) for thematic sub-sections.
-- Highlight crucial technical/medical terms using **bold text**.
-- Use Markdown lists (`-` or `1.`) for structured enumerations.
-- Ensure blank lines between headers, paragraphs, and list blocks for visual readability.
+- Use `## Title` (H2) for main response heading
+- Use `### Section` (H3) for sub-sections
+- Use **bold** for critical technical terms, CVE IDs, tool names
+- Use `inline code` for command flags, file paths, IP addresses, hashes
+- Wrap ALL code in fenced blocks with language tags
+- Use Markdown tables for comparing payloads, techniques, or CVE attributes
 </formatting_rules>
 
 <target_depth_style>
@@ -234,9 +286,9 @@ Your objective is to provide executive-grade, perfectly formatted, highly accura
 <response>"""
 
 
-# ─── LLM call ────────────────────────────────────────────────────────────────
+# ─── LLM call ─────────────────────────────────────────────────────────────────
 
-def call_groq(prompt: str, max_tokens: int = 512, max_retries: int = 3) -> str:
+def call_groq(prompt: str, max_tokens: int = 1024, max_retries: int = 3) -> str:
     """Call Groq API with retry logic for rate limits."""
     from groq import Groq
 
@@ -247,7 +299,7 @@ def call_groq(prompt: str, max_tokens: int = 512, max_retries: int = 3) -> str:
             chat = client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
+                temperature=0.1,   # Slight creativity for code generation
                 max_tokens=max_tokens,
             )
             return chat.choices[0].message.content.strip()
@@ -265,44 +317,43 @@ def call_groq(prompt: str, max_tokens: int = 512, max_retries: int = 3) -> str:
 
 def detect_off_document_answer(text: str) -> bool:
     """Layer 3: Detect if the LLM flagged insufficient coverage."""
-    trigger = "INSUFFICIENT_DOCUMENT_COVERAGE"
-    return trigger in text.upper()
+    return "INSUFFICIENT_DOCUMENT_COVERAGE" in text.upper()
 
 
 # ─── Main pipeline ────────────────────────────────────────────────────────────
 
 def answer(
-    question: str,
-    top_k: int = None,
-    history: list[dict] = None,
+    question:     str,
+    top_k:        int = None,
+    history:      list[dict] = None,
     answer_style: str = None,
 ) -> dict:
     """
-    Document-strict RAG pipeline with conversation memory.
+    CyberSecAI document-strict RAG pipeline with conversation memory.
 
     Args:
-        question: User's question
-        top_k: Number of chunks to pass to LLM (default from env)
-        history: Previous conversation turns [{role, text}, ...]
-        answer_style: "short" | "detailed" | "classical"
+        question:     User's cybersecurity question
+        top_k:        Number of chunks to pass to LLM (default from env: 8)
+        history:      Previous conversation turns [{role, text}, ...]
+        answer_style: "short" | "technical" | "detailed" | "ctf"
     """
     if top_k is None:
         top_k = RERANKER_TOP_K
     if answer_style not in ANSWER_STYLES:
         answer_style = DEFAULT_STYLE
 
-    style = ANSWER_STYLES[answer_style]
+    style   = ANSWER_STYLES[answer_style]
     t_start = time.time()
 
     # ── Step 1: Enrich query with conversation context ────────────────────────
     search_query = enrich_query(question, history)
 
-    # ── Step 2: Embed query locally (cached) ──────────────────────────────────
+    # ── Step 2: Embed query locally (BGE-base, LRU cached) ───────────────────
     t1 = time.time()
     query_vector = get_embedding(search_query, is_query=True)
     t_embed = time.time() - t1
 
-    # ── Step 3: Hybrid search ─────────────────────────────────────────────────
+    # ── Step 3: Hybrid search (vector + BM25 with expansion) ─────────────────
     t2 = time.time()
     candidates = hybrid_search(query_vector, search_query)
     t_search = time.time() - t2
@@ -310,14 +361,14 @@ def answer(
     if not candidates:
         print("  [Guardrail] No candidates returned from hybrid search")
         return {
-            "answer": REFUSAL_MSG,
-            "sources": [],
-            "refused": True,
+            "answer":        REFUSAL_MSG,
+            "sources":       [],
+            "refused":       True,
             "refuse_reason": "No documents indexed in the system",
-            "timing": {
-                "embed_ms": round(t_embed * 1000),
+            "timing":        {
+                "embed_ms":  round(t_embed * 1000),
                 "search_ms": round(t_search * 1000),
-                "total_ms": round((time.time() - t_start) * 1000)
+                "total_ms":  round((time.time() - t_start) * 1000),
             }
         }
 
@@ -326,32 +377,32 @@ def answer(
     reranked = rerank(question, candidates, top_k=top_k)
     t_rerank = time.time() - t3
 
-    # ── Step 5: Guardrail — Layer 1 + Layer 2 ────────────────────────────────
+    # ── Step 5: Guardrails — Layer 1 + Layer 2 ───────────────────────────────
     should_refuse, refuse_reason = check_guardrails(reranked)
 
     if should_refuse:
         print(f"  [Guardrail BLOCKED] Reason: {refuse_reason}")
         return {
-            "answer": REFUSAL_MSG,
-            "sources": [],
-            "refused": True,
+            "answer":        REFUSAL_MSG,
+            "sources":       [],
+            "refused":       True,
             "refuse_reason": refuse_reason,
-            "timing": {
-                "embed_ms": round(t_embed * 1000),
-                "search_ms": round(t_search * 1000),
-                "rerank_ms": round(t_rerank * 1000),
-                "total_ms": round((time.time() - t_start) * 1000)
+            "timing":        {
+                "embed_ms":   round(t_embed * 1000),
+                "search_ms":  round(t_search * 1000),
+                "rerank_ms":  round(t_rerank * 1000),
+                "total_ms":   round((time.time() - t_start) * 1000),
             }
         }
 
     passing_chunks = filter_chunks_by_threshold(reranked)
-    print(f"  [Pipeline] Sending {len(passing_chunks)} verified chunks to LLM (style={answer_style})")
+    print(f"  [Pipeline] {len(passing_chunks)} verified chunks → LLM (style={answer_style})")
 
-    # ── Step 6: Build prompt with memory + style ─────────────────────────────
+    # ── Step 6: Build cybersec expert prompt ──────────────────────────────────
     if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
         raise Exception("GROQ_API_KEY not set in .env")
 
-    t4 = time.time()
+    t4     = time.time()
     prompt = build_prompt(question, passing_chunks, history=history, answer_style=answer_style)
 
     # ── Step 7: Call Groq ─────────────────────────────────────────────────────
@@ -362,41 +413,41 @@ def answer(
     if detect_off_document_answer(answer_text):
         print("  [Guardrail L3] LLM flagged insufficient document coverage")
         return {
-            "answer": REFUSAL_MSG,
-            "sources": [],
-            "refused": True,
+            "answer":        REFUSAL_MSG,
+            "sources":       [],
+            "refused":       True,
             "refuse_reason": "LLM determined documents do not cover this question",
-            "timing": {
-                "embed_ms": round(t_embed * 1000),
+            "timing":        {
+                "embed_ms":  round(t_embed * 1000),
                 "search_ms": round(t_search * 1000),
                 "rerank_ms": round(t_rerank * 1000),
-                "llm_ms": round(t_llm * 1000),
-                "total_ms": round((time.time() - t_start) * 1000)
+                "llm_ms":    round(t_llm * 1000),
+                "total_ms":  round((time.time() - t_start) * 1000),
             }
         }
 
     # ── Step 9: Return verified answer ───────────────────────────────────────
     unique_sources = list({c["source"] for c in passing_chunks})
-    t_total = time.time() - t_start
+    t_total        = time.time() - t_start
 
-    print(f"  [Pipeline] Answer generated. Sources: {unique_sources}")
+    print(f"  [CyberSecAI] Answer ready. Sources: {unique_sources}")
     print(f"  [Timing] embed={round(t_embed*1000)}ms search={round(t_search*1000)}ms "
           f"rerank={round(t_rerank*1000)}ms llm={round(t_llm*1000)}ms "
           f"total={round(t_total*1000)}ms")
 
     return {
-        "answer": answer_text,
-        "sources": unique_sources,
-        "refused": False,
-        "provider": "groq",
-        "model": GROQ_MODEL,
+        "answer":       answer_text,
+        "sources":      unique_sources,
+        "refused":      False,
+        "provider":     "groq",
+        "model":        GROQ_MODEL,
         "answer_style": answer_style,
-        "chunks_used": passing_chunks,
-        "timing": {
-            "embed_ms": round(t_embed * 1000),
+        "chunks_used":  passing_chunks,
+        "timing":       {
+            "embed_ms":  round(t_embed * 1000),
             "search_ms": round(t_search * 1000),
             "rerank_ms": round(t_rerank * 1000),
-            "llm_ms": round(t_llm * 1000),
-            "total_ms": round(t_total * 1000)
+            "llm_ms":    round(t_llm * 1000),
+            "total_ms":  round(t_total * 1000),
         }
     }
