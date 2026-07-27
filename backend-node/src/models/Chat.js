@@ -14,6 +14,14 @@ const MessageSchema = new mongoose.Schema({
     type: [mongoose.Schema.Types.Mixed],
     default: [],
   },
+  webSources: {
+    type: [String],
+    default: [],
+  },
+  isWebFallback: {
+    type: Boolean,
+    default: false,
+  },
   feedback: {
     type: String,
     enum: ["positive", "negative", null],

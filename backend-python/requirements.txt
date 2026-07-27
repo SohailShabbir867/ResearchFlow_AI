@@ -13,3 +13,4 @@ python-docx
 tiktoken
 python-multipart
 nltk
+duckduckgo_search

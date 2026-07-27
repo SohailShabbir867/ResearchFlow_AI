@@ -117,6 +117,8 @@ router.post("/chats/:id/ask", async (req, res) => {
     // Forward to Python RAG with history + answer_style
     let answerText = "No response from service.";
     let sources = [];
+    let webSources = [];
+    let isWebFallback = false;
     let status = "answered";
     let refused = false;
     let timing = { embedMs: 0, searchMs: 0, rerankMs: 0, llmMs: 0, totalMs: 0 };
@@ -135,8 +137,10 @@ router.post("/chats/:id/ask", async (req, res) => {
       );
       timing.totalMs = Date.now() - startTime;
 
-      answerText = response.data.answer || response.data.response || "No answer provided.";
-      sources = response.data.sources || response.data.source_documents || [];
+      answerText  = response.data.answer || response.data.response || "No answer provided.";
+      sources     = response.data.sources || response.data.source_documents || [];
+      webSources  = response.data.web_sources || [];
+      isWebFallback = response.data.is_web_fallback || false;
 
       // Detect refused answers
       if (
@@ -163,13 +167,20 @@ router.post("/chats/:id/ask", async (req, res) => {
         clientError = apiErr.response.data.detail;
       }
 
-      chat.messages.push({ role: "assistant", text: `⚠️ ${clientError}`, sources: [], timestamp: new Date() });
+      chat.messages.push({ role: "assistant", text: `⚠️ ${clientError}`, sources: [], webSources: [], isWebFallback: false, timestamp: new Date() });
       await chat.save();
       return res.json(chat);
     }
 
     // Save assistant message
-    chat.messages.push({ role: "assistant", text: answerText, sources, timestamp: new Date() });
+    chat.messages.push({
+      role: "assistant",
+      text: answerText,
+      sources,
+      webSources,
+      isWebFallback,
+      timestamp: new Date()
+    });
     await chat.save();
 
     // Save QueryLog

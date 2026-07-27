@@ -80,8 +80,25 @@ class QueryRequest(BaseModel):
     )
 
 class QueryResponse(BaseModel):
-    answer:  str
-    sources: list[str]
+    answer:          str
+    sources:         list[str]
+    web_sources:     Optional[list[str]] = Field(default=[], description="URLs of live web search sources if fallback was triggered")
+    is_web_fallback: Optional[bool]      = Field(default=False, description="True if answer was generated via live web search fallback")
+
+
+# ─── OpenAI / Ollama Compatibility Models ─────────────────────────────────────
+
+class OpenAIChatMessage(BaseModel):
+    role: str
+    content: str
+
+class OpenAIChatRequest(BaseModel):
+    model:       Optional[str]               = "cybersec-rag"
+    messages:    list[OpenAIChatMessage]
+    temperature: Optional[float]             = 0.1
+    max_tokens:  Optional[int]               = None
+    stream:      Optional[bool]              = False
+
 
 
 # ─── Startup: pre-load models + BM25 index ───────────────────────────────────
@@ -183,8 +200,67 @@ def query(request: QueryRequest):
 
     return QueryResponse(
         answer=result["answer"],
-        sources=result["sources"]
+        sources=result.get("sources", []),
+        web_sources=result.get("web_sources", []),
+        is_web_fallback=result.get("is_web_fallback", False)
     )
+
+
+# ─── OpenAI / Ollama Compatible Endpoint ──────────────────────────────────────
+
+@app.post("/v1/chat/completions")
+def openai_chat_completions(request: OpenAIChatRequest):
+    """
+    OpenAI / Ollama compatible endpoint (/v1/chat/completions).
+    Allows external applications (Ollama clients, Open-WebUI, AnythingLLM, Obsidian Copilot)
+    to query the CyberSecAI RAG & Web Fallback engine as a standard LLM backend.
+    """
+    if not request.messages:
+        raise HTTPException(status_code=400, detail="No messages provided.")
+
+    # Extract last user message
+    user_question = request.messages[-1].content
+    history = [
+        {"role": m.role, "text": m.content}
+        for m in request.messages[:-1]
+    ]
+
+    try:
+        result = answer(
+            question=user_question,
+            history=history,
+            answer_style="technical",
+        )
+    except Exception as e:
+        _handle_groq_error(e)
+
+    return {
+        "id": f"chatcmpl-cybersec-{int(time.time())}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": request.model or "cybersec-rag",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": result["answer"],
+                },
+                "finish_reason": "stop"
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+        },
+        "cybersecai_metadata": {
+            "sources": result.get("sources", []),
+            "web_sources": result.get("web_sources", []),
+            "is_web_fallback": result.get("is_web_fallback", False)
+        }
+    }
+
 
 
 # ─── Stream (token-by-token SSE with full guardrails) ─────────────────────────
@@ -227,9 +303,42 @@ async def stream_query(request: QueryRequest):
             # Step 3: Hybrid search
             candidates = hybrid_search(query_vector, search_query)
 
+            from src.web_search import perform_web_search, format_web_context
+            from src.rag_pipeline import ENABLE_WEB_FALLBACK, MAX_WEB_RESULTS, build_web_prompt
+
+            async def _stream_web_fallback():
+                print(f"  [Stream Fallback] Executing web search for: '{search_query[:50]}...'")
+                web_results = perform_web_search(search_query, max_results=MAX_WEB_RESULTS)
+                if not web_results:
+                    yield f"data: {json.dumps({'token': REFUSAL_MSG})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'is_web_fallback': False, 'refused': True})}\n\n"
+                    return
+
+                web_prompt = build_web_prompt(request.question, web_results, history=history, answer_style=style_name)
+                client = Groq(api_key=GROQ_API_KEY)
+                stream = client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=[{"role": "user", "content": web_prompt}],
+                    temperature=0.1,
+                    max_tokens=style["max_tokens"],
+                    stream=True
+                )
+                for chunk in stream:
+                    token = chunk.choices[0].delta.content or ""
+                    if token:
+                        yield f"data: {json.dumps({'token': token})}\n\n"
+
+                web_sources = [r["url"] for r in web_results if r.get("url")]
+                web_titles = [r["title"] for r in web_results if r.get("title")]
+                yield f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'is_web_fallback': True, 'refused': False})}\n\n"
+
             if not candidates:
+                if ENABLE_WEB_FALLBACK:
+                    async for chunk in _stream_web_fallback():
+                        yield chunk
+                    return
                 yield f"data: {json.dumps({'token': REFUSAL_MSG})}\n\n"
-                yield f"data: {json.dumps({'done': True, 'sources': [], 'refused': True})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'is_web_fallback': False, 'refused': True})}\n\n"
                 return
 
             # Step 4: Rerank
@@ -239,8 +348,12 @@ async def stream_query(request: QueryRequest):
             should_refuse, refuse_reason = check_guardrails(reranked)
             if should_refuse:
                 print(f"  [Stream Guardrail BLOCKED] {refuse_reason}")
+                if ENABLE_WEB_FALLBACK:
+                    async for chunk in _stream_web_fallback():
+                        yield chunk
+                    return
                 yield f"data: {json.dumps({'token': REFUSAL_MSG})}\n\n"
-                yield f"data: {json.dumps({'done': True, 'sources': [], 'refused': True})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'is_web_fallback': False, 'refused': True})}\n\n"
                 return
 
             passing_chunks = filter_chunks_by_threshold(reranked)
@@ -281,12 +394,18 @@ async def stream_query(request: QueryRequest):
             # Step 8: Layer 3 off-document detection
             if detect_off_document_answer(full_response):
                 print("  [Stream Guardrail L3] Off-document answer detected")
+                if ENABLE_WEB_FALLBACK:
+                    yield f"data: {json.dumps({'replace': ''})}\n\n"
+                    async for chunk in _stream_web_fallback():
+                        yield chunk
+                    return
                 yield f"data: {json.dumps({'replace': REFUSAL_MSG})}\n\n"
-                yield f"data: {json.dumps({'done': True, 'sources': [], 'refused': True})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'is_web_fallback': False, 'refused': True})}\n\n"
                 return
 
             sources = list({c["source"] for c in passing_chunks})
-            yield f"data: {json.dumps({'done': True, 'sources': sources, 'refused': False})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'sources': sources, 'web_sources': [], 'is_web_fallback': False, 'refused': False})}\n\n"
+
 
         except Exception as e:
             error_msg = str(e)

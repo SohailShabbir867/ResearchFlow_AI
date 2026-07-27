@@ -229,6 +229,8 @@ export default function Research() {
             role: m.role,
             text: m.text,
             sources: m.sources || [],
+            webSources: m.webSources || [],
+            isWebFallback: m.isWebFallback || false,
             time: m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
           }));
           setMessagesMap((prev) => ({ ...prev, [chatId]: formattedMsgs }));
@@ -384,6 +386,8 @@ export default function Research() {
                 const last = msgs[msgs.length - 1];
                 if (last && last.role === "assistant") {
                   last.sources = payload.sources || [];
+                  last.webSources = payload.web_sources || [];
+                  last.isWebFallback = payload.is_web_fallback || false;
                   if (payload.refused) last.isRefused = true;
                 }
                 return { ...prev, [chatId]: msgs };
@@ -966,6 +970,20 @@ export default function Research() {
                               <span>Outside document scope</span>
                             </div>
                           )}
+
+                          {/* Source Type Badge */}
+                          {msg.isWebFallback ? (
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold text-cyan-400 bg-cyan-950/40 border border-cyan-800/50 mb-2 shadow-xs">
+                              <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                              <span>Live Web Intelligence (DuckDuckGo)</span>
+                            </div>
+                          ) : msg.sources && msg.sources.length > 0 ? (
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-800/50 mb-2 shadow-xs">
+                              <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Local Document RAG</span>
+                            </div>
+                          ) : null}
+
                           <MarkdownContent text={msg.text} streaming={isStreaming} />
                         </div>
 
@@ -1006,7 +1024,7 @@ export default function Research() {
                           </button>
 
                           {/* Sources pill button if available */}
-                          {msg.sources && msg.sources.length > 0 && (
+                          {((msg.sources && msg.sources.length > 0) || (msg.webSources && msg.webSources.length > 0)) && (
                             <button
                               onClick={() => setSourcesOpen((p) => ({ ...p, [msg.id]: !p[msg.id] }))}
                               className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-colors border"
@@ -1016,20 +1034,21 @@ export default function Research() {
                                 background: "transparent",
                               }}
                             >
-                              <FileText className="w-3.5 h-3.5" />
-                              <span>Sources ({msg.sources.length})</span>
+                              {msg.isWebFallback ? <Globe className="w-3.5 h-3.5 text-cyan-400" /> : <FileText className="w-3.5 h-3.5" />}
+                              <span>Sources ({(msg.sources?.length || 0) + (msg.webSources?.length || 0)})</span>
                               <span>{sourcesOpen[msg.id] ? "▲" : "▼"}</span>
                             </button>
                           )}
                         </div>
 
                         {/* Expanded sources list */}
-                        {sourcesOpen[msg.id] && msg.sources && msg.sources.length > 0 && (
+                        {sourcesOpen[msg.id] && (
                           <div className="mt-2 flex flex-wrap gap-2 pl-1">
-                            {msg.sources.map((src, i) => (
+                            {/* Document sources */}
+                            {msg.sources && msg.sources.map((src, i) => (
                               <div
-                                key={i}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all"
+                                key={`doc_${i}`}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all"
                                 style={{
                                   background: "var(--brand-primary)",
                                   color: "#FFFFFF",
@@ -1038,6 +1057,20 @@ export default function Research() {
                                 <FileText className="w-3.5 h-3.5" />
                                 <span>{src}</span>
                               </div>
+                            ))}
+
+                            {/* Web source URLs */}
+                            {msg.webSources && msg.webSources.map((url, i) => (
+                              <a
+                                key={`web_${i}`}
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-cyan-900/60 text-cyan-200 border border-cyan-700/60 hover:bg-cyan-800/70 transition-all"
+                              >
+                                <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                                <span className="max-w-[200px] truncate">{url}</span>
+                              </a>
                             ))}
                           </div>
                         )}

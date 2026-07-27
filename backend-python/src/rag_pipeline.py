@@ -39,6 +39,7 @@ from dotenv import load_dotenv
 from src.embedder import get_embedding
 from src.hybrid_search import hybrid_search
 from src.reranker import rerank
+from src.web_search import perform_web_search, format_web_context
 
 load_dotenv()
 
@@ -46,6 +47,11 @@ load_dotenv()
 GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL     = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 RERANKER_TOP_K = int(os.getenv("RERANKER_TOP_K", "8"))
+
+# ─── Web Search Fallback Config ───────────────────────────────────────────────
+ENABLE_WEB_FALLBACK = os.getenv("ENABLE_WEB_FALLBACK", "true").lower() == "true"
+MAX_WEB_RESULTS     = int(os.getenv("MAX_WEB_RESULTS", "5"))
+
 
 # ─── Guardrail thresholds (looser for technical cybersec content) ─────────────
 RELEVANCE_THRESHOLD = float(os.getenv("RELEVANCE_THRESHOLD", "-3.5"))
@@ -320,7 +326,69 @@ Always pair offensive content with the matching detection signature and defensiv
 <response>"""
 
 
+def build_web_prompt(
+    question:     str,
+    web_results:  list[dict],
+    history:      list[dict] = None,
+    answer_style: str = None,
+) -> str:
+    """
+    Build a prompt augmented with live Web Search results.
+    Used as fallback when local document coverage is insufficient.
+    """
+    if answer_style not in ANSWER_STYLES:
+        answer_style = DEFAULT_STYLE
+
+    style = ANSWER_STYLES[answer_style]
+    web_text = format_web_context(web_results)
+
+    history_xml = ""
+    if history:
+        recent = history[-6:]
+        turns = []
+        for msg in recent:
+            role = "user" if msg.get("role") == "user" else "assistant"
+            text = (msg.get("text") or "").strip()[:400]
+            turns.append(f'  <{role}>{text}</{role}>')
+        if turns:
+            history_xml = "<conversation_history>\n" + "\n".join(turns) + "\n</conversation_history>\n\n"
+
+    return f"""<system_instructions>
+You are **CyberSecAI** — an elite Ethical Hacking & Cybersecurity Intelligence System.
+Your local document collection did not contain sufficient coverage for this question, so live web intelligence search results have been retrieved to answer the query accurately.
+
+<core_directives>
+1. LIVE WEB GROUNDING: Synthesize the technical information, code examples, CVE details, and tool flags from <web_search_results>.
+2. CITATION RULE: For key technical facts or external references from the web search, cite the source URL inline as `[Web Source](url)`.
+3. MULTI-LANGUAGE CODE GENERATION: If requested for code or payloads, provide complete, working code blocks with proper language tags (```python, ```bash, ```c, ```javascript, ```powershell, ```ruby, ```nasm, ```sql).
+4. PROFESSIONAL SYNTHESIS: Present a clear, direct, well-structured Markdown response. Never mention "I searched the web" or meta-narration.
+</core_directives>
+
+<formatting_rules>
+- Lead with a `## Title` (H2).
+- Use `### Section` (H3) for logical sections.
+- Use **bold** for key technical terms, CVE IDs, tool names.
+- Wrap ALL code in correctly tagged fenced blocks.
+</formatting_rules>
+
+<target_depth_style>
+{style['instruction']}
+</target_depth_style>
+</system_instructions>
+
+{history_xml}<web_search_results>
+{web_text}
+</web_search_results>
+
+<user_query>
+{question}
+</user_query>
+
+<response>"""
+
+
 # ─── LLM call ─────────────────────────────────────────────────────────────────
+
 
 def call_groq(prompt: str, max_tokens: int = 1024, max_retries: int = 3) -> str:
     """Call Groq API with retry logic for rate limits."""
@@ -354,6 +422,60 @@ def detect_off_document_answer(text: str) -> bool:
     return "INSUFFICIENT_DOCUMENT_COVERAGE" in text.upper()
 
 
+# ─── Web Search Fallback Helper ─────────────────────────────────────────────
+
+def _execute_web_fallback(
+    question:     str,
+    search_query: str,
+    history:      list[dict],
+    answer_style: str,
+    style:        dict,
+    t_start:      float,
+    t_embed:      float,
+    t_search:     float,
+    t_rerank:     float = 0.0,
+) -> dict:
+    """Execute live web search fallback when local documents are missing or insufficient."""
+    if not ENABLE_WEB_FALLBACK:
+        return None
+
+    print(f"  [Fallback Triggered] Executing live web search for: '{question[:50]}...'")
+    t_web_start = time.time()
+    web_results = perform_web_search(search_query, max_results=MAX_WEB_RESULTS)
+    t_web = time.time() - t_web_start
+
+    if not web_results:
+        print("  [Fallback Web Search] No web results returned.")
+        return None
+
+    web_prompt = build_web_prompt(question, web_results, history=history, answer_style=answer_style)
+    t_llm_start = time.time()
+    answer_text = call_groq(web_prompt, max_tokens=style["max_tokens"])
+    t_llm = time.time() - t_llm_start
+
+    web_sources = [r["url"] for r in web_results if r.get("url")]
+    web_titles  = [r["title"] for r in web_results if r.get("title")]
+
+    return {
+        "answer":          answer_text,
+        "sources":         web_titles[:3],
+        "web_sources":     web_sources,
+        "is_web_fallback": True,
+        "refused":         False,
+        "provider":        "groq",
+        "model":           GROQ_MODEL,
+        "answer_style":    answer_style,
+        "timing":          {
+            "embed_ms":      round(t_embed * 1000),
+            "search_ms":     round(t_search * 1000),
+            "rerank_ms":     round(t_rerank * 1000),
+            "web_search_ms": round(t_web * 1000),
+            "llm_ms":        round(t_llm * 1000),
+            "total_ms":      round((time.time() - t_start) * 1000),
+        }
+    }
+
+
 # ─── Main pipeline ────────────────────────────────────────────────────────────
 
 def answer(
@@ -363,7 +485,7 @@ def answer(
     answer_style: str = None,
 ) -> dict:
     """
-    CyberSecAI document-strict RAG pipeline with conversation memory.
+    CyberSecAI document-strict RAG pipeline with live Web Search fallback.
 
     Args:
         question:     User's cybersecurity question
@@ -394,12 +516,18 @@ def answer(
 
     if not candidates:
         print("  [Guardrail] No candidates returned from hybrid search")
+        web_fb = _execute_web_fallback(question, search_query, history, answer_style, style, t_start, t_embed, t_search)
+        if web_fb:
+            return web_fb
+
         return {
-            "answer":        REFUSAL_MSG,
-            "sources":       [],
-            "refused":       True,
-            "refuse_reason": "No documents indexed in the system",
-            "timing":        {
+            "answer":          REFUSAL_MSG,
+            "sources":         [],
+            "web_sources":     [],
+            "is_web_fallback": False,
+            "refused":         True,
+            "refuse_reason":   "No documents indexed in the system",
+            "timing":          {
                 "embed_ms":  round(t_embed * 1000),
                 "search_ms": round(t_search * 1000),
                 "total_ms":  round((time.time() - t_start) * 1000),
@@ -416,12 +544,18 @@ def answer(
 
     if should_refuse:
         print(f"  [Guardrail BLOCKED] Reason: {refuse_reason}")
+        web_fb = _execute_web_fallback(question, search_query, history, answer_style, style, t_start, t_embed, t_search, t_rerank)
+        if web_fb:
+            return web_fb
+
         return {
-            "answer":        REFUSAL_MSG,
-            "sources":       [],
-            "refused":       True,
-            "refuse_reason": refuse_reason,
-            "timing":        {
+            "answer":          REFUSAL_MSG,
+            "sources":         [],
+            "web_sources":     [],
+            "is_web_fallback": False,
+            "refused":         True,
+            "refuse_reason":   refuse_reason,
+            "timing":          {
                 "embed_ms":   round(t_embed * 1000),
                 "search_ms":  round(t_search * 1000),
                 "rerank_ms":  round(t_rerank * 1000),
@@ -446,12 +580,18 @@ def answer(
     # ── Step 8: Layer 3 — detect off-document answer ──────────────────────────
     if detect_off_document_answer(answer_text):
         print("  [Guardrail L3] LLM flagged insufficient document coverage")
+        web_fb = _execute_web_fallback(question, search_query, history, answer_style, style, t_start, t_embed, t_search, t_rerank)
+        if web_fb:
+            return web_fb
+
         return {
-            "answer":        REFUSAL_MSG,
-            "sources":       [],
-            "refused":       True,
-            "refuse_reason": "LLM determined documents do not cover this question",
-            "timing":        {
+            "answer":          REFUSAL_MSG,
+            "sources":         [],
+            "web_sources":     [],
+            "is_web_fallback": False,
+            "refused":         True,
+            "refuse_reason":   "LLM determined documents do not cover this question",
+            "timing":          {
                 "embed_ms":  round(t_embed * 1000),
                 "search_ms": round(t_search * 1000),
                 "rerank_ms": round(t_rerank * 1000),
@@ -470,14 +610,16 @@ def answer(
           f"total={round(t_total*1000)}ms")
 
     return {
-        "answer":       answer_text,
-        "sources":      unique_sources,
-        "refused":      False,
-        "provider":     "groq",
-        "model":        GROQ_MODEL,
-        "answer_style": answer_style,
-        "chunks_used":  passing_chunks,
-        "timing":       {
+        "answer":          answer_text,
+        "sources":         unique_sources,
+        "web_sources":     [],
+        "is_web_fallback": False,
+        "refused":         False,
+        "provider":        "groq",
+        "model":           GROQ_MODEL,
+        "answer_style":    answer_style,
+        "chunks_used":     passing_chunks,
+        "timing":          {
             "embed_ms":  round(t_embed * 1000),
             "search_ms": round(t_search * 1000),
             "rerank_ms": round(t_rerank * 1000),
@@ -485,3 +627,4 @@ def answer(
             "total_ms":  round(t_total * 1000),
         }
     }
+
