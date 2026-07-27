@@ -74,15 +74,15 @@ export default function Login() {
             <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-[rgba(255,255,255,0.12)] border border-white/10 text-white shadow-md">
               <Sparkles className="w-5 h-5 text-white" strokeWidth={2.2} />
             </div>
-            <span className="font-bold text-lg tracking-tight text-white font-serif">ResearchAI</span>
+            <span className="font-bold text-lg tracking-tight text-white font-serif">CyberSecAI</span>
           </div>
           <div className="relative z-10 my-10 sm:my-12">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/60 mb-3">Medical research workspace</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/60 mb-3">Ethical Hacking workspace</p>
             <h1 className="text-3xl sm:text-4xl font-bold font-serif leading-[1.15] text-white mb-4">
-              AI-Powered<br />Research Assistant.
+              AI-Powered<br />Cybersecurity Assistant.
             </h1>
             <p className="text-sm text-white/75 leading-relaxed font-medium max-w-sm">
-              Chat with up-to-date real-time intelligence or upload custom RAG datasets for private document analysis.
+              Chat with up-to-date ethical hacking intelligence or upload custom RAG datasets for private security research.
             </p>
           </div>
           <div className="relative z-10 flex justify-center mt-2">

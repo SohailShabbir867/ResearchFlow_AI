@@ -70,7 +70,7 @@ export default function AdminSidebar({ mobileOpen, onMobileClose }) {
           </div>
           <div>
             <p className="text-sm font-black uppercase tracking-widest leading-none"
-               style={{ color: "var(--text-primary)" }}>ResearchAI</p>
+               style={{ color: "var(--text-primary)" }}>CyberSecAI</p>
             <p className="text-[10px] font-bold uppercase tracking-widest mt-0.5"
                style={{ color: "var(--brand-primary)" }}>Admin Panel</p>
           </div>

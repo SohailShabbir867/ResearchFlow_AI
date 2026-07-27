@@ -509,7 +509,7 @@ export default function Research() {
             {!sidebarCollapsed && (
               <div className="min-w-0">
                 <p className="text-xs font-black uppercase tracking-widest truncate" style={{ color: "var(--text-primary)" }}>
-                  ResearchAI
+                  CyberSecAI
                 </p>
               </div>
             )}
@@ -1258,7 +1258,7 @@ export default function Research() {
                 </div>
                 <div>
                   <h3 className="text-xl font-bold tracking-tight" style={{ color: "var(--text-heading)" }}>
-                    Upgrade to ResearchAI Pro
+                    Upgrade to CyberSecAI Pro
                   </h3>
                   <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                     Unlock Custom RAG Dataset Ingestion & Private Vector Storage

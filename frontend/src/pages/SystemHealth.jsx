@@ -250,7 +250,7 @@ export default function SystemHealth() {
             <div className="flex items-center gap-2">
               <Server className="w-4 h-4 text-purple-400" />
               <span className="text-gray-400">Collection:</span>
-              <span className="font-mono text-white font-bold">medresearch</span>
+              <span className="font-mono text-white font-bold">cybersec</span>
             </div>
 
             <div className="flex items-center gap-2">

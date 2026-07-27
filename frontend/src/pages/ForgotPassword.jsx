@@ -60,7 +60,7 @@ export default function ForgotPassword() {
               What's next?
             </p>
             {[
-              "Open the email from ResearchAI",
+              "Open the email from CyberSecAI",
               "Click the \"Reset My Password\" button",
               "Choose a new strong password",
               "Sign in with your new password",
@@ -111,7 +111,7 @@ export default function ForgotPassword() {
                  style={{ background: "var(--brand-primary)" }}>
               <Microscope className="w-5 h-5 text-white" strokeWidth={2.2} />
             </div>
-            <span className="font-bold" style={{ color: "var(--text-primary)" }}>ResearchAI</span>
+            <span className="font-bold" style={{ color: "var(--text-primary)" }}>CyberSecAI</span>
           </div>
           <ThemeToggle />
         </div>
