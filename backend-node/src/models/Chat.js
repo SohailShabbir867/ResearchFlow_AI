@@ -33,32 +33,28 @@ const MessageSchema = new mongoose.Schema({
   },
 });
 
-const ChatSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
+const ChatSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    title: {
+      type: String,
+      default: "New Chat",
+    },
+    messages: [MessageSchema],
   },
-  title: {
-    type: String,
-    default: "New Chat",
-  },
-  messages: [MessageSchema],
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now,
-  },
-});
+  {
+    // Bug #11 fix: Use Mongoose built-in timestamps so that findByIdAndUpdate()
+    // also correctly updates updatedAt — the pre-save hook only runs on .save().
+    timestamps: true,
+  }
+);
 
-// Update updatedAt on save + auto-title from first user message
+// Auto-title: take first 5 words of first user message if title is still default
 ChatSchema.pre("save", function (next) {
-  this.updatedAt = Date.now();
-
-  // Auto-title: take first 5 words of first user message if title is default
   if (this.title === "New Chat" && this.messages && this.messages.length > 0) {
     const firstUserMsg = this.messages.find(m => m.role === "user");
     if (firstUserMsg && firstUserMsg.text) {
@@ -66,7 +62,6 @@ ChatSchema.pre("save", function (next) {
       this.title = words.length > 40 ? words.substring(0, 40) + "..." : words;
     }
   }
-
   next();
 });
 

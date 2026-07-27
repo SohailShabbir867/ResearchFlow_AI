@@ -89,7 +89,7 @@ app.use("/api/admin", adminRoutes);
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
-    service: "cybersecai-node",
+    service: "cyberSecAI-node",
     version: "4.0.0",
     port: PORT,
     mongodb: mongoose.connection.readyState === 1 ? "connected" : "disconnected",

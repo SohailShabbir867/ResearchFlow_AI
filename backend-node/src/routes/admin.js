@@ -140,6 +140,8 @@ router.post("/users", async (req, res) => {
       password,
       role: role || "viewer",
       specialty: specialty || "",
+      status: "active",        // admin-created users are immediately active
+      isEmailVerified: true,  // admin vouches for the email
     });
 
     await newUser.save();

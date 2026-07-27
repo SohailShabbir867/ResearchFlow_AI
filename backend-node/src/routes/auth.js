@@ -422,6 +422,18 @@ router.post("/change-password", authMiddleware, async (req, res) => {
   }
 });
 
+// ─── DELETE /api/auth/account ────────────────────────────────────────────────
+// Protected — logged-in user permanently deletes their own account
+router.delete("/account", authMiddleware, async (req, res) => {
+  try {
+    await User.findByIdAndDelete(req.user._id);
+    return res.json({ message: "Account deleted successfully." });
+  } catch (err) {
+    console.error("Delete account error:", err.message);
+    return res.status(500).json({ error: "Server error during account deletion." });
+  }
+});
+
 // ─── POST /api/auth/logout ────────────────────────────────────────────────────
 router.post("/logout", authMiddleware, (req, res) => {
   return res.json({ message: "Logged out successfully." });

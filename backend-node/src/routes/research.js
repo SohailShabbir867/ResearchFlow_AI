@@ -1,8 +1,10 @@
 const express = require("express");
 const axios = require("axios");
+const mongoose = require("mongoose");
 const Chat = require("../models/Chat");
 const QueryLog = require("../models/QueryLog");
 const User = require("../models/User");
+const AppSettings = require("../models/AppSettings");
 const authMiddleware = require("../middleware/auth");
 
 const router = express.Router();
@@ -244,7 +246,6 @@ router.post("/feedback/:chatId/:messageIndex", async (req, res) => {
 // ─── POST /api/research/chats/:id/stream ────────────────────────────────────────
 // Proxies SSE streaming from Python RAG with auth check + MongoDB persistence
 router.post("/chats/:id/stream", async (req, res) => {
-  const mongoose = require("mongoose");
   const { id } = req.params;
   const { question, top_k, answer_style, history } = req.body;
 
@@ -253,11 +254,13 @@ router.post("/chats/:id/stream", async (req, res) => {
   }
 
   let chat = null;
+  let isNewChat = false;
   try {
     if (mongoose.Types.ObjectId.isValid(id)) {
       chat = await Chat.findById(id);
     }
     if (!chat) {
+      isNewChat = true;
       chat = new Chat({
         userId: req.user._id,
         title: question.trim().substring(0, 45),
@@ -278,8 +281,12 @@ router.post("/chats/:id/stream", async (req, res) => {
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
 
+  // Immediately emit real chatId so frontend can replace fake c_timestamp IDs
+  if (isNewChat || !mongoose.Types.ObjectId.isValid(id)) {
+    res.write(`data: ${JSON.stringify({ chatId: chat._id.toString(), chatTitle: chat.title })}\n\n`);
+  }
+
   try {
-    const AppSettings = require("../models/AppSettings");
     const appSettings = await AppSettings.findOne({ key: "global" }).lean();
     const maxTokens = appSettings?.data?.llm?.maxTokens ? parseInt(appSettings.data.llm.maxTokens) : 2500;
 
@@ -313,7 +320,7 @@ router.post("/chats/:id/stream", async (req, res) => {
             finalSources = data.sources || [];
             if (data.refused) isRefused = true;
           }
-        } catch {}
+        } catch (_e) {}
       }
     });
 
@@ -364,7 +371,7 @@ router.get("/health", async (_req, res) => {
   try {
     const response = await axios.get(`${PYTHON_URL()}/health`, { timeout: 3000 });
     return res.json({ node: "ok", python: response.data.status || "ok", details: response.data });
-  } catch {
+  } catch (_e) {
     return res.json({ node: "ok", python: "unreachable" });
   }
 });

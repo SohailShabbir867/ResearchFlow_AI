@@ -24,109 +24,111 @@ import {
 import AdminSidebar from "../components/layout/AdminSidebar.jsx";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 
-const INITIAL_SERVICES = [
-  {
-    id: "srv_1",
-    name: "Python RAG API",
-    port: "port 8000",
-    status: "ONLINE",
-    errorText: null
-  },
-  {
-    id: "srv_2",
-    name: "Qdrant Vector DB",
-    port: "port 6333",
-    status: "OFFLINE",
-    errorText: "Collection exists, but vector index is HNSW_Pending and vector dimensional check failed"
-  },
-  {
-    id: "srv_3",
-    name: "Groq API",
-    port: "cloud",
-    status: "ONLINE",
-    errorText: null
-  },
-  {
-    id: "srv_4",
-    name: "Node.js API",
-    port: "port 5000",
-    status: "ONLINE",
-    errorText: null
-  },
-  {
-    id: "srv_5",
-    name: "MongoDB",
-    port: "port 27017",
-    status: "ONLINE",
-    errorText: null
-  },
-  {
-    id: "srv_6",
-    name: "BM25 Index",
-    port: "memory",
-    status: "ONLINE",
-    errorText: null
-  }
-];
 
-const INITIAL_LOGS = [
-  { type: "INFO", time: "2026-07-23 01:20:12", msg: "Server started on port 8000 (FastAPI/Uvicorn)" },
-  { type: "INFO", time: "2026-07-23 01:20:15", msg: "Initializing embedding model FastEmbed (BGE-base-en-v1.5)" },
-  { type: "ERROR", time: "2026-07-23 01:20:18", msg: "ERROR: Collection exists, but vector index is HNSW_Pending and vector dimensional check failed" },
-  { type: "ERROR", time: "2026-07-23 01:20:25", msg: "ERROR: | HNSW_Pending: Vector exists, but vector dimensional check failed" },
-  { type: "INFO", time: "2026-07-23 01:20:32", msg: "Total chunks indexed: 4,089 in fallback BM25 cache" },
-  { type: "WARNING", time: "2026-07-23 01:20:44", msg: "WARNING: High memory utilization on memory-mapped BM25 index" },
-  { type: "ERROR", time: "2026-07-23 01:21:05", msg: "ERROR: | HNSW_Pending: Vector index check failed on port 6333" },
-  { type: "INFO", time: "2026-07-23 01:21:30", msg: "Health check pulse executed successfully" }
-];
 
 export default function SystemHealth() {
   const navigate = useNavigate();
 
   // Navigation & Page State
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [services, setServices] = useState(INITIAL_SERVICES);
-  const [logs, setLogs] = useState(INITIAL_LOGS);
+  const [services, setServices] = useState([]);
+  const [logs, setLogs] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [showToast, setShowToast] = useState(true);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMsg, setToastMsg] = useState("");
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  // Simulate Auto-refresh timer
+  const fetchHealth = async () => {
+    setIsRefreshing(true);
+    try {
+      const token = localStorage.getItem("medresearch_token");
+      const res = await fetch("/api/admin/health", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      // Map API response to service cards
+      const svc = data.services || {};
+      const newServices = [
+        {
+          id: "srv_python",
+          name: "Python RAG API",
+          port: "port 8000",
+          status: svc.pythonRag?.status === "online" ? "ONLINE" : "OFFLINE",
+          errorText: svc.pythonRag?.error || null,
+        },
+        {
+          id: "srv_qdrant",
+          name: "Qdrant Vector DB",
+          port: "port 6333",
+          status: svc.qdrant?.status === "online" ? "ONLINE" : svc.qdrant?.status === "unknown" ? "UNKNOWN" : "OFFLINE",
+          errorText: svc.qdrant?.error || null,
+        },
+        {
+          id: "srv_node",
+          name: "Node.js API",
+          port: `port ${svc.nodeApi?.port || 5000}`,
+          status: svc.nodeApi?.status === "online" ? "ONLINE" : "OFFLINE",
+          errorText: null,
+        },
+        {
+          id: "srv_mongo",
+          name: "MongoDB",
+          port: "port 27017",
+          status: svc.mongodb?.status === "online" ? "ONLINE" : "OFFLINE",
+          errorText: null,
+        },
+      ];
+
+      // Add Groq API card from Python data if available
+      if (svc.pythonRag?.data?.groq !== undefined) {
+        newServices.push({
+          id: "srv_groq",
+          name: "Groq API",
+          port: "cloud",
+          status: svc.pythonRag.data.groq === "ok" ? "ONLINE" : "OFFLINE",
+          errorText: null,
+        });
+      }
+
+      setServices(newServices);
+      setLastUpdated(new Date().toISOString());
+
+      // Build a log entry from the refresh
+      const now = new Date().toISOString().replace("T", " ").substring(0, 19);
+      const offlineServices = newServices.filter(s => s.status === "OFFLINE").map(s => s.name);
+      const newLog = {
+        type: offlineServices.length > 0 ? "WARNING" : "INFO",
+        time: now,
+        msg: offlineServices.length > 0
+          ? `Health check: ${offlineServices.join(", ")} offline`
+          : "Health check: All systems operational.",
+      };
+      setLogs(prev => [newLog, ...prev.slice(0, 49)]);
+
+      // Show toast for offline services
+      if (offlineServices.length > 0) {
+        setToastMsg(`${offlineServices.join(", ")} ${offlineServices.length === 1 ? "is" : "are"} currently offline.`);
+        setShowToast(true);
+      } else {
+        setShowToast(false);
+      }
+    } catch (err) {
+      const now = new Date().toISOString().replace("T", " ").substring(0, 19);
+      setLogs(prev => [{ type: "ERROR", time: now, msg: `Health check failed: ${err.message}` }, ...prev.slice(0, 49)]);
+    }
+    setIsRefreshing(false);
+  };
+
+  // Auto-refresh every 30s, and fetch on mount
   useEffect(() => {
-    const interval = setInterval(() => {
-      handleRefresh();
-    }, 30000);
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    setTimeout(() => {
-      const now = new Date().toISOString().replace("T", " ").substring(0, 19);
-      const newLog = {
-        type: "INFO",
-        time: now,
-        msg: "Automated 30s system status health pulse check passed."
-      };
-      setLogs(prev => [newLog, ...prev.slice(0, 7)]);
-      setIsRefreshing(false);
-    }, 800);
-  };
-
-  // Toggle Qdrant status for demo interactive showcase
-  const toggleQdrantStatus = () => {
-    setServices(prev => prev.map(s => {
-      if (s.id === "srv_2") {
-        const newStatus = s.status === "OFFLINE" ? "ONLINE" : "OFFLINE";
-        return {
-          ...s,
-          status: newStatus,
-          errorText: newStatus === "OFFLINE" ? "Collection exists, but vector index is HNSW_Pending and vector dimensional check failed" : null
-        };
-      }
-      return s;
-    }));
-    setShowToast(prev => !prev);
-  };
+  const handleRefresh = () => fetchHealth();
 
   return (
     <div className="admin-ui flex h-screen w-full font-sans antialiased overflow-hidden" style={{ background: "var(--bg-page)", color: "var(--text-primary)" }}>
@@ -162,12 +164,11 @@ export default function SystemHealth() {
           <div className="flex items-center gap-3">
             <ThemeToggle />
 
-            <button
-              onClick={toggleQdrantStatus}
-              className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-colors"
-            >
-              Toggle Qdrant State Demo
-            </button>
+            {lastUpdated && (
+              <span className="text-[11px] text-gray-500 font-mono hidden sm:block">
+                Updated {new Date(lastUpdated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              </span>
+            )}
 
             <button
               onClick={handleRefresh}
@@ -316,7 +317,7 @@ export default function SystemHealth() {
           <div className="fixed bottom-6 right-6 z-50 bg-blue-600/95 border border-blue-400/50 text-white p-4 rounded-xl shadow-2xl flex items-center gap-3 animate-fade-in max-w-sm">
             <Info className="w-5 h-5 text-blue-200 shrink-0 mt-0.5" />
             <div className="flex-1 text-xs leading-relaxed font-medium">
-              Connection to Qdrant is currently Offline. System capabilities are degraded.
+              {toastMsg || "A service is currently offline. System capabilities may be degraded."}
             </div>
             <button
               onClick={() => setShowToast(false)}

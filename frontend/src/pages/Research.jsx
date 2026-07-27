@@ -20,8 +20,6 @@ import {
   Upload,
   MessageSquare,
   Crown,
-  Zap,
-  Lock,
   CheckCircle2,
   X,
   Globe,
@@ -162,7 +160,7 @@ export default function Research() {
   // Input & UI state
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [searchStatusText, setSearchStatusText] = useState("Searching the web...");
+  const [searchStatusText, setSearchStatusText] = useState("");
   const [copiedId, setCopiedId] = useState(null);
   const [feedbacks, setFeedbacks] = useState({});
   const [detailLevel, setDetailLevel] = useState("technical");
@@ -298,6 +296,7 @@ export default function Research() {
     }));
     setInput("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
+    setSearchStatusText(""); // Reset status text for each new query
     setIsTyping(true);
 
     try {
@@ -353,6 +352,26 @@ export default function Research() {
         for (const line of lines) {
           try {
             const payload = JSON.parse(line.replace("data: ", ""));
+
+            if (payload.chatId) {
+              // Backend created a real MongoDB chat — replace fake c_timestamp id in sidebar & messagesMap
+              const realId = payload.chatId;
+              if (chatId !== realId) {
+                setChats((prev) => ({
+                  today: prev.today.map((c) => c.id === chatId ? { ...c, id: realId, title: payload.chatTitle || c.title } : c),
+                  yesterday: prev.yesterday.map((c) => c.id === chatId ? { ...c, id: realId, title: payload.chatTitle || c.title } : c),
+                }));
+                setMessagesMap((prev) => {
+                  const msgs = prev[chatId] || [];
+                  const next = { ...prev };
+                  delete next[chatId];
+                  next[realId] = msgs;
+                  return next;
+                });
+                setActiveChatId(realId);
+                chatId = realId; // update local ref for subsequent SSE events
+              }
+            }
 
             if (payload.status_text) {
               setSearchStatusText(payload.status_text);

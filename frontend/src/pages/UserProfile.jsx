@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
+import axios from "axios";
+import { logoutUser } from "../store/authSlice.js";
 import { 
   Microscope, 
   Plus, 
@@ -25,7 +27,9 @@ import ThemeToggle from "../components/ThemeToggle.jsx";
 
 export default function UserProfile() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const user = useSelector((s) => s.auth.user);
+  const isAdmin = user?.role === "admin";
 
   // Sidebar State
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -73,13 +77,21 @@ export default function UserProfile() {
 
   const pwStrength = getPasswordStrength(newPassword);
 
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     if (e) e.preventDefault();
-    setProfileSuccessMsg("Profile information updated successfully!");
+    try {
+      const token = localStorage.getItem("medresearch_token");
+      await axios.patch("/api/auth/profile", { name: fullName, specialty }, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      setProfileSuccessMsg("Profile information updated successfully!");
+    } catch (err) {
+      setProfileSuccessMsg(err?.response?.data?.error || "Failed to update profile.");
+    }
     setTimeout(() => setProfileSuccessMsg(""), 3000);
   };
 
-  const handleChangePassword = (e) => {
+  const handleChangePassword = async (e) => {
     e.preventDefault();
     setPasswordErrorMsg("");
     setPasswordSuccessMsg("");
@@ -88,22 +100,38 @@ export default function UserProfile() {
       setPasswordErrorMsg("New passwords do not match. Please verify.");
       return;
     }
-
     if (newPassword.length < 6) {
       setPasswordErrorMsg("New password must be at least 6 characters.");
       return;
     }
 
-    setPasswordSuccessMsg("Password changed successfully!");
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    setTimeout(() => setPasswordSuccessMsg(""), 3000);
+    try {
+      const token = localStorage.getItem("medresearch_token");
+      await axios.post("/api/auth/change-password", { currentPassword, newPassword }, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      setPasswordSuccessMsg("Password changed successfully!");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      setPasswordErrorMsg(err?.response?.data?.error || "Failed to change password.");
+    }
+    setTimeout(() => setPasswordSuccessMsg(""), 4000);
+    setTimeout(() => setPasswordErrorMsg(""), 4000);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (deleteConfirmText.trim() !== "DELETE") return;
-    alert("Account deletion request submitted.");
+    try {
+      const token = localStorage.getItem("medresearch_token");
+      await axios.delete("/api/auth/account", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+    } catch (_e) {
+      // Even if delete fails on server, we clear local session
+    }
+    dispatch(logoutUser());
     setShowDeleteModal(false);
     navigate("/login");
   };
@@ -197,14 +225,16 @@ export default function UserProfile() {
             {!sidebarCollapsed && <span>Document Library</span>}
           </button>
 
-          <button
-            onClick={() => navigate("/admin")}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <Settings className="w-4 h-4" />
-            {!sidebarCollapsed && <span>Admin Dashboard</span>}
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => navigate("/admin")}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all"
+              style={{ color: "var(--text-muted)" }}
+            >
+              <Settings className="w-4 h-4" />
+              {!sidebarCollapsed && <span>Admin Dashboard</span>}
+            </button>
+          )}
         </div>
 
         {/* User Footer (HIGHLIGHTED FOR PROFILE) */}
