@@ -34,7 +34,7 @@ export const logoutUser = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       await axios.post(`${API}/logout`);
-    } catch {
+    } catch (_e) {
       // Ignore server errors — always clear client state
     } finally {
       localStorage.removeItem("medresearch_token");

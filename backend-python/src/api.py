@@ -308,6 +308,7 @@ async def stream_query(request: QueryRequest):
 
             async def _stream_web_fallback():
                 print(f"  [Stream Fallback] Executing web search for: '{search_query[:50]}...'")
+                yield f"data: {json.dumps({'status_text': 'Searching the web...'})}\n\n"
                 web_results = perform_web_search(search_query, max_results=MAX_WEB_RESULTS)
                 if not web_results:
                     yield f"data: {json.dumps({'token': REFUSAL_MSG})}\n\n"

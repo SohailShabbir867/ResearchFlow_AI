@@ -125,7 +125,7 @@ export const askQuestionStream = (chatId, question, answer_style = "classical") 
           if (payload.token) {
             dispatch(appendStreamToken(payload.token));
           }
-        } catch {
+        } catch (_e) {
           // Ignore malformed lines
         }
       }

@@ -35,6 +35,7 @@ Pipeline flow:
 """
 import os
 import time
+from datetime import datetime
 from dotenv import load_dotenv
 from src.embedder import get_embedding
 from src.hybrid_search import hybrid_search
@@ -245,8 +246,17 @@ def build_prompt(
         if turns:
             history_xml = "<conversation_history>\n" + "\n".join(turns) + "\n</conversation_history>\n\n"
 
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")
+    current_year = datetime.now().year
+
     return f"""<system_instructions>
 You are **CyberSecAI** — an elite Ethical Hacking & Cybersecurity Intelligence System. You reason like a senior penetration tester, vulnerability researcher, and security architect combined. You assist defenders, red teamers, CTF players, bug-bounty hunters, and security researchers working within authorized scope.
+
+<temporal_anchor>
+Current System Date & Time: {now_str}
+Current Year: {current_year}
+When the user asks for today's date, current time, or real-time temporal information, state the exact date/time directly from this temporal anchor.
+</temporal_anchor>
 
 <domain_mastery>
 You command the full offensive and defensive security spectrum:
@@ -353,15 +363,26 @@ def build_web_prompt(
         if turns:
             history_xml = "<conversation_history>\n" + "\n".join(turns) + "\n</conversation_history>\n\n"
 
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")
+    current_year = datetime.now().year
+
     return f"""<system_instructions>
 You are **CyberSecAI** — an elite Ethical Hacking & Cybersecurity Intelligence System.
-Your local document collection did not contain sufficient coverage for this question, so live web intelligence search results have been retrieved to answer the query accurately.
+Your local document collection did not contain sufficient coverage for this question, so live web search results have been retrieved to answer the query accurately.
+
+<temporal_anchor>
+Current Date and Time: {now_str}
+Current Year: {current_year}
+Use this temporal anchor directly when asked for today's date, current time, or real-time status.
+</temporal_anchor>
 
 <core_directives>
-1. LIVE WEB GROUNDING: Synthesize the technical information, code examples, CVE details, and tool flags from <web_search_results>.
-2. CITATION RULE: For key technical facts or external references from the web search, cite the source URL inline as `[Web Source](url)`.
+1. DIRECT SYNTHESIS: Synthesize technical facts, code examples, software versions, dates, and times directly from <web_search_results> and <temporal_anchor>.
+   - When asked for date/time or specific facts, STATE THE EXACT ANSWER IMMEDIATELY.
+   - NEVER output meta-talk or fluff like "Websites like timeanddate.com provide information..." — give the exact answer directly!
+2. CITATION RULE: For key technical facts or external web findings, cite the source URL inline as `[Source Title](url)`.
 3. MULTI-LANGUAGE CODE GENERATION: If requested for code or payloads, provide complete, working code blocks with proper language tags (```python, ```bash, ```c, ```javascript, ```powershell, ```ruby, ```nasm, ```sql).
-4. PROFESSIONAL SYNTHESIS: Present a clear, direct, well-structured Markdown response. Never mention "I searched the web" or meta-narration.
+4. ZERO META-TALK: Present knowledge cleanly and directly.
 </core_directives>
 
 <formatting_rules>
@@ -385,6 +406,7 @@ Your local document collection did not contain sufficient coverage for this ques
 </user_query>
 
 <response>"""
+
 
 
 # ─── LLM call ─────────────────────────────────────────────────────────────────

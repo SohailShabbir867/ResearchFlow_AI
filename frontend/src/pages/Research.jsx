@@ -162,6 +162,7 @@ export default function Research() {
   // Input & UI state
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [searchStatusText, setSearchStatusText] = useState("Searching the web...");
   const [copiedId, setCopiedId] = useState(null);
   const [feedbacks, setFeedbacks] = useState({});
   const [detailLevel, setDetailLevel] = useState("technical");
@@ -334,7 +335,7 @@ export default function Research() {
         ...prev,
         [chatId]: [
           ...(prev[chatId] || []),
-          { id: assistantId, role: "assistant", text: "", sources: [], time: now },
+          { id: assistantId, role: "assistant", text: "", sources: [], webSources: [], isWebFallback: false, time: now },
         ],
       }));
 
@@ -352,6 +353,10 @@ export default function Research() {
         for (const line of lines) {
           try {
             const payload = JSON.parse(line.replace("data: ", ""));
+
+            if (payload.status_text) {
+              setSearchStatusText(payload.status_text);
+            }
 
             if (payload.error) {
               setMessagesMap((prev) => {
@@ -408,7 +413,7 @@ export default function Research() {
                 return { ...prev, [chatId]: msgs };
               });
             }
-          } catch {
+          } catch (_e) {
             // Ignore malformed SSE lines
           }
         }
@@ -1091,29 +1096,26 @@ export default function Research() {
               );
             })}
 
-            {/* Typing indicator */}
+            {/* Typing / Searching indicator */}
             {isTyping && (
-              <div className="flex gap-3 justify-start animate-fade-in">
+              <div className="flex gap-3 justify-start items-center my-3 animate-fade-in pl-1">
                 <div
-                  className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-                  style={{ background: "var(--brand-primary)" }}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ background: "transparent", border: "1px solid var(--border-color)" }}
                 >
-                  <Microscope className="w-4 h-4 text-white" strokeWidth={2.2} />
+                  <Globe className="w-4 h-4 text-cyan-400 animate-pulse" strokeWidth={2} />
                 </div>
-                <div
-                  className="px-5 py-4 rounded-2xl rounded-tl-sm flex items-center gap-1.5"
-                  style={{
-                    background: "var(--bg-card)",
-                    border: "1px solid var(--border-color)",
-                  }}
-                >
-                  {[0, 150, 300].map((delay) => (
-                    <span
-                      key={delay}
-                      className="w-2 h-2 rounded-full animate-bounce"
-                      style={{ background: "var(--brand-primary)", animationDelay: `${delay}ms` }}
-                    />
-                  ))}
+                <div className="flex items-center gap-2 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+                  <span>{searchStatusText || "Searching the web..."}</span>
+                  <div className="flex items-center gap-1 ml-1">
+                    {[0, 150, 300].map((delay) => (
+                      <span
+                        key={delay}
+                        className="w-1.5 h-1.5 rounded-full animate-bounce"
+                        style={{ background: "var(--brand-primary)", animationDelay: `${delay}ms` }}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
