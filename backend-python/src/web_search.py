@@ -1,83 +1,180 @@
 """
-CyberSecAI — Live Web Search Fallback Engine
-Uses DuckDuckGo Search (DDGS) to query live web intelligence when local document RAG coverage is insufficient.
+CyberSecAI — Live Web Search Engine
+v5.0 — Always-On Dual-Source Intelligence
 
-Extracts titles, snippets, source URLs, and formats context blocks for LLM prompt augmentation.
-Includes LRU cache (128 entries) for fast repeated web queries.
+Uses DuckDuckGo Search (DDGS) to retrieve live web intelligence that is
+ALWAYS combined with local RAG results — not just used as a fallback.
+
+Features:
+  - build_cybersec_web_query(): transforms raw questions into high-signal
+    security-focused queries (NVD, ExploitDB, GitHub, HackerOne site filters)
+  - LRU cache (256 entries, 30-min TTL for CVE/vuln queries, 60-min for general)
+  - Concurrent-safe (called from ThreadPoolExecutor in rag_pipeline)
 """
+import re
 import hashlib
 import time
 from collections import OrderedDict
+
 try:
     from ddgs import DDGS
 except ImportError:
     from duckduckgo_search import DDGS
 
-_CACHE_MAX = 128
-_web_cache = OrderedDict()
-_CACHE_TTL = 3600  # 1 hour TTL for web results
+# ─── Cache ────────────────────────────────────────────────────────────────────
+_CACHE_MAX     = 256
+_web_cache     = OrderedDict()
+_CACHE_TTL     = 3600       # 1 hour default
+_CVE_CACHE_TTL = 1800       # 30 min for CVE / vuln queries (fresher results)
+
+# ─── Security-focused site boosters ──────────────────────────────────────────
+_VULN_SITES = (
+    "site:nvd.nist.gov OR site:exploit-db.com OR site:github.com "
+    "OR site:hackerone.com OR site:cvedetails.com OR site:packetstormsecurity.com"
+)
+_TOOL_SITES = (
+    "site:github.com OR site:kali.org OR site:man7.org OR site:gtfobins.github.io "
+    "OR site:lolbas-project.github.io OR site:book.hacktricks.xyz"
+)
+_CTF_SITES = (
+    "site:ctftime.org OR site:github.com OR site:medium.com OR site:writeups.ropemporium.com"
+)
 
 
 def _cache_key(query: str) -> str:
     return hashlib.md5(query.strip().lower().encode("utf-8")).hexdigest()
 
 
-def perform_web_search(query: str, max_results: int = 5) -> list[dict]:
+def _is_cve_query(q: str) -> bool:
+    return bool(re.search(r"CVE-\d{4}-\d+", q, re.IGNORECASE))
+
+
+def _is_tool_query(q: str) -> bool:
+    tools = [
+        "nmap", "burp", "metasploit", "sqlmap", "ffuf", "gobuster", "hashcat",
+        "hydra", "ncrack", "nikto", "wfuzz", "dirb", "dirbuster", "john",
+        "bloodhound", "impacket", "mimikatz", "crackmapexec", "evil-winrm",
+        "netcat", "nc", "socat", "pwncat", "ghidra", "ida", "gdb", "pwndbg",
+        "radare2", "binwalk", "frida", "objection", "apktool", "jadx",
+        "wireshark", "tshark", "responder", "bettercap", "aircrack", "reaver",
+        "shodan", "censys", "amass", "subfinder", "nuclei", "nessus", "openvas",
+    ]
+    q_lower = q.lower()
+    return any(t in q_lower for t in tools)
+
+
+def _is_ctf_query(q: str) -> bool:
+    ctf_markers = [
+        "ctf", "hackthebox", "htb", "tryhackme", "thm", "picoctf",
+        "pwn", "ret2win", "rop chain", "format string", "heap exploit",
+        "writeup", "challenge", "flag{", "ctf{",
+    ]
+    q_lower = q.lower()
+    return any(m in q_lower for m in ctf_markers)
+
+
+def build_cybersec_web_query(question: str) -> str:
+    """
+    Transform a raw user question into a high-signal cybersecurity web query.
+
+    Strategy:
+      - CVE questions  → NVD + ExploitDB + CVEDetails site filters
+      - Tool questions → GitHub + Kali + GTFOBins + HackTricks site filters
+      - CTF questions  → CTFtime + GitHub writeups + ROP-specific sites
+      - General pentesting → broad security site boosters
+      - For very short questions (< 5 words) the original is returned as-is to
+        avoid over-constraining search
+
+    Returns a refined query string ready for DuckDuckGo.
+    """
+    q = question.strip()
+    words = q.split()
+
+    # Very short/conversational → don't inject site filters, just pass through
+    if len(words) <= 4:
+        return q
+
+    # Extract CVE IDs and build a targeted query
+    cve_match = re.findall(r"CVE-\d{4}-\d+", q, re.IGNORECASE)
+    if cve_match:
+        cve_str = " OR ".join(cve_match)
+        return f"{cve_str} exploit PoC technical details {_VULN_SITES}"
+
+    # Tool-specific → GitHub + docs
+    if _is_tool_query(q):
+        return f"{q} tutorial flags examples usage {_TOOL_SITES}"
+
+    # CTF-specific
+    if _is_ctf_query(q):
+        return f"{q} writeup solution approach {_CTF_SITES}"
+
+    # General ethical hacking / pentesting / security
+    security_keywords = [
+        "exploit", "payload", "bypass", "injection", "xss", "sqli", "rce",
+        "lfi", "rfi", "ssrf", "ssti", "xxe", "deserialization", "buffer overflow",
+        "privilege escalation", "privesc", "lateral movement", "persistence",
+        "c2", "command and control", "shellcode", "reversing", "malware",
+        "forensics", "osint", "reconnaissance", "enumeration", "pentest",
+        "vulnerability", "cve", "zero-day", "0day", "poc", "proof of concept",
+        "mitm", "arp spoofing", "wifi hacking", "wpa2", "kerberoasting",
+        "pass the hash", "active directory", "bloodhound", "mimikatz",
+    ]
+    q_lower = q.lower()
+    is_security = any(kw in q_lower for kw in security_keywords)
+
+    if is_security:
+        return f"{q} {_VULN_SITES}"
+
+    # Fallback → just add GitHub for code examples
+    return f"{q} site:github.com OR site:stackoverflow.com"
+
+
+def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
     """
     Perform a live web search using DuckDuckGo.
 
     Args:
-        query: Search query string
-        max_results: Maximum number of search results to return (default 5)
+        query:       Raw search query (will be transformed by build_cybersec_web_query)
+        max_results: Maximum number of results (default 6 for richer coverage)
 
     Returns:
         List of dicts: [{"title": str, "snippet": str, "url": str}, ...]
     """
-    cleaned_query = query.strip()
-    if not cleaned_query:
+    refined_query = build_cybersec_web_query(query)
+    if not refined_query:
         return []
 
-    # Check cache
-    key = _cache_key(cleaned_query)
+    # TTL depends on query type
+    ttl = _CVE_CACHE_TTL if _is_cve_query(query) else _CACHE_TTL
+
+    key = _cache_key(refined_query)
     now = time.time()
     if key in _web_cache:
         entry = _web_cache[key]
-        if now - entry["timestamp"] < _CACHE_TTL:
+        if now - entry["timestamp"] < ttl:
             _web_cache.move_to_end(key)
-            print(f"  [Web Search Cache Hit] '{cleaned_query[:40]}...' ({len(entry['results'])} results)")
+            print(f"  [Web Cache Hit] '{query[:40]}' ({len(entry['results'])} results)")
             return entry["results"]
 
-    print(f"  [Web Search] Querying DuckDuckGo: '{cleaned_query[:60]}...'")
+    print(f"  [Web Search] DuckDuckGo: '{refined_query[:80]}'")
 
     results = []
     try:
         ddgs = DDGS()
-        # Query DuckDuckGo text search
-        raw_results = list(ddgs.text(cleaned_query, max_results=max_results))
-        for r in raw_results:
-            title = r.get("title", "").strip()
+        raw = list(ddgs.text(refined_query, max_results=max_results))
+        for r in raw:
+            title   = r.get("title", "").strip()
             snippet = r.get("body", r.get("snippet", "")).strip()
-            url = r.get("href", r.get("link", "")).strip()
-
+            url     = r.get("href", r.get("link", "")).strip()
             if title and snippet:
-                results.append({
-                    "title": title,
-                    "snippet": snippet,
-                    "url": url,
-                })
+                results.append({"title": title, "snippet": snippet, "url": url})
 
-        print(f"  [Web Search Success] Retrieved {len(results)} web results")
-
+        print(f"  [Web Search OK] {len(results)} results for: '{query[:50]}'")
     except Exception as e:
-        print(f"  [Web Search Warning] DuckDuckGo query failed: {e}")
-        # Return empty list on failure so caller can handle gracefully
+        print(f"  [Web Search Warning] DuckDuckGo failed: {e}")
         return []
 
-    # Store in cache
-    _web_cache[key] = {
-        "timestamp": now,
-        "results": results,
-    }
+    _web_cache[key] = {"timestamp": now, "results": results}
     if len(_web_cache) > _CACHE_MAX:
         _web_cache.popitem(last=False)
 
@@ -91,9 +188,9 @@ def format_web_context(web_results: list[dict]) -> str:
 
     blocks = []
     for i, res in enumerate(web_results):
-        title = res.get("title", "Web Source")
+        title   = res.get("title", "Web Source")
         snippet = res.get("snippet", "").strip()
-        url = res.get("url", "")
+        url     = res.get("url", "")
         blocks.append(
             f'<web_source index="{i+1}" title="{title}" url="{url}">\n{snippet}\n</web_source>'
         )

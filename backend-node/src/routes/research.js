@@ -288,14 +288,14 @@ router.post("/chats/:id/stream", async (req, res) => {
 
   try {
     const appSettings = await AppSettings.findOne({ key: "global" }).lean();
-    const maxTokens = appSettings?.data?.llm?.maxTokens ? parseInt(appSettings.data.llm.maxTokens) : 2500;
+    const maxTokens = appSettings?.data?.llm?.maxTokens ? parseInt(appSettings.data.llm.maxTokens) : 4000;
 
     const pyResponse = await axios.post(
       `${PYTHON_URL()}/stream`,
       {
         question: question.trim(),
-        top_k: top_k || 5,
-        answer_style: answer_style || "classical",
+        top_k: top_k || 8,
+        answer_style: answer_style || "technical",
         history,
         max_tokens: maxTokens,
       },

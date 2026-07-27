@@ -380,10 +380,13 @@ export default function Research() {
             if (payload.error) {
               setMessagesMap((prev) => {
                 const msgs = [...(prev[chatId] || [])];
-                const last = msgs[msgs.length - 1];
-                if (last && last.role === "assistant") {
-                  last.text = `⚠️ ${payload.error}`;
-                  last.isRefused = true;
+                const lastIdx = msgs.length - 1;
+                if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
+                  msgs[lastIdx] = {
+                    ...msgs[lastIdx],
+                    text: `⚠️ ${payload.error}`,
+                    isRefused: true,
+                  };
                 }
                 return { ...prev, [chatId]: msgs };
               });
@@ -395,10 +398,13 @@ export default function Research() {
               fullText = payload.replace;
               setMessagesMap((prev) => {
                 const msgs = [...(prev[chatId] || [])];
-                const last = msgs[msgs.length - 1];
-                if (last && last.role === "assistant") {
-                  last.text = payload.replace;
-                  last.isRefused = true;
+                const lastIdx = msgs.length - 1;
+                if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
+                  msgs[lastIdx] = {
+                    ...msgs[lastIdx],
+                    text: payload.replace,
+                    isRefused: true,
+                  };
                 }
                 return { ...prev, [chatId]: msgs };
               });
@@ -407,12 +413,15 @@ export default function Research() {
             if (payload.done) {
               setMessagesMap((prev) => {
                 const msgs = [...(prev[chatId] || [])];
-                const last = msgs[msgs.length - 1];
-                if (last && last.role === "assistant") {
-                  last.sources = payload.sources || [];
-                  last.webSources = payload.web_sources || [];
-                  last.isWebFallback = payload.is_web_fallback || false;
-                  if (payload.refused) last.isRefused = true;
+                const lastIdx = msgs.length - 1;
+                if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
+                  msgs[lastIdx] = {
+                    ...msgs[lastIdx],
+                    sources: payload.sources || [],
+                    webSources: payload.web_sources || [],
+                    isWebFallback: payload.is_web_fallback || false,
+                    isRefused: payload.refused ? true : msgs[lastIdx].isRefused,
+                  };
                 }
                 return { ...prev, [chatId]: msgs };
               });
@@ -425,9 +434,12 @@ export default function Research() {
               const captured = fullText;
               setMessagesMap((prev) => {
                 const msgs = [...(prev[chatId] || [])];
-                const last = msgs[msgs.length - 1];
-                if (last && last.role === "assistant") {
-                  last.text = captured;
+                const lastIdx = msgs.length - 1;
+                if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
+                  msgs[lastIdx] = {
+                    ...msgs[lastIdx],
+                    text: captured,
+                  };
                 }
                 return { ...prev, [chatId]: msgs };
               });
