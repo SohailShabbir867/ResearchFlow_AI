@@ -1,29 +1,35 @@
 """
 CyberSecAI — Live Web Search Engine
-v5.0 — Always-On Dual-Source Intelligence
+v5.1 — Bug Fixes + Perplexity Metadata
+
+Bug 6 Fix: Added threading.Lock around all _web_cache reads/writes.
+  The OrderedDict was accessed concurrently from ThreadPoolExecutor workers,
+  causing potential dict corruption under high load.
+
+New: Enriched result metadata
+  - domain: extracted from URL for display
+  - favicon_url: constructed Google favicon CDN URL for frontend display
+  - confidence: estimated relevance (0–100) based on result position
 
 Uses DuckDuckGo Search (DDGS) to retrieve live web intelligence that is
 ALWAYS combined with local RAG results — not just used as a fallback.
-
-Features:
-  - build_cybersec_web_query(): transforms raw questions into high-signal
-    security-focused queries (NVD, ExploitDB, GitHub, HackerOne site filters)
-  - LRU cache (256 entries, 30-min TTL for CVE/vuln queries, 60-min for general)
-  - Concurrent-safe (called from ThreadPoolExecutor in rag_pipeline)
 """
 import re
 import hashlib
 import time
+import threading
 from collections import OrderedDict
+from urllib.parse import urlparse
 
 try:
     from ddgs import DDGS
 except ImportError:
     from duckduckgo_search import DDGS
 
-# ─── Cache ────────────────────────────────────────────────────────────────────
+# ─── Thread-safe Cache (Bug 6 Fix) ────────────────────────────────────────────
 _CACHE_MAX     = 256
 _web_cache     = OrderedDict()
+_cache_lock    = threading.Lock()   # Protects all _web_cache mutations
 _CACHE_TTL     = 3600       # 1 hour default
 _CVE_CACHE_TTL = 1800       # 30 min for CVE / vuln queries (fresher results)
 
@@ -71,6 +77,36 @@ def _is_ctf_query(q: str) -> bool:
     ]
     q_lower = q.lower()
     return any(m in q_lower for m in ctf_markers)
+
+
+def _extract_domain(url: str) -> str:
+    """Extract the bare domain from a URL."""
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc
+        # Strip www. prefix
+        if domain.startswith("www."):
+            domain = domain[4:]
+        return domain
+    except Exception:
+        return ""
+
+
+def _favicon_url(domain: str) -> str:
+    """Return a Google favicon CDN URL for the given domain."""
+    if not domain:
+        return ""
+    return f"https://www.google.com/s2/favicons?domain={domain}&sz=32"
+
+
+def _result_confidence(rank: int, total: int) -> int:
+    """
+    Estimate a 0–100 confidence score for a web result based on its rank.
+    Top result = 100, last result decays linearly.
+    """
+    if total <= 1:
+        return 90
+    return max(30, round(100 - (rank / max(total - 1, 1)) * 60))
 
 
 def build_cybersec_web_query(question: str) -> str:
@@ -133,12 +169,18 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
     """
     Perform a live web search using DuckDuckGo.
 
+    Bug 6 Fix: All cache reads and writes are now protected by _cache_lock to
+    ensure thread safety when called from concurrent ThreadPoolExecutor workers.
+
     Args:
         query:       Raw search query (will be transformed by build_cybersec_web_query)
         max_results: Maximum number of results (default 6 for richer coverage)
 
     Returns:
-        List of dicts: [{"title": str, "snippet": str, "url": str}, ...]
+        List of dicts: [{
+            "title": str, "snippet": str, "url": str,
+            "domain": str, "favicon_url": str, "confidence": int
+        }, ...]
     """
     refined_query = build_cybersec_web_query(query)
     if not refined_query:
@@ -149,12 +191,15 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
 
     key = _cache_key(refined_query)
     now = time.time()
-    if key in _web_cache:
-        entry = _web_cache[key]
-        if now - entry["timestamp"] < ttl:
-            _web_cache.move_to_end(key)
-            print(f"  [Web Cache Hit] '{query[:40]}' ({len(entry['results'])} results)")
-            return entry["results"]
+
+    # Thread-safe cache read
+    with _cache_lock:
+        if key in _web_cache:
+            entry = _web_cache[key]
+            if now - entry["timestamp"] < ttl:
+                _web_cache.move_to_end(key)
+                print(f"  [Web Cache Hit] '{query[:40]}' ({len(entry['results'])} results)")
+                return entry["results"]
 
     print(f"  [Web Search] DuckDuckGo: '{refined_query[:80]}'")
 
@@ -162,21 +207,32 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
     try:
         ddgs = DDGS()
         raw = list(ddgs.text(refined_query, max_results=max_results))
-        for r in raw:
+        total = len(raw)
+        for rank, r in enumerate(raw):
             title   = r.get("title", "").strip()
             snippet = r.get("body", r.get("snippet", "")).strip()
             url     = r.get("href", r.get("link", "")).strip()
             if title and snippet:
-                results.append({"title": title, "snippet": snippet, "url": url})
+                domain = _extract_domain(url)
+                results.append({
+                    "title":       title,
+                    "snippet":     snippet,
+                    "url":         url,
+                    "domain":      domain,
+                    "favicon_url": _favicon_url(domain),
+                    "confidence":  _result_confidence(rank, total),
+                })
 
         print(f"  [Web Search OK] {len(results)} results for: '{query[:50]}'")
     except Exception as e:
         print(f"  [Web Search Warning] DuckDuckGo failed: {e}")
         return []
 
-    _web_cache[key] = {"timestamp": now, "results": results}
-    if len(_web_cache) > _CACHE_MAX:
-        _web_cache.popitem(last=False)
+    # Thread-safe cache write
+    with _cache_lock:
+        _web_cache[key] = {"timestamp": now, "results": results}
+        if len(_web_cache) > _CACHE_MAX:
+            _web_cache.popitem(last=False)
 
     return results
 

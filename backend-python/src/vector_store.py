@@ -2,7 +2,10 @@
 CyberSecAI — Qdrant Vector Store
 HNSW-indexed vector database optimized for cybersecurity document corpora.
 
-v4.0 — Changes:
+v4.1 — Bug Fixes:
+  - Singleton QdrantClient (Bug 9): replaced per-call client construction with
+    a module-level instance. Eliminates per-request TCP handshakes and connection
+    storms under concurrent load.
   - Collection renamed to 'cybersec'
   - Payload indexing on content_type, cves, section fields
   - HNSW tuned for 768-dim BGE-base vectors
@@ -23,9 +26,18 @@ QDRANT_URL      = os.getenv("QDRANT_URL",      "http://localhost:6333")
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "cybersec")
 VECTOR_SIZE     = 768  # BAAI/bge-base-en-v1.5 outputs 768-dim vectors
 
+# ─── Singleton Qdrant client (Bug 9 Fix) ─────────────────────────────────────
+# One persistent connection shared across all requests — no TCP overhead per call.
+_qdrant_client: QdrantClient = None
+
 
 def get_client() -> QdrantClient:
-    return QdrantClient(url=QDRANT_URL)
+    """Return the module-level singleton QdrantClient, creating it if needed."""
+    global _qdrant_client
+    if _qdrant_client is None:
+        _qdrant_client = QdrantClient(url=QDRANT_URL)
+        print(f"  [Qdrant] Singleton client initialized → {QDRANT_URL}")
+    return _qdrant_client
 
 
 def create_collection(recreate: bool = False):

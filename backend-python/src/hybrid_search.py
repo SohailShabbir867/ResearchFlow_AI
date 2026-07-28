@@ -3,7 +3,13 @@ CyberSecAI — Hybrid Search Engine
 Combines dense vector search (Qdrant/BGE) with sparse keyword search (BM25).
 Results fused via Reciprocal Rank Fusion (RRF) for maximum recall.
 
-v4.0 — Cybersec upgrades:
+v4.1 — Bug Fixes:
+  - Bug 4 Fix: Added threading.Lock around all _bm25_index/_bm25_chunks mutations
+    to prevent race conditions when multiple requests arrive simultaneously.
+  - Bug 5 Fix: Added threading.Event (_bm25_building) so concurrent requests
+    wait for the first build to complete rather than triggering parallel rebuilds
+    that could stall request threads for 5–15 seconds.
+
   - Query expansion: auto-expand cybersec acronyms for better BM25 keyword hits
   - Cybersec-aware BM25 tokenizer: removes generic stopwords, preserves tool names
   - Increased candidate pool: 30 (up from 20) for richer reranker input
@@ -11,6 +17,7 @@ v4.0 — Cybersec upgrades:
 """
 import os
 import re
+import threading
 from dotenv import load_dotenv
 from rank_bm25 import BM25Okapi
 from src.vector_store import search as vector_search, get_client
@@ -20,9 +27,12 @@ load_dotenv()
 COLLECTION_NAME        = os.getenv("COLLECTION_NAME",        "cybersec")
 HYBRID_CANDIDATE_COUNT = int(os.getenv("HYBRID_CANDIDATE_COUNT", "30"))
 
-# ─── Module-level BM25 index cache ───────────────────────────────────────────
-_bm25_index  = None
-_bm25_chunks = None
+# ─── Thread-safe BM25 index cache (Bug 4 & 5 Fix) ────────────────────────────
+_bm25_index   = None
+_bm25_chunks  = None
+_bm25_lock    = threading.Lock()   # Protects reads/writes to index+chunks
+_bm25_building = threading.Event() # Signals when a build is in progress
+_bm25_ready   = threading.Event() # Signals when index is valid and ready
 
 # ─── Cybersec acronym expansion map ──────────────────────────────────────────
 # Expands common abbreviations so BM25 finds them in verbose document text
@@ -135,64 +145,103 @@ def _expand_query(query: str) -> str:
 
 
 def _build_bm25_index():
-    """Build BM25 index from all chunks stored in Qdrant."""
+    """
+    Build BM25 index from all chunks stored in Qdrant.
+
+    Bug 4 & 5 Fix: Protected by _bm25_lock to prevent concurrent rebuilds.
+    Uses _bm25_building Event as a guard — only one thread does the rebuild;
+    others return immediately (they'll use the index once it's ready via
+    _bm25_ready event).
+    """
     global _bm25_index, _bm25_chunks
 
-    client = get_client()
-    all_chunks = []
-    offset = None
-
-    while True:
-        results = client.scroll(
-            collection_name=COLLECTION_NAME,
-            limit=500,
-            offset=offset,
-            with_payload=True,
-            with_vectors=False
-        )
-        points, next_offset = results
-
-        for point in points:
-            all_chunks.append({
-                "id":           point.id,
-                "text":         point.payload.get("text",         ""),
-                "source":       point.payload.get("source",       ""),
-                "chunk_index":  point.payload.get("chunk_index",  0),
-                "pages":        point.payload.get("pages",        [1]),
-                "content_type": point.payload.get("content_type", "general"),
-                "cves":         point.payload.get("cves",         []),
-                "section":      point.payload.get("section",      ""),
-            })
-
-        if next_offset is None:
-            break
-        offset = next_offset
-
-    if not all_chunks:
-        _bm25_index  = None
-        _bm25_chunks = []
+    # If already building in another thread, wait for it to finish
+    if _bm25_building.is_set():
+        print("  [BM25] Build already in progress, waiting...")
+        _bm25_ready.wait(timeout=30)
         return
 
-    tokenized_corpus = [_tokenize(c["text"]) for c in all_chunks]
-    _bm25_index  = BM25Okapi(tokenized_corpus)
-    _bm25_chunks = all_chunks
-    print(f"  BM25 index built: {len(all_chunks)} chunks indexed (cybersec tokenizer)")
+    with _bm25_lock:
+        # Double-check inside lock
+        if _bm25_index is not None:
+            return
+
+        _bm25_building.set()
+        _bm25_ready.clear()
+
+    try:
+        client = get_client()
+        all_chunks = []
+        offset = None
+
+        while True:
+            results = client.scroll(
+                collection_name=COLLECTION_NAME,
+                limit=500,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False
+            )
+            points, next_offset = results
+
+            for point in points:
+                all_chunks.append({
+                    "id":           point.id,
+                    "text":         point.payload.get("text",         ""),
+                    "source":       point.payload.get("source",       ""),
+                    "chunk_index":  point.payload.get("chunk_index",  0),
+                    "pages":        point.payload.get("pages",        [1]),
+                    "content_type": point.payload.get("content_type", "general"),
+                    "cves":         point.payload.get("cves",         []),
+                    "section":      point.payload.get("section",      ""),
+                })
+
+            if next_offset is None:
+                break
+            offset = next_offset
+
+        with _bm25_lock:
+            if not all_chunks:
+                _bm25_index  = None
+                _bm25_chunks = []
+            else:
+                tokenized_corpus = [_tokenize(c["text"]) for c in all_chunks]
+                _bm25_index  = BM25Okapi(tokenized_corpus)
+                _bm25_chunks = all_chunks
+                print(f"  BM25 index built: {len(all_chunks)} chunks indexed (cybersec tokenizer)")
+    except Exception as e:
+        print(f"  [BM25] Build failed: {e}")
+    finally:
+        _bm25_building.clear()
+        _bm25_ready.set()
 
 
 def get_bm25_results(query: str, top_k: int = 30) -> list[dict]:
     """Search using BM25 keyword matching with query expansion."""
-    global _bm25_index, _bm25_chunks
 
-    if _bm25_index is None:
+    # If index is not ready: trigger build (non-blocking guard) then wait
+    with _bm25_lock:
+        index_ready = _bm25_index is not None
+
+    if not index_ready:
+        # Only one thread will do the build; others wait via Event
         _build_bm25_index()
 
-    if _bm25_index is None or not _bm25_chunks:
+        with _bm25_lock:
+            if _bm25_index is None or not _bm25_chunks:
+                return []
+
+    with _bm25_lock:
+        index   = _bm25_index
+        chunks  = _bm25_chunks
+
+    if index is None or not chunks:
         return []
 
     # Expand query for better keyword coverage
     expanded = _expand_query(query)
     tokenized_query = _tokenize(expanded)
-    scores = _bm25_index.get_scores(tokenized_query)
+    scores = index.get_scores(tokenized_query)
 
     scored = [(i, float(scores[i])) for i in range(len(scores))]
     scored.sort(key=lambda x: x[1], reverse=True)
@@ -201,7 +250,7 @@ def get_bm25_results(query: str, top_k: int = 30) -> list[dict]:
     results = []
     for idx, score in top:
         if score > 0:
-            chunk = _bm25_chunks[idx]
+            chunk = chunks[idx]
             results.append({
                 "text":         chunk["text"],
                 "source":       chunk["source"],
@@ -283,6 +332,9 @@ def hybrid_search(query_vector: list[float], query_text: str, top_k: int = None)
 def rebuild_bm25_index():
     """Force rebuild of BM25 index (call after re-indexing documents)."""
     global _bm25_index, _bm25_chunks
-    _bm25_index  = None
-    _bm25_chunks = None
+    with _bm25_lock:
+        _bm25_index  = None
+        _bm25_chunks = None
+    _bm25_ready.clear()
+    _bm25_building.clear()
     _build_bm25_index()
