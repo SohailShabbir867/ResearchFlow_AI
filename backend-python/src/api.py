@@ -410,13 +410,12 @@ async def stream_query(request: QueryRequest):
 
             # ── Step 8: Stream from Groq (Bug 9 Fix: singleton client) ────────
             client = _get_groq_client()
-            effective_max_tokens = (
+            effective_max_tokens = min(
                 request.max_tokens
-                or getattr(rag, "GLOBAL_MAX_TOKENS", None)
-                or style["max_tokens"]
+                or getattr(rag, "GLOBAL_MAX_TOKENS", 1800)
+                or style["max_tokens"],
+                1800
             )
-            if style_name == "detailed":
-                effective_max_tokens = max(effective_max_tokens, 5000)
 
             groq_stream = client.chat.completions.create(
                 model=GROQ_MODEL,

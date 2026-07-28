@@ -237,7 +237,7 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
     return results
 
 
-def format_web_context(web_results: list[dict]) -> str:
+def format_web_context(web_results: list[dict], max_snippet_len: int = 350) -> str:
     """Format web search results into clean XML blocks for LLM prompting."""
     if not web_results:
         return ""
@@ -246,6 +246,8 @@ def format_web_context(web_results: list[dict]) -> str:
     for i, res in enumerate(web_results):
         title   = res.get("title", "Web Source")
         snippet = res.get("snippet", "").strip()
+        if len(snippet) > max_snippet_len:
+            snippet = snippet[:max_snippet_len] + "..."
         url     = res.get("url", "")
         blocks.append(
             f'<web_source index="{i+1}" title="{title}" url="{url}">\n{snippet}\n</web_source>'
