@@ -18,6 +18,14 @@ const MessageSchema = new mongoose.Schema({
     type: [String],
     default: [],
   },
+  webResults: {
+    type: [mongoose.Schema.Types.Mixed],
+    default: [],
+  },
+  ragSourceDetails: {
+    type: [mongoose.Schema.Types.Mixed],
+    default: [],
+  },
   isWebFallback: {
     type: Boolean,
     default: false,

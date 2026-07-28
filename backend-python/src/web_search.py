@@ -111,58 +111,37 @@ def _result_confidence(rank: int, total: int) -> int:
 
 def build_cybersec_web_query(question: str) -> str:
     """
-    Transform a raw user question into a high-signal cybersecurity web query.
+    Transform a raw user question into an adaptive high-signal web query.
 
     Strategy:
-      - CVE questions  → NVD + ExploitDB + CVEDetails site filters
-      - Tool questions → GitHub + Kali + GTFOBins + HackTricks site filters
-      - CTF questions  → CTFtime + GitHub writeups + ROP-specific sites
-      - General pentesting → broad security site boosters
-      - For very short questions (< 5 words) the original is returned as-is to
-        avoid over-constraining search
-
-    Returns a refined query string ready for DuckDuckGo.
+      - CVE questions       → NVD + ExploitDB + CVEDetails site filters
+      - Tool/Tech questions → Tutorial flags & documentation boosters
+      - CTF questions       → Writeup & solution boosters
+      - General queries     → Clean original query to search diverse open web sources
     """
     q = question.strip()
     words = q.split()
 
-    # Very short/conversational → don't inject site filters, just pass through
+    # Conversational or short queries → search as-is to preserve natural intent
     if len(words) <= 4:
         return q
 
-    # Extract CVE IDs and build a targeted query
+    # Extract CVE IDs
     cve_match = re.findall(r"CVE-\d{4}-\d+", q, re.IGNORECASE)
     if cve_match:
         cve_str = " OR ".join(cve_match)
-        return f"{cve_str} exploit PoC technical details {_VULN_SITES}"
+        return f"{cve_str} exploit PoC technical details"
 
-    # Tool-specific → GitHub + docs
+    # Tool / Command specific
     if _is_tool_query(q):
-        return f"{q} tutorial flags examples usage {_TOOL_SITES}"
+        return f"{q} usage examples tutorial documentation"
 
-    # CTF-specific
+    # CTF specific
     if _is_ctf_query(q):
-        return f"{q} writeup solution approach {_CTF_SITES}"
+        return f"{q} writeup solution approach"
 
-    # General ethical hacking / pentesting / security
-    security_keywords = [
-        "exploit", "payload", "bypass", "injection", "xss", "sqli", "rce",
-        "lfi", "rfi", "ssrf", "ssti", "xxe", "deserialization", "buffer overflow",
-        "privilege escalation", "privesc", "lateral movement", "persistence",
-        "c2", "command and control", "shellcode", "reversing", "malware",
-        "forensics", "osint", "reconnaissance", "enumeration", "pentest",
-        "vulnerability", "cve", "zero-day", "0day", "poc", "proof of concept",
-        "mitm", "arp spoofing", "wifi hacking", "wpa2", "kerberoasting",
-        "pass the hash", "active directory", "bloodhound", "mimikatz",
-    ]
-    q_lower = q.lower()
-    is_security = any(kw in q_lower for kw in security_keywords)
-
-    if is_security:
-        return f"{q} {_VULN_SITES}"
-
-    # Fallback → just add GitHub for code examples
-    return f"{q} site:github.com OR site:stackoverflow.com"
+    # General / Open Web query → return clean question to allow DuckDuckGo to hit diverse open web sources
+    return q
 
 
 def perform_web_search(query: str, max_results: int = 6) -> list[dict]:

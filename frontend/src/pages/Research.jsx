@@ -98,13 +98,11 @@ const mdComponents = (streaming) => ({
   a: ({ children, href }) => (
     <a className="chat-link" href={href} target="_blank" rel="noreferrer">{children}</a>
   ),
-  code: ({ inline, children }) =>
+  code: ({ inline, children, className }) =>
     inline ? (
       <code className="chat-code-inline">{children}</code>
     ) : (
-      <pre className="chat-code-block">
-        <code>{children}</code>
-      </pre>
+      <CodeBlock className={className}>{children}</CodeBlock>
     ),
   table: ({ children }) => (
     <div className="chat-table-wrap">
@@ -114,6 +112,50 @@ const mdComponents = (streaming) => ({
   th: ({ children }) => <th className="chat-th">{children}</th>,
   td: ({ children }) => <td className="chat-td">{children}</td>,
 });
+
+function CodeBlock({ children, className }) {
+  const [copied, setCopied] = useState(false);
+  const language = (className || "").replace("language-", "").trim() || "code";
+  const rawCode  = String(children || "").replace(/\n$/, "");
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(rawCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="my-4 rounded-xl overflow-hidden border shadow-lg" style={{ background: "#0D1117", borderColor: "rgba(255,255,255,0.1)" }}>
+      {/* ChatGPT / Claude Style Header Bar */}
+      <div className="flex items-center justify-between px-4 py-2 text-xs font-mono select-none" style={{ background: "#161B22", borderBottom: "1px solid rgba(255,255,255,0.08)", color: "#8B949E" }}>
+        <span className="font-semibold uppercase tracking-wider text-[11px]" style={{ color: "var(--brand-primary)" }}>{language}</span>
+        <button
+          onClick={handleCopy}
+          type="button"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors hover:bg-white/10 cursor-pointer"
+          style={{ color: copied ? "#10B981" : "#C9D1D9" }}
+        >
+          {copied ? (
+            <>
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-emerald-400 font-semibold">Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3.5 h-3.5" />
+              <span>Copy code</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Code Container */}
+      <pre className="p-4 overflow-x-auto text-xs font-mono leading-relaxed" style={{ background: "#0D1117", color: "#E6EDE3" }}>
+        <code>{rawCode}</code>
+      </pre>
+    </div>
+  );
+}
 
 function MarkdownContent({ text, streaming = false }) {
   return (

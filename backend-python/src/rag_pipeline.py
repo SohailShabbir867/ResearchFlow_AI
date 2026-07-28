@@ -103,8 +103,8 @@ ANSWER_STYLES = {
     "short": {
         "instruction": (
             "Deliver a tight, direct answer — 1-3 sentences or one focused code block. "
-            "Lead with the answer/command/payload, then one line of why. "
-            "Use **bold** for the key term and a correctly tagged fenced block for any code. "
+            "Lead with the direct answer or solution, then one line of why. "
+            "Use **bold** for key terms and a correctly tagged fenced block (e.g. ```python) for any code. "
             "No preamble, no section headers, no filler."
         ),
         "max_tokens": 512,
@@ -112,32 +112,33 @@ ANSWER_STYLES = {
     "technical": {
         "instruction": (
             "Produce a precise, expert technical response in clean Markdown. "
-            "Include a `## Title` heading, concept explanation, working code in tagged fenced blocks, "
-            "CVE/MITRE IDs where relevant, and a `### Mitigation` subsection. "
+            "Include a `## Title` heading, clear concept explanation, full runnable code in tagged fenced blocks "
+            "(```python, ```javascript, ```bash, etc.) with inline comments, "
+            "CVE/MITRE IDs where relevant, and a `### Mitigation & Best Practices` section. "
             "Cite `[Doc: source]` for RAG facts; `[Web: Title](url)` for live web facts."
         ),
-        "max_tokens": 1500,
+        "max_tokens": 2500,
     },
     "detailed": {
         "instruction": (
-            "Produce a structured analysis in Markdown following PTES/Cyber Kill Chain. "
-            "Sections: Background, Reconnaissance, Exploitation (runnable code), Post-Exploitation, "
-            "Detection & Defense, MITRE ATT&CK Mapping, Key Takeaways. "
+            "Produce an exhaustive, multi-section analysis in Markdown matching full LLM capacity. "
+            "Include sections: Executive Overview, Technical Deep-Dive, Full Implementation (complete runnable code in tagged fenced blocks), "
+            "Step-by-Step Walkthrough, Edge Cases & Error Handling, and Key Takeaways. "
             "Cite `[Doc: source]` for RAG facts; `[Web: Title](url)` for live web facts."
         ),
-        "max_tokens": 1800,
+        "max_tokens": 4096,
     },
     "ctf": {
         "instruction": (
             "Structure as a CTF walkthrough: Challenge Analysis, Progressive Hints (3), "
-            "Approach, Exploit/Payload (commented, tagged fenced blocks), Flag Location, Concepts Learned."
+            "Approach, Exploit/Payload (commented, tagged fenced blocks), Flag Location & Format, Concepts Learned."
         ),
-        "max_tokens": 1500,
+        "max_tokens": 3000,
     },
 }
 
 DEFAULT_STYLE     = "technical"
-GLOBAL_MAX_TOKENS = 1800   # Hard ceiling — never exceed this to avoid 413
+GLOBAL_MAX_TOKENS = 4096   # Maximum generation capacity of 70B model
 
 
 # ─── Feature 6: Query Intent Classifier ──────────────────────────────────────

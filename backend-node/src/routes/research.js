@@ -304,6 +304,9 @@ router.post("/chats/:id/stream", async (req, res) => {
 
     let fullAnswer = "";
     let finalSources = [];
+    let finalWebSources = [];
+    let finalWebResults = [];
+    let finalRagSourceDetails = [];
     let isRefused = false;
 
     pyResponse.data.on("data", (chunk) => {
@@ -318,6 +321,9 @@ router.post("/chats/:id/stream", async (req, res) => {
           if (data.replace) { fullAnswer = data.replace; isRefused = true; }
           if (data.done) {
             finalSources = data.sources || [];
+            finalWebSources = data.web_sources || [];
+            finalWebResults = data.web_results || [];
+            finalRagSourceDetails = data.rag_source_details || [];
             if (data.refused) isRefused = true;
           }
         } catch (_e) {}
@@ -331,7 +337,15 @@ router.post("/chats/:id/stream", async (req, res) => {
           if (!lastUserMsg || lastUserMsg.role !== "user" || lastUserMsg.text !== question.trim()) {
             chat.messages.push({ role: "user", text: question.trim(), timestamp: new Date() });
           }
-          chat.messages.push({ role: "assistant", text: fullAnswer.trim(), sources: finalSources, timestamp: new Date() });
+          chat.messages.push({
+            role: "assistant",
+            text: fullAnswer.trim(),
+            sources: finalSources,
+            webSources: finalWebSources,
+            webResults: finalWebResults,
+            ragSourceDetails: finalRagSourceDetails,
+            timestamp: new Date()
+          });
           await chat.save();
 
           await QueryLog.create({

@@ -35,6 +35,8 @@ export default function SystemHealth() {
   const [logs, setLogs] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [toastMsg, setToastMsg] = useState("");
+  const [lastUpdated, setLastUpdated] = useState(null);
   const [qdrantStats, setQdrantStats] = useState({
     totalChunks: null,
     vectorDimensions: 768,
