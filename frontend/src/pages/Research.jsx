@@ -221,14 +221,15 @@ export default function Research() {
   /* ── Handlers ──────────────────────────────────────────────────── */
   const handleSelectChat = async (chatId) => {
     setActiveChatId(chatId);
-    if (chatId && !messagesMap[chatId]) {
+    let msgs = messagesMap[chatId];
+    if (chatId && (!msgs || msgs.length === 0)) {
       try {
         const token = localStorage.getItem("medresearch_token");
         const res = await axios.get(`/api/research/chats/${chatId}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (res.data && Array.isArray(res.data.messages)) {
-          const formattedMsgs = res.data.messages.map((m, idx) => ({
+          msgs = res.data.messages.map((m, idx) => ({
             id: m._id || `msg_${idx}_${Date.now()}`,
             role: m.role,
             text: m.text,
@@ -237,10 +238,20 @@ export default function Research() {
             isWebFallback: m.isWebFallback || false,
             time: m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
           }));
-          setMessagesMap((prev) => ({ ...prev, [chatId]: formattedMsgs }));
+          setMessagesMap((prev) => ({ ...prev, [chatId]: msgs }));
         }
       } catch (err) {
         console.error("Failed to load chat messages:", err.message);
+      }
+    }
+
+    if (msgs && msgs.length > 0) {
+      const lastAssis = [...msgs].reverse().find((m) => m.role === "assistant");
+      if (lastAssis) {
+        setActiveSources({
+          rag: lastAssis.ragSourceDetails || lastAssis.sources?.map(s => ({ source: s })) || [],
+          web: lastAssis.webResults || lastAssis.webSources?.map(s => ({ url: s, title: s })) || [],
+        });
       }
     }
   };

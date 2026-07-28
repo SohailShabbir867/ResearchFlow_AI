@@ -361,8 +361,8 @@ async def stream_query(request: QueryRequest):
             style = ANSWER_STYLES[style_name]
 
             # Emit intent badge right away — frontend shows it immediately
-            yield f"data: {json.dumps({'intent': intent, 'intent_info': intent_info})}\n\n"
-            yield f"data: {json.dumps({'status_text': '🔍 Searching knowledge base...'})}\n\n"
+            yield f"data: {json.dumps({'intent': intent, 'intent_info': intent_info})}\\n\\n"
+            yield f"data: {json.dumps({'status_text': '🔍 Searching knowledge base...'})}\\n\\n"
 
             # ── Step 1: Enrich query ──────────────────────────────────────────
             search_query = enrich_query(request.question, history)
@@ -380,7 +380,7 @@ async def stream_query(request: QueryRequest):
             reranked = rerank(request.question, candidates, top_k=request.top_k) if candidates else []
 
             # ── Step 5: Collect web results ───────────────────────────────────
-            yield f"data: {json.dumps({'status_text': '🌐 Enriching with live web intel...'})}\n\n"
+            yield f"data: {json.dumps({'status_text': '🌐 Enriching with live web intel...'})}\\n\\n"
             web_results = web_future.result() if web_future else []
             print(f"  [Stream] Web results collected: {len(web_results)}")
 
@@ -393,12 +393,12 @@ async def stream_query(request: QueryRequest):
                 passing_chunks = []
 
             if should_refuse and not web_results:
-                yield f"data: {json.dumps({'token': REFUSAL_MSG})}\n\n"
-                yield f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': True, 'intent': intent})}\n\n"
+                yield f"data: {json.dumps({'token': REFUSAL_MSG})}\\n\\n"
+                yield f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': True, 'intent': intent})}\\n\\n"
                 return
 
             # ── Step 7: Build FUSED prompt ────────────────────────────────────
-            yield f"data: {json.dumps({'status_text': '⚡ Synthesizing answer...'})}\n\n"
+            yield f"data: {json.dumps({'status_text': '⚡ Synthesizing answer...'})}\\n\\n"
 
             sys_c, usr_c = build_fused_prompt(
                 request.question,
@@ -433,13 +433,13 @@ async def stream_query(request: QueryRequest):
                 token = chunk.choices[0].delta.content or ""
                 if token:
                     full_response += token
-                    yield f"data: {json.dumps({'token': token})}\n\n"
+                    yield f"data: {json.dumps({'token': token})}\\n\\n"
 
             # ── Step 9: Layer 3 — off-document detection ──────────────────────
             if detect_off_document_answer(full_response) and passing_chunks and web_results:
                 print("  [Stream L3] INSUFFICIENT_DOCUMENT_COVERAGE — retrying web-primary")
-                yield f"data: {json.dumps({'replace': ''})}\n\n"
-                yield f"data: {json.dumps({'status_text': '🌐 Re-fetching with web-primary context...'})}\n\n"
+                yield f"data: {json.dumps({'replace': ''})}\\n\\n"
+                yield f"data: {json.dumps({'status_text': '🌐 Re-fetching with web-primary context...'})}\\n\\n"
 
                 sys_c2, usr_c2 = build_fused_prompt(
                     request.question, [], web_results,
@@ -458,11 +458,11 @@ async def stream_query(request: QueryRequest):
                 for chunk2 in groq_stream2:
                     token2 = chunk2.choices[0].delta.content or ""
                     if token2:
-                        yield f"data: {json.dumps({'token': token2})}\n\n"
+                        yield f"data: {json.dumps({'token': token2})}\\n\\n"
 
                 web_sources = [r["url"]   for r in web_results if r.get("url")]
                 web_titles  = [r["title"] for r in web_results if r.get("title")]
-                yield f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': [], 'is_web_fallback': True, 'refused': False, 'intent': intent, 'intent_info': intent_info})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': [], 'is_web_fallback': True, 'refused': False, 'intent': intent, 'intent_info': intent_info})}\\n\\n"
                 return
 
             # ── Done — return enriched metadata ───────────────────────────────
@@ -481,7 +481,7 @@ async def stream_query(request: QueryRequest):
                     "confidence": source_confidence_score(top_score),
                 })
 
-            yield f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info})}\\n\\n"
 
         except Exception as e:
             error_msg = str(e)
@@ -496,7 +496,7 @@ async def stream_query(request: QueryRequest):
             else:
                 friendly = f"Pipeline error: {error_msg[:200]}"
 
-            yield f"data: {json.dumps({'error': friendly})}\n\n"
+            yield f"data: {json.dumps({'error': friendly})}\\n\\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
