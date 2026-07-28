@@ -426,8 +426,17 @@ router.post("/change-password", authMiddleware, async (req, res) => {
 // Protected — logged-in user permanently deletes their own account
 router.delete("/account", authMiddleware, async (req, res) => {
   try {
-    await User.findByIdAndDelete(req.user._id);
-    return res.json({ message: "Account deleted successfully." });
+    const userId = req.user._id;
+    const Chat = require("../models/Chat");
+    const QueryLog = require("../models/QueryLog");
+
+    await Promise.all([
+      Chat.deleteMany({ userId }),
+      QueryLog.deleteMany({ userId }),
+      User.findByIdAndDelete(userId),
+    ]);
+
+    return res.json({ message: "Account and associated data deleted successfully." });
   } catch (err) {
     console.error("Delete account error:", err.message);
     return res.status(500).json({ error: "Server error during account deletion." });

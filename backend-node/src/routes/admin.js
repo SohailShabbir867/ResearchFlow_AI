@@ -171,7 +171,10 @@ router.patch("/users/:id", async (req, res) => {
     const { name, role, specialty, status } = req.body;
     const updateFields = {};
     if (name !== undefined) updateFields.name = name.trim();
-    if (role !== undefined) updateFields.role = role;
+    if (role !== undefined) {
+      updateFields.role = role;
+      if (role === "admin") updateFields.canUploadDocuments = true;
+    }
     if (specialty !== undefined) updateFields.specialty = specialty;
     if (status !== undefined) updateFields.status = status;
 

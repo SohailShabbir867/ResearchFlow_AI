@@ -88,7 +88,7 @@ export default function SystemSettings() {
     setSaveLoading(true);
     try {
       await axios.post("/api/admin/settings", {
-        guardrail: { threshold, minChunks },
+        guardrail: { threshold, minChunks, maxChunks, defaultChunks },
         rateLimiting: { maxQueriesPerHour, maxUploadsPerDay },
         llm: { model: selectedModel, maxTokens, temperature },
       });
@@ -118,8 +118,9 @@ export default function SystemSettings() {
 
   const zoneInfo = getZoneBadge(threshold);
 
-  // Handle Guardrail Save Only
-  const handleSaveGuardrails = () => {
+  // Handle Guardrail Save Only (calls handleSaveAll)
+  const handleSaveGuardrails = async () => {
+    await handleSaveAll();
     setGuardrailSavedMsg("✓ Guardrail parameters updated");
     setTimeout(() => setGuardrailSavedMsg(""), 2500);
   };

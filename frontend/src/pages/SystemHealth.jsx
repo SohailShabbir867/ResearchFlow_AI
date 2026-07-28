@@ -35,8 +35,11 @@ export default function SystemHealth() {
   const [logs, setLogs] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showToast, setShowToast] = useState(false);
-  const [toastMsg, setToastMsg] = useState("");
-  const [lastUpdated, setLastUpdated] = useState(null);
+  const [qdrantStats, setQdrantStats] = useState({
+    totalChunks: null,
+    vectorDimensions: 768,
+    collection: "cybersec",
+  });
 
   const fetchHealth = async () => {
     setIsRefreshing(true);
@@ -50,6 +53,14 @@ export default function SystemHealth() {
 
       // Map API response to service cards
       const svc = data.services || {};
+      if (svc.pythonRag?.data) {
+        const pData = svc.pythonRag.data;
+        setQdrantStats({
+          totalChunks: pData.total_chunks ?? pData.chunks_count ?? pData.points_count ?? null,
+          vectorDimensions: pData.vector_dim ?? pData.vector_size ?? 768,
+          collection: pData.collection_name ?? pData.collection ?? "cybersec",
+        });
+      }
       const newServices = [
         {
           id: "srv_python",
@@ -238,19 +249,21 @@ export default function SystemHealth() {
             <div className="flex items-center gap-2">
               <Database className="w-4 h-4" style={{ color: "var(--brand-primary)" }} />
               <span className="text-gray-400">Total chunks:</span>
-              <span className="font-mono text-white font-bold">4,089</span>
+              <span className="font-mono text-white font-bold">
+                {qdrantStats.totalChunks !== null ? qdrantStats.totalChunks.toLocaleString() : "N/A"}
+              </span>
             </div>
             
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-blue-400" />
               <span className="text-gray-400">Vector dimensions:</span>
-              <span className="font-mono text-white font-bold">768</span>
+              <span className="font-mono text-white font-bold">{qdrantStats.vectorDimensions}</span>
             </div>
 
             <div className="flex items-center gap-2">
               <Server className="w-4 h-4 text-purple-400" />
               <span className="text-gray-400">Collection:</span>
-              <span className="font-mono text-white font-bold">cybersec</span>
+              <span className="font-mono text-white font-bold">{qdrantStats.collection}</span>
             </div>
 
             <div className="flex items-center gap-2">

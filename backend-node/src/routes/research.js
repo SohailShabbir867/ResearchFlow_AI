@@ -281,8 +281,8 @@ router.post("/chats/:id/stream", async (req, res) => {
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
 
-  // Immediately emit real chatId so frontend can replace fake c_timestamp IDs
-  if (isNewChat || !mongoose.Types.ObjectId.isValid(id)) {
+  // Emit real chatId whenever current chat._id does not match requested param id
+  if (chat._id.toString() !== id) {
     res.write(`data: ${JSON.stringify({ chatId: chat._id.toString(), chatTitle: chat.title })}\n\n`);
   }
 
@@ -327,13 +327,16 @@ router.post("/chats/:id/stream", async (req, res) => {
     pyResponse.data.on("end", async () => {
       try {
         if (fullAnswer.trim()) {
-          chat.messages.push({ role: "user", text: question.trim(), timestamp: new Date() });
+          const lastUserMsg = chat.messages.length > 0 ? chat.messages[chat.messages.length - 1] : null;
+          if (!lastUserMsg || lastUserMsg.role !== "user" || lastUserMsg.text !== question.trim()) {
+            chat.messages.push({ role: "user", text: question.trim(), timestamp: new Date() });
+          }
           chat.messages.push({ role: "assistant", text: fullAnswer.trim(), sources: finalSources, timestamp: new Date() });
           await chat.save();
 
           await QueryLog.create({
             userId: req.user._id,
-            userName: req.user.name,
+            userName: req.user.name || "Unknown",
             chatId: chat._id,
             question: question.trim(),
             answer: fullAnswer.trim(),

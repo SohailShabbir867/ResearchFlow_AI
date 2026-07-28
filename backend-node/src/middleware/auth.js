@@ -35,8 +35,10 @@ module.exports = async function authMiddleware(req, res, next) {
       return res.status(403).json({ error: "Your account has been suspended. Contact an administrator." });
     }
 
-    // Update lastActive (fire and forget)
-    User.findByIdAndUpdate(decoded.id, { lastActive: Date.now() }).catch(() => {});
+    // Throttle lastActive updates to max once per 5 minutes to avoid DB write spam
+    if (!user.lastActive || (Date.now() - new Date(user.lastActive).getTime() > 5 * 60 * 1000)) {
+      User.findByIdAndUpdate(decoded.id, { lastActive: Date.now() }).catch(() => {});
+    }
 
     req.user = user;
     next();

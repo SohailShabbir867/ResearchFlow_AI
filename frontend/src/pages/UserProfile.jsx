@@ -40,6 +40,7 @@ export default function UserProfile() {
   const [email] = useState(user?.email || "sohail.shabbir@medresearch.ai");
   const [specialty, setSpecialty] = useState(user?.specialty || "Cardiology & Medical AI");
   const [profileSuccessMsg, setProfileSuccessMsg] = useState("");
+  const [profileErrorMsg, setProfileErrorMsg] = useState("");
 
   // Password Form State
   const [currentPassword, setCurrentPassword] = useState("");
@@ -79,16 +80,19 @@ export default function UserProfile() {
 
   const handleSaveProfile = async (e) => {
     if (e) e.preventDefault();
+    setProfileSuccessMsg("");
+    setProfileErrorMsg("");
     try {
       const token = localStorage.getItem("medresearch_token");
       await axios.patch("/api/auth/profile", { name: fullName, specialty }, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       setProfileSuccessMsg("Profile information updated successfully!");
+      setTimeout(() => setProfileSuccessMsg(""), 3000);
     } catch (err) {
-      setProfileSuccessMsg(err?.response?.data?.error || "Failed to update profile.");
+      setProfileErrorMsg(err?.response?.data?.error || "Failed to update profile.");
+      setTimeout(() => setProfileErrorMsg(""), 4000);
     }
-    setTimeout(() => setProfileSuccessMsg(""), 3000);
   };
 
   const handleChangePassword = async (e) => {
@@ -216,14 +220,16 @@ export default function UserProfile() {
             {!sidebarCollapsed && <span>Research Chat</span>}
           </button>
 
-          <button
-            onClick={() => navigate("/documents")}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <FolderOpen className="w-4 h-4" />
-            {!sidebarCollapsed && <span>Document Library</span>}
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => navigate("/documents")}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all"
+              style={{ color: "var(--text-muted)" }}
+            >
+              <FolderOpen className="w-4 h-4" />
+              {!sidebarCollapsed && <span>Document Library</span>}
+            </button>
+          )}
 
           {isAdmin && (
             <button
@@ -425,6 +431,13 @@ export default function UserProfile() {
               <div className="mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold flex items-center gap-2 animate-fade-in">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>{profileSuccessMsg}</span>
+              </div>
+            )}
+
+            {profileErrorMsg && (
+              <div className="mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-semibold flex items-center gap-2 animate-fade-in">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{profileErrorMsg}</span>
               </div>
             )}
 

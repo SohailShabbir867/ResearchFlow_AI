@@ -153,9 +153,10 @@ export default function Research() {
   const [hoveredChatId, setHoveredChatId] = useState(null);
 
   // Chat data — start empty, populated as user creates chats
-  const [chats, setChats] = useState({ today: [], yesterday: [] });
+  const [chats, setChats] = useState({ today: [], yesterday: [], older: [] });
   const [activeChatId, setActiveChatId] = useState(null);
   const [messagesMap, setMessagesMap] = useState({});
+  const [chatLoading, setChatLoading] = useState(false);
 
   // Input & UI state
   const [input, setInput] = useState("");
@@ -190,9 +191,11 @@ export default function Research() {
         if (Array.isArray(res.data)) {
           const today = [];
           const yesterday = [];
+          const older = [];
 
           const now = new Date();
           const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+          const startOfYesterday = startOfToday - (24 * 60 * 60 * 1000);
 
           res.data.forEach((c) => {
             const chatTime = new Date(c.updatedAt || c.createdAt).getTime();
@@ -204,12 +207,14 @@ export default function Research() {
 
             if (chatTime >= startOfToday) {
               today.push(formatted);
-            } else {
+            } else if (chatTime >= startOfYesterday) {
               yesterday.push(formatted);
+            } else {
+              older.push(formatted);
             }
           });
 
-          setChats({ today, yesterday });
+          setChats({ today, yesterday, older });
         }
       } catch (err) {
         console.error("Failed to load chats:", err.message);
@@ -223,6 +228,7 @@ export default function Research() {
     setActiveChatId(chatId);
     let msgs = messagesMap[chatId];
     if (chatId && (!msgs || msgs.length === 0)) {
+      setChatLoading(true);
       try {
         const token = localStorage.getItem("medresearch_token");
         const res = await axios.get(`/api/research/chats/${chatId}`, {
@@ -242,6 +248,8 @@ export default function Research() {
         }
       } catch (err) {
         console.error("Failed to load chat messages:", err.message);
+      } finally {
+        setChatLoading(false);
       }
     }
 
@@ -253,6 +261,21 @@ export default function Research() {
           web: lastAssis.webResults || lastAssis.webSources?.map(s => ({ url: s, title: s })) || [],
         });
       }
+    }
+  };
+
+  const handleFeedback = async (chatId, messageIndex, type) => {
+    setFeedbacks((prev) => ({ ...prev, [messageIndex]: type }));
+    if (!chatId) return;
+    try {
+      const token = localStorage.getItem("medresearch_token");
+      await axios.post(
+        `/api/research/feedback/${chatId}/${messageIndex}`,
+        { feedback: type === "up" ? "positive" : "negative" },
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+      );
+    } catch (err) {
+      console.error("Failed to record feedback:", err.message);
     }
   };
 
@@ -772,6 +795,53 @@ export default function Research() {
                     })}
                   </div>
                 )}
+
+                {chats.older && chats.older.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest px-1 mb-1" style={{ color: "var(--text-muted)" }}>
+                      Older
+                    </p>
+                    {chats.older.map((c) => {
+                      const isActive = activeChatId === c.id;
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => handleSelectChat(c.id)}
+                          onMouseEnter={() => setHoveredChatId(c.id)}
+                          onMouseLeave={() => setHoveredChatId(null)}
+                          className="group relative flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer transition-all duration-150 mb-0.5"
+                          style={{
+                            background: isActive ? "rgba(142,78,20,0.12)" : "transparent",
+                            borderLeft: isActive ? "3px solid var(--brand-primary)" : "3px solid transparent",
+                          }}
+                        >
+                          <div className="min-w-0 flex-1 pr-2">
+                            <p
+                              className="text-xs truncate leading-snug font-medium"
+                              style={{ color: isActive ? "var(--brand-primary)" : "var(--text-secondary)" }}
+                            >
+                              {c.title}
+                            </p>
+                            <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                              {c.time}
+                            </p>
+                          </div>
+                          {hoveredChatId === c.id && (
+                            <button
+                              onClick={(e) => handleDeleteChat(e, "older", c.id)}
+                              className="p-1 rounded transition-colors opacity-0 group-hover:opacity-100"
+                              style={{ color: "var(--text-muted)" }}
+                              onMouseEnter={(e) => (e.currentTarget.style.color = "#EF4444")}
+                              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -947,9 +1017,10 @@ export default function Research() {
                 e.currentTarget.style.color = "var(--text-muted)";
                 e.currentTarget.style.borderColor = "var(--border-color-subtle)";
               }}
+              title="Clear messages from screen view"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Clear</span>
+              <span>Clear View</span>
             </button>
           </div>
         </header>
@@ -958,8 +1029,16 @@ export default function Research() {
         <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 space-y-6 sidebar-scroll">
           <div className="max-w-5xl mx-auto w-full">
 
+            {/* Chat loading indicator */}
+            {chatLoading && (
+              <div className="flex flex-col items-center justify-center py-12 text-center gap-3 animate-fade-in">
+                <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "var(--brand-primary)", borderTopColor: "transparent" }} />
+                <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Loading conversation history...</p>
+              </div>
+            )}
+
             {/* Empty state / Welcome screen */}
-            {currentMessages.length === 0 && !isTyping && (
+            {!chatLoading && currentMessages.length === 0 && !isTyping && (
               <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-4">
                 <div
                   className="w-16 h-16 rounded-2xl flex items-center justify-center"
@@ -1102,18 +1181,18 @@ export default function Research() {
                           </button>
 
                           <button
-                            onClick={() => setFeedbacks((p) => ({ ...p, [msg.id]: "up" }))}
+                            onClick={() => handleFeedback(activeChatId, idx, "up")}
                             className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
-                            style={{ color: feedbacks[msg.id] === "up" ? "#10B981" : "var(--text-muted)" }}
+                            style={{ color: feedbacks[idx] === "up" || feedbacks[msg.id] === "up" ? "#10B981" : "var(--text-muted)" }}
                             title="Good response"
                           >
                             <ThumbsUp className="w-4 h-4" />
                           </button>
 
                           <button
-                            onClick={() => setFeedbacks((p) => ({ ...p, [msg.id]: "down" }))}
+                            onClick={() => handleFeedback(activeChatId, idx, "down")}
                             className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
-                            style={{ color: feedbacks[msg.id] === "down" ? "#EF4444" : "var(--text-muted)" }}
+                            style={{ color: feedbacks[idx] === "down" || feedbacks[msg.id] === "down" ? "#EF4444" : "var(--text-muted)" }}
                             title="Bad response"
                           >
                             <ThumbsDown className="w-4 h-4" />
