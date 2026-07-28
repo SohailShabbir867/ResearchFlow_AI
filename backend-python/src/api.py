@@ -1,6 +1,18 @@
 """
 CyberSecAI — FastAPI REST Service
-v5.0.0 — Parallel RAG + Web Fusion Engine
+v5.1.0 — Bug Fixes + Perplexity Streaming
+
+Bug Fixes:
+  Bug 8  — All module imports removed from inside the generate() async generator.
+            Imports are now at module level (resolved once on startup, not per request).
+  Bug 9  — Groq client is no longer instantiated inside generate(); the singleton
+            from rag_pipeline is used instead.
+  Feature 9 — GROQ_API_KEY checked during startup with a clear warning log.
+
+New Features:
+  - /stream SSE events now include: intent, intent_info, rag_source_details,
+    web_results (with domain/favicon/confidence) in the 'done' event.
+  - Proper system/user message split used in all Groq calls (via call_groq).
 
 Endpoints:
   GET  /health          — Service status and config
@@ -17,6 +29,8 @@ import os
 import json
 import time
 
+# ── Module-level imports (Bug 8 Fix: never import inside generate()) ──────────
+from groq import Groq
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -25,14 +39,29 @@ from typing import Optional
 from dotenv import load_dotenv
 
 from src.rag_pipeline import (
-    answer, build_prompt, build_fused_prompt, check_guardrails,
-    filter_chunks_by_threshold, detect_off_document_answer, enrich_query,
-    REFUSAL_MSG, RELEVANCE_THRESHOLD, MIN_RELEVANT_CHUNKS,
-    ANSWER_STYLES, DEFAULT_STYLE, LLM_TEMPERATURE,
+    answer,
+    build_fused_prompt,
+    check_guardrails,
+    filter_chunks_by_threshold,
+    detect_off_document_answer,
+    enrich_query,
+    classify_query_intent,
+    INTENT_META,
+    REFUSAL_MSG,
+    RELEVANCE_THRESHOLD,
+    MIN_RELEVANT_CHUNKS,
+    ANSWER_STYLES,
+    DEFAULT_STYLE,
+    LLM_TEMPERATURE,
+    _get_groq_client,     # reuse the singleton from rag_pipeline
 )
 from src.vector_store import get_collection_info, get_indexed_sources
 from src.hybrid_search import rebuild_bm25_index, _build_bm25_index
 from src.embedder import get_embedding, warmup as warmup_embedder
+from src.web_search import perform_web_search
+from src.hybrid_search import hybrid_search
+from src.reranker import rerank
+import src.rag_pipeline as rag
 
 load_dotenv()
 
@@ -47,7 +76,7 @@ app = FastAPI(
         "hybrid BM25+vector search, cross-encoder reranking, and Groq LLM. "
         "Supports Python, Bash, C/C++, JavaScript, PowerShell, Ruby, SQL, Assembly."
     ),
-    version="5.0.0"
+    version="5.1.0"
 )
 
 app.add_middleware(
@@ -83,8 +112,9 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseModel):
     answer:          str
     sources:         list[str]
-    web_sources:     Optional[list[str]] = Field(default=[], description="URLs of live web search sources if fallback was triggered")
+    web_sources:     Optional[list[str]] = Field(default=[], description="URLs of live web search sources")
     is_web_fallback: Optional[bool]      = Field(default=False, description="True if answer was generated via live web search fallback")
+    intent:          Optional[str]       = Field(default="general", description="Detected query intent")
 
 
 # ─── OpenAI / Ollama Compatibility Models ─────────────────────────────────────
@@ -101,15 +131,21 @@ class OpenAIChatRequest(BaseModel):
     stream:      Optional[bool]              = False
 
 
-
 # ─── Startup: pre-load models + BM25 index ───────────────────────────────────
 
 @app.on_event("startup")
 async def startup_event():
     print("=" * 60)
-    print("CyberSecAI — Ethical Hacking Expert RAG Service v5.0.0")
-    print("  Parallel RAG + Web Fusion Engine")
+    print("CyberSecAI — Ethical Hacking Expert RAG Service v5.1.0")
+    print("  Parallel RAG + Web Fusion Engine (Bug Fixes Edition)")
     print("=" * 60)
+
+    # Feature 9: Validate API key at startup — fail loudly instead of silently
+    if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
+        print("⚠️  WARNING: GROQ_API_KEY is not set in backend-python/.env!")
+        print("   Streaming and query endpoints will return 503 until key is configured.")
+    else:
+        print(f"✅ GROQ_API_KEY configured (model: {GROQ_MODEL})")
 
     print("Step 1/3: Warming up BGE-base embedding model...")
     try:
@@ -133,11 +169,10 @@ async def startup_event():
     except Exception as e:
         print(f"  Warning: BM25 pre-build failed ({e}). Will retry on first query.")
 
-    from src.rag_pipeline import WEB_ALWAYS_ON, MAX_WEB_RESULTS, LLM_TEMPERATURE
     print("=" * 60)
-    print(f"CyberSecAI v5.0 is ready. All models loaded.")
-    print(f"  Web Fusion: {'ALWAYS-ON (parallel)' if WEB_ALWAYS_ON else 'fallback-only'}")
-    print(f"  Max Web Results: {MAX_WEB_RESULTS}")
+    print(f"CyberSecAI v5.1 is ready. All models loaded.")
+    print(f"  Web Fusion: {'ALWAYS-ON (parallel)' if rag.WEB_ALWAYS_ON else 'fallback-only'}")
+    print(f"  Max Web Results: {rag.MAX_WEB_RESULTS}")
     print(f"  LLM Temperature: {LLM_TEMPERATURE}")
     print("=" * 60)
 
@@ -150,7 +185,7 @@ def health():
     return {
         "status":        "ok",
         "service":       "cybersecai-python",
-        "version":       "5.0.0",
+        "version":       "5.1.0",
         "pipeline":      "BGE-base (cached) → Parallel [RAG + Web] → Fused Prompt → Groq LLM",
         "features":      [
             "parallel_rag_web_fusion",
@@ -164,6 +199,12 @@ def health():
             "multi_language_codegen",
             "answer_styles",
             "elite_cybersec_system_prompt",
+            "query_intent_classifier",
+            "source_confidence_scoring",
+            "singleton_qdrant_client",
+            "thread_safe_bm25_cache",
+            "thread_safe_web_cache",
+            "groq_system_user_split",
         ],
         "answer_styles": list(ANSWER_STYLES.keys()),
         "languages":     ["python", "bash", "c/c++", "javascript", "powershell", "ruby", "sql", "assembly", "go", "rust"],
@@ -210,7 +251,8 @@ def query(request: QueryRequest):
         answer=result["answer"],
         sources=result.get("sources", []),
         web_sources=result.get("web_sources", []),
-        is_web_fallback=result.get("is_web_fallback", False)
+        is_web_fallback=result.get("is_web_fallback", False),
+        intent=result.get("intent", "general"),
     )
 
 
@@ -220,13 +262,10 @@ def query(request: QueryRequest):
 def openai_chat_completions(request: OpenAIChatRequest):
     """
     OpenAI / Ollama compatible endpoint (/v1/chat/completions).
-    Allows external applications (Ollama clients, Open-WebUI, AnythingLLM, Obsidian Copilot)
-    to query the CyberSecAI RAG & Web Fallback engine as a standard LLM backend.
     """
     if not request.messages:
         raise HTTPException(status_code=400, detail="No messages provided.")
 
-    # Extract last user message
     user_question = request.messages[-1].content
     history = [
         {"role": m.role, "text": m.content}
@@ -263,9 +302,10 @@ def openai_chat_completions(request: OpenAIChatRequest):
             "total_tokens": 0
         },
         "cybersecai_metadata": {
-            "sources": result.get("sources", []),
-            "web_sources": result.get("web_sources", []),
-            "is_web_fallback": result.get("is_web_fallback", False)
+            "sources":         result.get("sources", []),
+            "web_sources":     result.get("web_sources", []),
+            "is_web_fallback": result.get("is_web_fallback", False),
+            "intent":          result.get("intent", "general"),
         }
     }
 
@@ -277,15 +317,21 @@ async def stream_query(request: QueryRequest):
     """
     Streaming CyberSecAI RAG+Web Fusion query via Server-Sent Events (SSE).
 
-    v5.0 parallel architecture:
-      - Step 0: Web search fires immediately in a background thread
-      - Step 1: Query enrichment
-      - Step 2: BGE embedding
-      - Step 3: RAG hybrid search (while web search runs concurrently)
-      - Step 4: Cross-encoder reranking
-      - Step 5: Collect web results (usually done by now)
-      - Step 6: Build fused prompt (RAG primary + web enrichment)
-      - Step 7: Stream from Groq
+    Bug 8 Fix: All imports are now at module level (top of file).
+    The generate() function no longer imports anything — every symbol is
+    already in scope from the module-level imports.
+
+    Bug 9 Fix: Groq client is the module-level singleton from rag_pipeline
+    (_get_groq_client()), not a new instance per request.
+
+    v5.1 SSE events:
+      {status_text: str}           — pipeline stage update
+      {intent: str, intent_info: {label, emoji}}  — query intent (NEW)
+      {token: str}                 — streaming LLM token
+      {replace: str}               — replace accumulated text (L3 retry)
+      {done: true, sources, web_sources, web_results, rag_source_details,
+             is_web_fallback, refused, intent}  — final metadata
+      {error: str}                 — pipeline error
     """
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
@@ -296,74 +342,65 @@ async def stream_query(request: QueryRequest):
             detail="GROQ_API_KEY not configured in backend-python/.env"
         )
 
-    style_name = request.answer_style if request.answer_style in ANSWER_STYLES else DEFAULT_STYLE
-    style      = ANSWER_STYLES[style_name]
-
+    style_name = request.answer_style if request.answer_style in ANSWER_STYLES else None
     history = None
     if request.history:
         history = [{"role": m.role, "text": m.text} for m in request.history]
 
     async def generate():
-        import concurrent.futures
-        from groq import Groq
-        from src.hybrid_search import hybrid_search
-        from src.reranker import rerank
-        import src.rag_pipeline as rag
-        from src.web_search import perform_web_search
-        from src.rag_pipeline import (
-            WEB_ALWAYS_ON, MAX_WEB_RESULTS, ENABLE_WEB_FALLBACK,
-            build_fused_prompt, build_web_prompt,
-            filter_chunks_by_threshold, check_guardrails,
-            detect_off_document_answer, enrich_query, REFUSAL_MSG,
-        )
-
         try:
-            # ── Step 0: Kick off web search IMMEDIATELY in background ──────────
-            # This runs concurrently with all subsequent steps so web results
-            # are ready (or nearly ready) by the time we need them.
-            yield f"data: {json.dumps({'status_text': '\ud83d\udd0d Searching knowledge base...'})}\n\n"
+            # ── Step 0: Classify intent immediately ───────────────────────────
+            intent      = classify_query_intent(request.question)
+            intent_info = INTENT_META.get(intent, INTENT_META["general"])
 
-            # Enrich the query first (instant, no I/O)
+            # Auto-select style from intent if not user-specified
+            nonlocal style_name
+            if style_name is None:
+                style_name = intent_info["style"]
+
+            style = ANSWER_STYLES[style_name]
+
+            # Emit intent badge right away — frontend shows it immediately
+            yield f"data: {json.dumps({'intent': intent, 'intent_info': intent_info})}\\n\\n"
+            yield f"data: {json.dumps({'status_text': '🔍 Searching knowledge base...'})}\\n\\n"
+
+            # ── Step 1: Enrich query ──────────────────────────────────────────
             search_query = enrich_query(request.question, history)
 
-            # Fire web search in a thread — don't wait yet
+            # ── Step 2: Fire web search IMMEDIATELY in background ─────────────
             web_future = rag._executor.submit(
-                perform_web_search, search_query, MAX_WEB_RESULTS
-            ) if WEB_ALWAYS_ON else None
+                perform_web_search, search_query, rag.MAX_WEB_RESULTS
+            ) if rag.WEB_ALWAYS_ON else None
 
-            # ── Step 1: Embed query ───────────────────────────────────────
+            # ── Step 3: Embed + RAG search (web runs concurrently) ────────────
             query_vector = get_embedding(search_query, is_query=True)
+            candidates   = hybrid_search(query_vector, search_query)
 
-            # ── Step 2: RAG hybrid search ────────────────────────────────
-            candidates = hybrid_search(query_vector, search_query)
-
-            # ── Step 3: Cross-encoder reranking ─────────────────────────
+            # ── Step 4: Cross-encoder reranking ──────────────────────────────
             reranked = rerank(request.question, candidates, top_k=request.top_k) if candidates else []
 
-            # ── Step 4: Collect web results (usually already done) ─────────
-            yield f"data: {json.dumps({'status_text': '\ud83c\udf10 Enriching with live web intel...'})}\n\n"
+            # ── Step 5: Collect web results ───────────────────────────────────
+            yield f"data: {json.dumps({'status_text': '🌐 Enriching with live web intel...'})}\\n\\n"
             web_results = web_future.result() if web_future else []
             print(f"  [Stream] Web results collected: {len(web_results)}")
 
-            # ── Step 5: Guardrails ──────────────────────────────────
+            # ── Step 6: Guardrails ────────────────────────────────────────────
             if candidates:
-                should_refuse, refuse_reason = check_guardrails(reranked)
+                should_refuse, refuse_reason, passing_chunks = check_guardrails(reranked)
             else:
-                should_refuse = True
-                refuse_reason = "No RAG candidates"
-
-            passing_chunks = filter_chunks_by_threshold(reranked) if not should_refuse else []
+                should_refuse  = True
+                refuse_reason  = "No RAG candidates"
+                passing_chunks = []
 
             if should_refuse and not web_results:
-                # Both RAG and web failed
-                yield f"data: {json.dumps({'token': REFUSAL_MSG})}\n\n"
-                yield f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'is_web_fallback': False, 'refused': True})}\n\n"
+                yield f"data: {json.dumps({'token': REFUSAL_MSG})}\\n\\n"
+                yield f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': True, 'intent': intent})}\\n\\n"
                 return
 
-            # ── Step 6: Build FUSED prompt ────────────────────────────
-            yield f"data: {json.dumps({'status_text': '\u26a1 Synthesizing answer...'})}\n\n"
+            # ── Step 7: Build FUSED prompt ────────────────────────────────────
+            yield f"data: {json.dumps({'status_text': '⚡ Synthesizing answer...'})}\\n\\n"
 
-            prompt = build_fused_prompt(
+            sys_c, usr_c = build_fused_prompt(
                 request.question,
                 passing_chunks,
                 web_results,
@@ -371,8 +408,8 @@ async def stream_query(request: QueryRequest):
                 answer_style=style_name,
             )
 
-            # ── Step 7: Stream from Groq ─────────────────────────────
-            client = Groq(api_key=GROQ_API_KEY)
+            # ── Step 8: Stream from Groq (Bug 9 Fix: singleton client) ────────
+            client = _get_groq_client()
             effective_max_tokens = (
                 request.max_tokens
                 or getattr(rag, "GLOBAL_MAX_TOKENS", None)
@@ -383,7 +420,10 @@ async def stream_query(request: QueryRequest):
 
             groq_stream = client.chat.completions.create(
                 model=GROQ_MODEL,
-                messages=[{"role": "user", "content": prompt}],
+                messages=[
+                    {"role": "system", "content": sys_c},
+                    {"role": "user",   "content": usr_c},
+                ],
                 temperature=rag.LLM_TEMPERATURE,
                 max_tokens=effective_max_tokens,
                 stream=True,
@@ -394,51 +434,60 @@ async def stream_query(request: QueryRequest):
                 token = chunk.choices[0].delta.content or ""
                 if token:
                     full_response += token
-                    yield f"data: {json.dumps({'token': token})}\n\n"
+                    yield f"data: {json.dumps({'token': token})}\\n\\n"
 
-            # ── Step 8: Layer 3 — off-document detection ─────────────────
-            if detect_off_document_answer(full_response):
-                print("  [Stream L3] INSUFFICIENT_DOCUMENT_COVERAGE — retrying with web-primary fused prompt")
-                if web_results:
-                    yield f"data: {json.dumps({'replace': ''})}\n\n"
-                    yield f"data: {json.dumps({'status_text': '\ud83c\udf10 Re-fetching with web-primary context...'})}\n\n"
+            # ── Step 9: Layer 3 — off-document detection ──────────────────────
+            if detect_off_document_answer(full_response) and passing_chunks and web_results:
+                print("  [Stream L3] INSUFFICIENT_DOCUMENT_COVERAGE — retrying web-primary")
+                yield f"data: {json.dumps({'replace': ''})}\\n\\n"
+                yield f"data: {json.dumps({'status_text': '🌐 Re-fetching with web-primary context...'})}\\n\\n"
 
-                    # Retry with web-only fused prompt
-                    prompt2 = build_fused_prompt(
-                        request.question, [], web_results,
-                        history=history, answer_style=style_name,
-                    )
-                    groq_stream2 = client.chat.completions.create(
-                        model=GROQ_MODEL,
-                        messages=[{"role": "user", "content": prompt2}],
-                        temperature=rag.LLM_TEMPERATURE,
-                        max_tokens=effective_max_tokens,
-                        stream=True,
-                    )
-                    for chunk2 in groq_stream2:
-                        token2 = chunk2.choices[0].delta.content or ""
-                        if token2:
-                            yield f"data: {json.dumps({'token': token2})}\n\n"
+                sys_c2, usr_c2 = build_fused_prompt(
+                    request.question, [], web_results,
+                    history=history, answer_style=style_name,
+                )
+                groq_stream2 = client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=[
+                        {"role": "system", "content": sys_c2},
+                        {"role": "user",   "content": usr_c2},
+                    ],
+                    temperature=rag.LLM_TEMPERATURE,
+                    max_tokens=effective_max_tokens,
+                    stream=True,
+                )
+                for chunk2 in groq_stream2:
+                    token2 = chunk2.choices[0].delta.content or ""
+                    if token2:
+                        yield f"data: {json.dumps({'token': token2})}\\n\\n"
 
-                    web_sources = [r["url"] for r in web_results if r.get("url")]
-                    web_titles  = [r["title"] for r in web_results if r.get("title")]
-                    yield f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'is_web_fallback': True, 'refused': False})}\n\n"
-                    return
-
-                yield f"data: {json.dumps({'replace': REFUSAL_MSG})}\n\n"
-                yield f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'is_web_fallback': False, 'refused': True})}\n\n"
+                web_sources = [r["url"]   for r in web_results if r.get("url")]
+                web_titles  = [r["title"] for r in web_results if r.get("title")]
+                yield f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': [], 'is_web_fallback': True, 'refused': False, 'intent': intent, 'intent_info': intent_info})}\\n\\n"
                 return
 
-            # ── Done — return both RAG and web sources ────────────────
+            # ── Done — return enriched metadata ───────────────────────────────
             rag_sources = list({c["source"] for c in passing_chunks})
             web_sources = [r["url"] for r in web_results if r.get("url")]
-            yield f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_sources, 'is_web_fallback': bool(should_refuse), 'refused': False})}\n\n"
+
+            # Build rag_source_details with confidence
+            from src.rag_pipeline import source_confidence_score
+            rag_source_details = []
+            for src in rag_sources:
+                src_chunks = [c for c in passing_chunks if c["source"] == src]
+                top_score  = max((c.get("rerank_score", -99) for c in src_chunks), default=-99)
+                rag_source_details.append({
+                    "source":     src,
+                    "chunks":     len(src_chunks),
+                    "confidence": source_confidence_score(top_score),
+                })
+
+            yield f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info})}\\n\\n"
 
         except Exception as e:
             error_msg = str(e)
             print(f"  [Stream Error] {error_msg}")
 
-            # Parse known errors into user-friendly messages
             if "rate_limit" in error_msg.lower() or "429" in error_msg:
                 friendly = "⏳ Groq API rate limit reached. Please wait a few minutes and try again, or upgrade your Groq plan at console.groq.com"
             elif "model_decommissioned" in error_msg.lower():
@@ -448,10 +497,9 @@ async def stream_query(request: QueryRequest):
             else:
                 friendly = f"Pipeline error: {error_msg[:200]}"
 
-            yield f"data: {json.dumps({'error': friendly})}\n\n"
+            yield f"data: {json.dumps({'error': friendly})}\\n\\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
-
 
 
 # ─── Upload ───────────────────────────────────────────────────────────────────
@@ -501,7 +549,6 @@ async def upload_document(file: UploadFile = File(...)):
         store_chunks(embedded, recreate=False)   # Incremental — don't wipe existing
         rebuild_bm25_index()
 
-        # Count interesting chunk types
         code_chunks = sum(1 for c in chunks if c["metadata"].get("content_type") == "code")
         cve_chunks  = sum(1 for c in chunks if c["metadata"].get("cves"))
 
@@ -561,7 +608,6 @@ class SettingsUpdate(BaseModel):
 @app.get("/settings")
 def get_settings():
     """Get current active CyberSecAI runtime thresholds."""
-    import src.rag_pipeline as rag
     return {
         "guardrail": {
             "threshold": rag.RELEVANCE_THRESHOLD,
@@ -576,8 +622,6 @@ def get_settings():
 @app.post("/settings")
 def update_settings(update: SettingsUpdate):
     """Update runtime guardrail & max_tokens settings dynamically."""
-    import src.rag_pipeline as rag
-
     if update.threshold is not None:
         rag.RELEVANCE_THRESHOLD = float(update.threshold)
         print(f"  [Runtime] RELEVANCE_THRESHOLD = {rag.RELEVANCE_THRESHOLD}")

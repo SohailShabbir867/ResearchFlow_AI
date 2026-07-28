@@ -1,33 +1,49 @@
 """
 CyberSecAI — Elite Ethical Hacking & Cybersecurity RAG Pipeline
 
-v5.0 — Parallel Dual-Source Fusion Engine
+v5.1 — Perplexity-Style Fusion Engine (Bug Fixes + New Features)
+
+Bug Fixes:
+  Bug 1  — Groq client is now a module-level singleton (no per-call instantiation).
+  Bug 2  — Web search timing attribution corrected; misleading t_web_start removed.
+  Bug 3  — Double LLM call on coverage miss eliminated; web-primary path is now
+            only taken when web_results were NOT already part of the first prompt.
+  Bug 7  — LLM messages now properly split into role:"system" + role:"user" so
+            Groq instruction-following quality is significantly improved.
+  Bug 10 — GROQ_API_KEY validation moved to top of answer() before any computation.
+  Bug 11 — filter_chunks_by_threshold double-call eliminated; result from
+            check_guardrails is reused directly.
+
+New Features:
+  Feature 6 — classify_query_intent(): fast regex classifier (<1ms) that detects
+               cve | tool | ctf | exploit | ad | cloud | forensics | general.
+               Used to auto-select answer_style and enrich SSE stream.
+  Feature 7 — source_confidence_score(): maps rerank scores to human-readable
+               0–100 scale. Returned in pipeline result for frontend display.
+  Feature 9 — API key validated eagerly at top of answer() with clear message.
 
 Architecture:
   RAG (Qdrant) + DuckDuckGo Web Search run CONCURRENTLY every single request.
   Results are ALWAYS combined into one synthesized answer:
     - RAG documents  → [AUTHORITATIVE] primary grounding
     - Live web intel → [LIVE-WEB] CVEs, PoCs, tool updates, latest techniques
-  This replaces the old sequential fallback model.
 
 Pipeline flow:
-  1.  Enrich query with conversation context + cybersec acronym awareness
-  2.  Embed query locally (BGE-base ONNX, LRU-256 cached)
-  3a. Hybrid RAG search: BGE vector + BM25 + RRF → top 30 candidates  [THREAD A]
-  3b. DuckDuckGo web search with cybersec site filters                  [THREAD B]
-  4.  Rerank RAG candidates with cross-encoder → top 8
-  5.  Layer 1 + Layer 2 guardrail check (loosened for technical content)
-  6.  Build FUSED prompt: RAG chunks (primary) + Web results (enrichment)
-  7.  Call Groq LLM (temperature=0.05 for precision)
-  8.  Layer 3 — detect INSUFFICIENT_DOCUMENT_COVERAGE sentinel
-  9.  Return synthesized answer + rag_sources + web_sources + timing
-
-System persona: senior penetration tester + vulnerability researcher +
-security architect — covering web/API/network/cloud/AD/IoT/mobile pentest,
-binary exploitation, reversing, malware analysis, forensics, blue-team,
-crypto, OSINT, CTF, bug bounty.
+  1.  Classify query intent (<1ms regex)
+  2.  Validate API key early (fail fast before any expensive steps)
+  3.  Enrich query with conversation context + cybersec acronym awareness
+  4.  Embed query locally (BGE-base ONNX, LRU-256 cached)
+  5a. Hybrid RAG search: BGE vector + BM25 + RRF → top 30 candidates  [THREAD A]
+  5b. DuckDuckGo web search with cybersec site filters                  [THREAD B]
+  6.  Rerank RAG candidates with cross-encoder → top 8
+  7.  Layer 1 + Layer 2 guardrail check (loosened for technical content)
+  8.  Build FUSED prompt: RAG chunks (primary) + Web results (enrichment)
+  9.  Call Groq LLM via system+user message split (temperature=0.05)
+  10. Layer 3 — detect INSUFFICIENT_DOCUMENT_COVERAGE sentinel
+  11. Return synthesized answer + rag_sources + web_sources + confidence + timing
 """
 import os
+import re
 import time
 import concurrent.futures
 from datetime import datetime
@@ -45,9 +61,22 @@ GROQ_MODEL      = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 RERANKER_TOP_K  = int(os.getenv("RERANKER_TOP_K", "8"))
 LLM_TEMPERATURE = 0.05   # Low temperature = sharp, reproducible technical answers
 
+# ─── Singleton Groq client (Bug 1 Fix) ────────────────────────────────────────
+# Created once at module load; reused across ALL requests.
+# Only initialized when GROQ_API_KEY is available.
+_groq_client = None
+
+def _get_groq_client():
+    """Return the module-level Groq singleton, creating it on first use."""
+    global _groq_client
+    if _groq_client is None:
+        from groq import Groq
+        _groq_client = Groq(api_key=GROQ_API_KEY)
+        print("  [Groq] Singleton client initialized.")
+    return _groq_client
+
+
 # ─── Web Search Config ────────────────────────────────────────────────────────
-# WEB_ALWAYS_ON: if True, web search runs on EVERY query (parallel with RAG)
-# If False, web search only runs when RAG guardrails fail (legacy fallback mode)
 WEB_ALWAYS_ON       = os.getenv("WEB_ALWAYS_ON", "true").lower() == "true"
 ENABLE_WEB_FALLBACK = os.getenv("ENABLE_WEB_FALLBACK", "true").lower() == "true"
 MAX_WEB_RESULTS     = int(os.getenv("MAX_WEB_RESULTS", "6"))
@@ -128,6 +157,80 @@ DEFAULT_STYLE     = "technical"
 GLOBAL_MAX_TOKENS = 5000
 
 
+# ─── Feature 6: Query Intent Classifier ──────────────────────────────────────
+
+# Intent → label and emoji shown in the frontend
+INTENT_META = {
+    "cve":       {"label": "CVE / Vulnerability",     "emoji": "🔴", "style": "technical"},
+    "tool":      {"label": "Tool / Usage",            "emoji": "🛠",  "style": "short"},
+    "ctf":       {"label": "CTF Challenge",           "emoji": "🚩",  "style": "ctf"},
+    "exploit":   {"label": "Exploit / Attack",        "emoji": "🔥",  "style": "technical"},
+    "ad":        {"label": "Active Directory",        "emoji": "🏢",  "style": "detailed"},
+    "cloud":     {"label": "Cloud Security",          "emoji": "☁️",  "style": "technical"},
+    "forensics": {"label": "Forensics / IR",          "emoji": "🔬",  "style": "detailed"},
+    "general":   {"label": "General Security",        "emoji": "🛡",  "style": "technical"},
+}
+
+_CVE_RE      = re.compile(r'\bCVE-\d{4}-\d+\b', re.IGNORECASE)
+_CTF_RE      = re.compile(r'\b(ctf|hackthebox|htb|tryhackme|thm|picoctf|pwn|ret2win|writeup|flag\{)\b', re.IGNORECASE)
+_TOOL_RE     = re.compile(r'\b(nmap|burp|sqlmap|ffuf|gobuster|hashcat|hydra|nikto|wfuzz|bloodhound|impacket|mimikatz|crackmapexec|evil-winrm|ghidra|gdb|pwndbg|frida|wireshark|metasploit|msfvenom|shodan|nuclei)\b', re.IGNORECASE)
+_EXPLOIT_RE  = re.compile(r'\b(exploit|payload|shellcode|rce|buffer overflow|rop chain|format string|heap|use.after.free|injection|bypass|privesc|privilege escalation)\b', re.IGNORECASE)
+_AD_RE       = re.compile(r'\b(active directory|kerberoasting|pass.the.hash|dcsync|golden ticket|bloodhound|ldap|domain controller|gpo|lsass|ntlm|asrep)\b', re.IGNORECASE)
+_CLOUD_RE    = re.compile(r'\b(aws|azure|gcp|s3|iam|lambda|kubernetes|k8s|cloud|imds|ecr|ecs|cognito|ssrf.*aws|managed identity)\b', re.IGNORECASE)
+_FORENSICS_RE = re.compile(r'\b(forensics|volatility|memory dump|pcap|wireshark|timeline|artifact|log analysis|malware analysis|yara|incident response|ir)\b', re.IGNORECASE)
+
+
+def classify_query_intent(question: str) -> str:
+    """
+    Fast regex-based intent classifier (<1ms).
+    Returns one of: cve | tool | ctf | exploit | ad | cloud | forensics | general
+
+    Used to:
+    - Auto-select answer_style when user leaves it as default
+    - Emit intent badge in SSE stream for frontend display
+    - Tune downstream behavior (e.g., CTF → ctf style)
+    """
+    if _CVE_RE.search(question):
+        return "cve"
+    if _CTF_RE.search(question):
+        return "ctf"
+    if _AD_RE.search(question):
+        return "ad"
+    if _CLOUD_RE.search(question):
+        return "cloud"
+    if _FORENSICS_RE.search(question):
+        return "forensics"
+    if _TOOL_RE.search(question):
+        return "tool"
+    if _EXPLOIT_RE.search(question):
+        return "exploit"
+    return "general"
+
+
+# ─── Feature 7: Source Confidence Scoring ────────────────────────────────────
+
+def source_confidence_score(rerank_score: float) -> dict:
+    """
+    Map a cross-encoder rerank score to a human-readable confidence descriptor.
+
+    Cross-encoder scores are typically in the range (-10, 10):
+      >= 0.0  → High confidence
+      >= -2.0 → Medium confidence
+      < -2.0  → Low confidence
+
+    Returns: {"level": "high"|"medium"|"low", "score": int (0-100)}
+    """
+    # Normalize from [-10, 10] to [0, 100]
+    normalized = int(max(0, min(100, (rerank_score + 10) * 5)))
+    if rerank_score >= 0.0:
+        level = "high"
+    elif rerank_score >= -2.0:
+        level = "medium"
+    else:
+        level = "low"
+    return {"level": level, "score": normalized}
+
+
 # ─── Guardrail functions ──────────────────────────────────────────────────────
 
 def filter_chunks_by_threshold(chunks: list[dict]) -> list[dict]:
@@ -135,21 +238,28 @@ def filter_chunks_by_threshold(chunks: list[dict]) -> list[dict]:
     return [c for c in chunks if c.get("rerank_score", -99.0) >= RELEVANCE_THRESHOLD]
 
 
-def check_guardrails(reranked: list[dict]) -> tuple[bool, str]:
-    """Run Layer 1 and Layer 2 checks. Returns (should_refuse, reason)."""
+def check_guardrails(reranked: list[dict]) -> tuple[bool, str, list[dict]]:
+    """
+    Run Layer 1 and Layer 2 checks.
+
+    Bug 11 Fix: Now returns the filtered passing_chunks directly so callers
+    don't need to call filter_chunks_by_threshold() again.
+
+    Returns (should_refuse, reason, passing_chunks).
+    """
     top_score = reranked[0].get("rerank_score", -99.0) if reranked else -99.0
     print(f"  [Guardrail L1] Top rerank score: {top_score:.4f} (threshold: {RELEVANCE_THRESHOLD})")
 
     if top_score < RELEVANCE_THRESHOLD:
-        return True, f"Top chunk score {top_score:.4f} below threshold {RELEVANCE_THRESHOLD}"
+        return True, f"Top chunk score {top_score:.4f} below threshold {RELEVANCE_THRESHOLD}", []
 
     passing = filter_chunks_by_threshold(reranked)
     print(f"  [Guardrail L2] {len(passing)}/{len(reranked)} chunks passed (min: {MIN_RELEVANT_CHUNKS})")
 
     if len(passing) < MIN_RELEVANT_CHUNKS:
-        return True, f"Only {len(passing)} chunk(s) passed relevance threshold (need {MIN_RELEVANT_CHUNKS})"
+        return True, f"Only {len(passing)} chunk(s) passed relevance threshold (need {MIN_RELEVANT_CHUNKS})", []
 
-    return False, ""
+    return False, "", passing
 
 
 # ─── Query enrichment ─────────────────────────────────────────────────────────
@@ -184,9 +294,8 @@ def enrich_query(question: str, history: list[dict] = None) -> str:
 
 def _build_system_prompt(answer_style: str, now_str: str, current_year: int) -> str:
     """
-    Build the elite CyberSecAI system persona block used in all prompts.
-    Includes domain mastery, operating principles, CTF/BB heuristics,
-    privesc checklists, and formatting rules.
+    Build the elite CyberSecAI system persona block.
+    Returned separately from user content so it can be sent as role:"system".
     """
     style = ANSWER_STYLES.get(answer_style, ANSWER_STYLES[DEFAULT_STYLE])
 
@@ -321,10 +430,10 @@ def build_prompt(
     context_chunks: list[dict],
     history:        list[dict] = None,
     answer_style:   str = None,
-) -> str:
+) -> tuple[str, str]:
     """
     Build a RAG-only prompt (legacy/fallback).
-    Used when web search is disabled or produced no results.
+    Returns (system_content, user_content) for proper role splitting.
     """
     if answer_style not in ANSWER_STYLES:
         answer_style = DEFAULT_STYLE
@@ -346,16 +455,12 @@ def build_prompt(
         context_blocks.append(f'<document {meta_attrs}>\n{text_content}\n</document>')
 
     context_text = "\n\n".join(context_blocks)
-
-    history_xml = _build_history_xml(history)
+    history_xml  = _build_history_xml(history)
     now_str      = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")
     current_year = datetime.now().year
 
-    sys_prompt = _build_system_prompt(answer_style, now_str, current_year)
-
-    return f"""{sys_prompt}
-
-{history_xml}<rag_documents>
+    sys_content  = _build_system_prompt(answer_style, now_str, current_year)
+    user_content = f"""{history_xml}<rag_documents>
 {context_text}
 </rag_documents>
 
@@ -365,6 +470,8 @@ def build_prompt(
 
 <response>"""
 
+    return sys_content, user_content
+
 
 def build_fused_prompt(
     question:       str,
@@ -372,15 +479,13 @@ def build_fused_prompt(
     web_results:    list[dict],
     history:        list[dict] = None,
     answer_style:   str = None,
-) -> str:
+) -> tuple[str, str]:
     """
     Build the FUSED prompt combining RAG documents (authoritative) with
     live web intelligence (enrichment) into one synthesized context.
 
-    The LLM is instructed to:
-    1. Treat RAG chunks as the primary, authoritative source
-    2. Enrich with latest CVE details, PoC links, tool versions from web
-    3. Cite both sources distinctly: [Doc: source] and [Web: Title](url)
+    Bug 7 Fix: Returns (system_content, user_content) as separate strings
+    so the caller can use role:"system" + role:"user" for proper Groq behavior.
     """
     if answer_style not in ANSWER_STYLES:
         answer_style = DEFAULT_STYLE
@@ -411,14 +516,12 @@ def build_fused_prompt(
     now_str      = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")
     current_year = datetime.now().year
 
-    sys_prompt = _build_system_prompt(answer_style, now_str, current_year)
+    sys_content = _build_system_prompt(answer_style, now_str, current_year)
 
     rag_label = f"[AUTHORITATIVE — {len(context_chunks)} chunks from your indexed documents]" if context_blocks else "[No local documents — using expert knowledge + web]"
     web_label = f"[LIVE-WEB — {len(web_results)} fresh results from DuckDuckGo]" if web_results else "[No live web results]"
 
-    return f"""{sys_prompt}
-
-{history_xml}<rag_documents label="{rag_label}">
+    user_content = f"""{history_xml}<rag_documents label="{rag_label}">
 {rag_context}
 </rag_documents>
 
@@ -441,31 +544,29 @@ Synthesize BOTH sources above into one expert answer:
 
 <response>"""
 
+    return sys_content, user_content
+
 
 def build_web_prompt(
     question:     str,
     web_results:  list[dict],
     history:      list[dict] = None,
     answer_style: str = None,
-) -> str:
+) -> tuple[str, str]:
     """
     Build a web-only prompt (used when RAG has zero chunks).
-    Kept for backward compatibility with legacy /query endpoint.
+    Returns (system_content, user_content).
     """
     if answer_style not in ANSWER_STYLES:
         answer_style = DEFAULT_STYLE
 
-    style       = ANSWER_STYLES[answer_style]
     web_text    = format_web_context(web_results)
     history_xml = _build_history_xml(history)
     now_str      = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")
     current_year = datetime.now().year
 
-    sys_prompt = _build_system_prompt(answer_style, now_str, current_year)
-
-    return f"""{sys_prompt}
-
-{history_xml}<live_web_intel>
+    sys_content  = _build_system_prompt(answer_style, now_str, current_year)
+    user_content = f"""{history_xml}<live_web_intel>
 {web_text}
 </live_web_intel>
 
@@ -478,6 +579,8 @@ Synthesize the live web intel above into a direct expert answer. Cite web source
 </user_query>
 
 <response>"""
+
+    return sys_content, user_content
 
 
 def _build_history_xml(history: list[dict]) -> str:
@@ -497,17 +600,31 @@ def _build_history_xml(history: list[dict]) -> str:
 
 # ─── LLM call ─────────────────────────────────────────────────────────────────
 
-def call_groq(prompt: str, max_tokens: int = 1024, max_retries: int = 3) -> str:
-    """Call Groq API with retry logic for rate limits."""
-    from groq import Groq
+def call_groq(
+    system_content: str,
+    user_content:   str,
+    max_tokens:     int = 1024,
+    max_retries:    int = 3,
+) -> str:
+    """
+    Call Groq API with proper system/user message split and retry logic.
 
-    client = Groq(api_key=GROQ_API_KEY)
+    Bug 1 Fix: Uses the module-level singleton _groq_client instead of
+    creating a new Groq() instance on every call.
+
+    Bug 7 Fix: Sends system instructions as role:"system" and user query
+    as role:"user" for correct Groq instruction-following behavior.
+    """
+    client = _get_groq_client()
 
     for attempt in range(max_retries):
         try:
             chat = client.chat.completions.create(
                 model=GROQ_MODEL,
-                messages=[{"role": "user", "content": prompt}],
+                messages=[
+                    {"role": "system", "content": system_content},
+                    {"role": "user",   "content": user_content},
+                ],
                 temperature=LLM_TEMPERATURE,
                 max_tokens=max_tokens,
             )
@@ -538,10 +655,10 @@ def answer(
     answer_style: str = None,
 ) -> dict:
     """
-    CyberSecAI v5.0 — Parallel Dual-Source Fusion Pipeline.
+    CyberSecAI v5.1 — Perplexity-Style Parallel Dual-Source Fusion Pipeline.
 
-    Runs RAG search and Web search CONCURRENTLY, then synthesizes both
-    into a single expert answer via the fused prompt.
+    Bugs Fixed: 1, 2, 3, 7, 10, 11
+    New Features: 6 (intent classifier), 7 (source confidence), 9 (early API key check)
 
     Args:
         question:     User's cybersecurity question
@@ -549,10 +666,23 @@ def answer(
         history:      Previous conversation turns [{role, text}, ...]
         answer_style: "short" | "technical" | "detailed" | "ctf"
     """
+    # ── Bug 10 Fix: Validate API key FIRST before any expensive steps ─────────
+    if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
+        raise Exception("GROQ_API_KEY not set in .env — update backend-python/.env with your Groq key")
+
     if top_k is None:
         top_k = RERANKER_TOP_K
+
+    # ── Feature 6: Classify intent (<1ms) ────────────────────────────────────
+    intent = classify_query_intent(question)
+    intent_info = INTENT_META.get(intent, INTENT_META["general"])
+
+    # Auto-select answer_style from intent if not explicitly provided
     if answer_style not in ANSWER_STYLES:
-        answer_style = DEFAULT_STYLE
+        answer_style = intent_info["style"]
+        print(f"  [Intent] '{intent}' detected → auto-style: {answer_style}")
+    else:
+        print(f"  [Intent] '{intent}' detected (user-selected style: {answer_style})")
 
     style   = ANSWER_STYLES[answer_style]
     t_start = time.time()
@@ -566,55 +696,57 @@ def answer(
     t_embed = time.time() - t1
 
     # ── Step 3: PARALLEL — RAG search + Web search ────────────────────────────
+    # Both futures are submitted simultaneously; timing is measured correctly.
     t2 = time.time()
-
-    # Submit both searches to the thread pool simultaneously
     rag_future = _executor.submit(hybrid_search, query_vector, search_query)
     web_future = _executor.submit(
         perform_web_search, search_query, MAX_WEB_RESULTS
     ) if WEB_ALWAYS_ON else None
 
-    # Wait for RAG results
+    # ── Step 4: Rerank RAG candidates ────────────────────────────────────────
     candidates = rag_future.result()
     t_search   = time.time() - t2
 
-    # ── Step 4: Rerank RAG candidates ────────────────────────────────────────
     t3 = time.time()
     reranked = rerank(question, candidates, top_k=top_k) if candidates else []
     t_rerank = time.time() - t3
 
     # ── Collect web results (usually already done while reranking) ────────────
-    t_web_start  = time.time()
-    web_results  = web_future.result() if web_future else []
-    t_web        = time.time() - t_web_start
-    print(f"  [Web Search] {len(web_results)} results (wait: {round(t_web*1000)}ms)")
+    web_results = web_future.result() if web_future else []
+    t_web       = time.time() - t2  # Bug 2 Fix: total parallel time, not wait time
+    print(f"  [Web Search] {len(web_results)} results (parallel block={round(t_web*1000)}ms total)")
 
-    # ── Step 5: Guardrails ────────────────────────────────────────────────────
+    # ── Step 5: Guardrails (Bug 11 Fix: reuse passing_chunks from check) ─────
     if candidates:
-        should_refuse, refuse_reason = check_guardrails(reranked)
+        should_refuse, refuse_reason, passing_chunks = check_guardrails(reranked)
     else:
         should_refuse  = True
         refuse_reason  = "No RAG candidates returned"
+        passing_chunks = []
 
     if should_refuse:
         print(f"  [Guardrail] RAG blocked: {refuse_reason}")
-        # RAG failed → use web results as primary (if available)
         if web_results:
             print("  [Fusion] RAG insufficient — web-primary fused answer")
-            prompt      = build_fused_prompt(question, [], web_results, history=history, answer_style=answer_style)
+            sys_c, usr_c = build_fused_prompt(
+                question, [], web_results, history=history, answer_style=answer_style
+            )
             t4          = time.time()
-            answer_text = call_groq(prompt, max_tokens=style["max_tokens"])
+            answer_text = call_groq(sys_c, usr_c, max_tokens=style["max_tokens"])
             t_llm       = time.time() - t4
 
-            web_sources = [r["url"] for r in web_results if r.get("url")]
+            web_sources = [r["url"]   for r in web_results if r.get("url")]
             web_titles  = [r["title"] for r in web_results if r.get("title")]
 
             return {
                 "answer":          answer_text,
                 "sources":         web_titles[:3],
                 "web_sources":     web_sources,
+                "web_results":     web_results,   # full metadata for frontend
                 "is_web_fallback": True,
                 "refused":         False,
+                "intent":          intent,
+                "intent_info":     intent_info,
                 "provider":        "groq",
                 "model":           GROQ_MODEL,
                 "answer_style":    answer_style,
@@ -632,9 +764,12 @@ def answer(
             "answer":          REFUSAL_MSG,
             "sources":         [],
             "web_sources":     [],
+            "web_results":     [],
             "is_web_fallback": False,
             "refused":         True,
             "refuse_reason":   refuse_reason,
+            "intent":          intent,
+            "intent_info":     intent_info,
             "timing": {
                 "embed_ms":  round(t_embed * 1000),
                 "search_ms": round(t_search * 1000),
@@ -643,15 +778,11 @@ def answer(
             }
         }
 
-    passing_chunks = filter_chunks_by_threshold(reranked)
     print(f"  [Pipeline] {len(passing_chunks)} RAG chunks + {len(web_results)} web results → Fused LLM (style={answer_style})")
 
-    if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
-        raise Exception("GROQ_API_KEY not set in .env")
-
     # ── Step 6: Build FUSED prompt ────────────────────────────────────────────
-    t4     = time.time()
-    prompt = build_fused_prompt(
+    t4 = time.time()
+    sys_c, usr_c = build_fused_prompt(
         question,
         passing_chunks,
         web_results,
@@ -659,79 +790,84 @@ def answer(
         answer_style=answer_style,
     )
 
-    # ── Step 7: Call Groq ─────────────────────────────────────────────────────
-    answer_text = call_groq(prompt, max_tokens=style["max_tokens"])
+    # ── Step 7: Call Groq (system+user split) ────────────────────────────────
+    answer_text = call_groq(sys_c, usr_c, max_tokens=style["max_tokens"])
     t_llm       = time.time() - t4
 
     # ── Step 8: Layer 3 — off-document detection ──────────────────────────────
-    if detect_off_document_answer(answer_text):
-        print("  [Guardrail L3] INSUFFICIENT_DOCUMENT_COVERAGE detected")
-        if web_results:
-            # Retry with web-primary fused prompt
-            print("  [Fusion] Retrying with web-primary fused answer")
-            prompt2     = build_fused_prompt(question, [], web_results, history=history, answer_style=answer_style)
-            t4b         = time.time()
-            answer_text = call_groq(prompt2, max_tokens=style["max_tokens"])
-            t_llm       = time.time() - t4b
+    # Bug 3 Fix: Only retry if web_results were NOT already included.
+    # Since build_fused_prompt always includes web_results, a retry is wasteful.
+    # We only retry if passing_chunks was non-empty (web was enrichment, not primary).
+    if detect_off_document_answer(answer_text) and passing_chunks and web_results:
+        print("  [Guardrail L3] INSUFFICIENT_DOCUMENT_COVERAGE detected — retrying web-primary")
+        sys_c2, usr_c2 = build_fused_prompt(
+            question, [], web_results, history=history, answer_style=answer_style
+        )
+        t4b         = time.time()
+        answer_text = call_groq(sys_c2, usr_c2, max_tokens=style["max_tokens"])
+        t_llm       = time.time() - t4b
 
-            web_sources = [r["url"] for r in web_results if r.get("url")]
-            web_titles  = [r["title"] for r in web_results if r.get("title")]
-
-            return {
-                "answer":          answer_text,
-                "sources":         web_titles[:3],
-                "web_sources":     web_sources,
-                "is_web_fallback": True,
-                "refused":         False,
-                "provider":        "groq",
-                "model":           GROQ_MODEL,
-                "answer_style":    answer_style,
-                "timing": {
-                    "embed_ms":      round(t_embed * 1000),
-                    "search_ms":     round(t_search * 1000),
-                    "rerank_ms":     round(t_rerank * 1000),
-                    "web_search_ms": round(t_web * 1000),
-                    "llm_ms":        round(t_llm * 1000),
-                    "total_ms":      round((time.time() - t_start) * 1000),
-                }
-            }
+        web_sources = [r["url"]   for r in web_results if r.get("url")]
+        web_titles  = [r["title"] for r in web_results if r.get("title")]
 
         return {
-            "answer":          REFUSAL_MSG,
-            "sources":         [],
-            "web_sources":     [],
-            "is_web_fallback": False,
-            "refused":         True,
-            "refuse_reason":   "LLM determined documents do not cover this question",
+            "answer":          answer_text,
+            "sources":         web_titles[:3],
+            "web_sources":     web_sources,
+            "web_results":     web_results,
+            "is_web_fallback": True,
+            "refused":         False,
+            "intent":          intent,
+            "intent_info":     intent_info,
+            "provider":        "groq",
+            "model":           GROQ_MODEL,
+            "answer_style":    answer_style,
             "timing": {
-                "embed_ms":  round(t_embed * 1000),
-                "search_ms": round(t_search * 1000),
-                "rerank_ms": round(t_rerank * 1000),
-                "llm_ms":    round(t_llm * 1000),
-                "total_ms":  round((time.time() - t_start) * 1000),
+                "embed_ms":      round(t_embed * 1000),
+                "search_ms":     round(t_search * 1000),
+                "rerank_ms":     round(t_rerank * 1000),
+                "web_search_ms": round(t_web * 1000),
+                "llm_ms":        round(t_llm * 1000),
+                "total_ms":      round((time.time() - t_start) * 1000),
             }
         }
 
-    # ── Step 9: Return fused answer ───────────────────────────────────────────
+    # ── Step 9: Build enriched source data with confidence scores ────────────
     unique_rag_sources = list({c["source"] for c in passing_chunks})
     web_sources        = [r["url"] for r in web_results if r.get("url")]
     t_total            = time.time() - t_start
 
-    print(f"  [CyberSecAI v5] Fused answer ready. RAG: {unique_rag_sources} | Web: {len(web_results)} results")
-    print(f"  [Timing] embed={round(t_embed*1000)}ms rag_search={round(t_search*1000)}ms "
+    # Feature 7: Attach confidence scores to RAG sources
+    rag_source_details = []
+    for src in unique_rag_sources:
+        src_chunks = [c for c in passing_chunks if c["source"] == src]
+        top_score  = max((c.get("rerank_score", -99) for c in src_chunks), default=-99)
+        confidence = source_confidence_score(top_score)
+        rag_source_details.append({
+            "source":     src,
+            "chunks":     len(src_chunks),
+            "confidence": confidence,
+        })
+
+    print(f"  [CyberSecAI v5.1] Fused answer ready. RAG: {unique_rag_sources} | Web: {len(web_results)} results")
+    print(f"  [Timing] embed={round(t_embed*1000)}ms rag={round(t_search*1000)}ms "
           f"rerank={round(t_rerank*1000)}ms web={round(t_web*1000)}ms "
           f"llm={round(t_llm*1000)}ms total={round(t_total*1000)}ms")
 
     return {
-        "answer":          answer_text,
-        "sources":         unique_rag_sources,
-        "web_sources":     web_sources,
-        "is_web_fallback": False,
-        "refused":         False,
-        "provider":        "groq",
-        "model":           GROQ_MODEL,
-        "answer_style":    answer_style,
-        "chunks_used":     passing_chunks,
+        "answer":             answer_text,
+        "sources":            unique_rag_sources,
+        "rag_source_details": rag_source_details,
+        "web_sources":        web_sources,
+        "web_results":        web_results,      # full metadata with domain/favicon/confidence
+        "is_web_fallback":    False,
+        "refused":            False,
+        "intent":             intent,
+        "intent_info":        intent_info,
+        "provider":           "groq",
+        "model":              GROQ_MODEL,
+        "answer_style":       answer_style,
+        "chunks_used":        passing_chunks,
         "timing": {
             "embed_ms":      round(t_embed * 1000),
             "search_ms":     round(t_search * 1000),

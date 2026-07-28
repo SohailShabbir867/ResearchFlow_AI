@@ -166,6 +166,11 @@ export default function Research() {
   const [detailLevel, setDetailLevel] = useState("technical");
   const [sourcesOpen, setSourcesOpen] = useState({});
 
+  // Perplexity-style Sources Panel
+  const [streamingIntent, setStreamingIntent] = useState(null);    // {intent, intent_info} while streaming
+  const [sourcePanelOpen, setSourcePanelOpen] = useState(false);   // right-panel toggle
+  const [activeSources, setActiveSources] = useState({ rag: [], web: [] }); // currently shown sources
+
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -299,6 +304,11 @@ export default function Research() {
     setSearchStatusText(""); // Reset status text for each new query
     setIsTyping(true);
 
+    // Reset sources panel for new query
+    setStreamingIntent(null);
+    setActiveSources({ rag: [], web: [] });
+    setSourcePanelOpen(false);
+
     try {
       // Build conversation history from current messages
       const currentMsgs = messagesMap[chatId] || [];
@@ -317,7 +327,7 @@ export default function Research() {
         },
         body: JSON.stringify({
           question,
-          top_k: 5,
+          top_k: 8,           // Bug 12 Fix: was hardcoded to 5, now matches backend default of 8
           answer_style: detailLevel,
           history: history.length > 0 ? history : null,
         }),
@@ -334,118 +344,144 @@ export default function Research() {
         ...prev,
         [chatId]: [
           ...(prev[chatId] || []),
-          { id: assistantId, role: "assistant", text: "", sources: [], webSources: [], isWebFallback: false, time: now },
+          { id: assistantId, role: "assistant", text: "", sources: [], webSources: [], webResults: [], ragSourceDetails: [], isWebFallback: false, intent: null, intentInfo: null, time: now },
         ],
       }));
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullText = "";
+      // Bug 13 Fix: persistent SSE line buffer across read() chunks
+      let sseBuffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const text = decoder.decode(value, { stream: true });
-        const lines = text.split("\n").filter((l) => l.startsWith("data: "));
+        // Accumulate raw bytes into buffer — a single read() may contain
+        // partial SSE frames or multiple events merged together
+        sseBuffer += decoder.decode(value, { stream: true });
 
-        for (const line of lines) {
-          try {
-            const payload = JSON.parse(line.replace("data: ", ""));
+        // Extract complete SSE lines (terminated by \n\n)
+        const parts = sseBuffer.split("\n\n");
+        // Last part is incomplete — keep in buffer
+        sseBuffer = parts.pop() || "";
 
-            if (payload.chatId) {
-              // Backend created a real MongoDB chat — replace fake c_timestamp id in sidebar & messagesMap
-              const realId = payload.chatId;
-              if (chatId !== realId) {
-                setChats((prev) => ({
-                  today: prev.today.map((c) => c.id === chatId ? { ...c, id: realId, title: payload.chatTitle || c.title } : c),
-                  yesterday: prev.yesterday.map((c) => c.id === chatId ? { ...c, id: realId, title: payload.chatTitle || c.title } : c),
-                }));
+        for (const part of parts) {
+          // Each 'part' is one complete SSE event block
+          const lines = part.split("\n").filter((l) => l.startsWith("data: "));
+          for (const line of lines) {
+            try {
+              const payload = JSON.parse(line.slice(6)); // strip "data: "
+
+              // ── Intent badge (Feature 6 & 8) ─────────────────────────────
+              if (payload.intent && payload.intent_info) {
+                setStreamingIntent({ intent: payload.intent, intentInfo: payload.intent_info });
                 setMessagesMap((prev) => {
-                  const msgs = prev[chatId] || [];
-                  const next = { ...prev };
-                  delete next[chatId];
-                  next[realId] = msgs;
-                  return next;
+                  const msgs = [...(prev[chatId] || [])];
+                  const lastIdx = msgs.length - 1;
+                  if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
+                    msgs[lastIdx] = { ...msgs[lastIdx], intent: payload.intent, intentInfo: payload.intent_info };
+                  }
+                  return { ...prev, [chatId]: msgs };
                 });
-                setActiveChatId(realId);
-                chatId = realId; // update local ref for subsequent SSE events
               }
-            }
 
-            if (payload.status_text) {
-              setSearchStatusText(payload.status_text);
-            }
-
-            if (payload.error) {
-              setMessagesMap((prev) => {
-                const msgs = [...(prev[chatId] || [])];
-                const lastIdx = msgs.length - 1;
-                if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
-                  msgs[lastIdx] = {
-                    ...msgs[lastIdx],
-                    text: `⚠️ ${payload.error}`,
-                    isRefused: true,
-                  };
+              if (payload.chatId) {
+                const realId = payload.chatId;
+                if (chatId !== realId) {
+                  setChats((prev) => ({
+                    today: prev.today.map((c) => c.id === chatId ? { ...c, id: realId, title: payload.chatTitle || c.title } : c),
+                    yesterday: prev.yesterday.map((c) => c.id === chatId ? { ...c, id: realId, title: payload.chatTitle || c.title } : c),
+                  }));
+                  setMessagesMap((prev) => {
+                    const msgs = prev[chatId] || [];
+                    const next = { ...prev };
+                    delete next[chatId];
+                    next[realId] = msgs;
+                    return next;
+                  });
+                  setActiveChatId(realId);
+                  chatId = realId;
                 }
-                return { ...prev, [chatId]: msgs };
-              });
-              setIsTyping(false);
-              return;
-            }
+              }
 
-            if (payload.replace) {
-              fullText = payload.replace;
-              setMessagesMap((prev) => {
-                const msgs = [...(prev[chatId] || [])];
-                const lastIdx = msgs.length - 1;
-                if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
-                  msgs[lastIdx] = {
-                    ...msgs[lastIdx],
-                    text: payload.replace,
-                    isRefused: true,
-                  };
-                }
-                return { ...prev, [chatId]: msgs };
-              });
-            }
+              if (payload.status_text) {
+                setSearchStatusText(payload.status_text);
+              }
 
-            if (payload.done) {
-              setMessagesMap((prev) => {
-                const msgs = [...(prev[chatId] || [])];
-                const lastIdx = msgs.length - 1;
-                if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
-                  msgs[lastIdx] = {
-                    ...msgs[lastIdx],
-                    sources: payload.sources || [],
-                    webSources: payload.web_sources || [],
-                    isWebFallback: payload.is_web_fallback || false,
-                    isRefused: payload.refused ? true : msgs[lastIdx].isRefused,
-                  };
-                }
-                return { ...prev, [chatId]: msgs };
-              });
-              setIsTyping(false);
-              return;
-            }
+              if (payload.error) {
+                setMessagesMap((prev) => {
+                  const msgs = [...(prev[chatId] || [])];
+                  const lastIdx = msgs.length - 1;
+                  if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
+                    msgs[lastIdx] = { ...msgs[lastIdx], text: `⚠️ ${payload.error}`, isRefused: true };
+                  }
+                  return { ...prev, [chatId]: msgs };
+                });
+                setIsTyping(false);
+                return;
+              }
 
-            if (payload.token) {
-              fullText += payload.token;
-              const captured = fullText;
-              setMessagesMap((prev) => {
-                const msgs = [...(prev[chatId] || [])];
-                const lastIdx = msgs.length - 1;
-                if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
-                  msgs[lastIdx] = {
-                    ...msgs[lastIdx],
-                    text: captured,
-                  };
+              if (payload.replace !== undefined) {
+                fullText = payload.replace || "";
+                setMessagesMap((prev) => {
+                  const msgs = [...(prev[chatId] || [])];
+                  const lastIdx = msgs.length - 1;
+                  if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
+                    msgs[lastIdx] = { ...msgs[lastIdx], text: payload.replace || "", isRefused: payload.replace ? false : true };
+                  }
+                  return { ...prev, [chatId]: msgs };
+                });
+              }
+
+              if (payload.done) {
+                // Feature 8: populate Sources Panel when stream completes
+                const webResultsFull = payload.web_results || [];
+                const ragDetails     = payload.rag_source_details || [];
+                setActiveSources({ rag: ragDetails, web: webResultsFull });
+                if (webResultsFull.length > 0 || ragDetails.length > 0) {
+                  setSourcePanelOpen(true);
                 }
-                return { ...prev, [chatId]: msgs };
-              });
+                setStreamingIntent(null);
+
+                setMessagesMap((prev) => {
+                  const msgs = [...(prev[chatId] || [])];
+                  const lastIdx = msgs.length - 1;
+                  if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
+                    msgs[lastIdx] = {
+                      ...msgs[lastIdx],
+                      sources:          payload.sources || [],
+                      webSources:       payload.web_sources || [],
+                      webResults:       webResultsFull,
+                      ragSourceDetails: ragDetails,
+                      isWebFallback:    payload.is_web_fallback || false,
+                      intent:           payload.intent || msgs[lastIdx].intent,
+                      intentInfo:       payload.intent_info || msgs[lastIdx].intentInfo,
+                      isRefused:        payload.refused ? true : msgs[lastIdx].isRefused,
+                    };
+                  }
+                  return { ...prev, [chatId]: msgs };
+                });
+                setIsTyping(false);
+                return;
+              }
+
+              if (payload.token) {
+                fullText += payload.token;
+                const captured = fullText;
+                setMessagesMap((prev) => {
+                  const msgs = [...(prev[chatId] || [])];
+                  const lastIdx = msgs.length - 1;
+                  if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
+                    msgs[lastIdx] = { ...msgs[lastIdx], text: captured };
+                  }
+                  return { ...prev, [chatId]: msgs };
+                });
+              }
+            } catch (_e) {
+              // Ignore malformed SSE lines
             }
-          } catch (_e) {
-            // Ignore malformed SSE lines
           }
         }
       }
@@ -865,12 +901,29 @@ export default function Research() {
                 <span>Upgrade Pro RAG</span>
               </button>
             )}
+            {(activeSources.web.length > 0 || activeSources.rag.length > 0) && (
+              <button
+                onClick={() => setSourcePanelOpen(!sourcePanelOpen)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5"
+                style={{
+                  color: sourcePanelOpen ? "var(--brand-primary)" : "var(--text-muted)",
+                  borderColor: sourcePanelOpen ? "var(--brand-primary)" : "var(--border-color-subtle)",
+                  background: sourcePanelOpen ? "rgba(142,78,20,0.08)" : "transparent",
+                }}
+                title="Toggle Sources Panel"
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>Sources {activeSources.web.length + activeSources.rag.length > 0 ? `(${activeSources.web.length + activeSources.rag.length})` : ""}</span>
+              </button>
+            )}
             <ThemeToggle />
             <button
               onClick={() => {
                 if (activeChatId) {
                   setMessagesMap((prev) => ({ ...prev, [activeChatId]: [] }));
                   setIsTyping(false);
+                  setActiveSources({ rag: [], web: [] });
+                  setSourcePanelOpen(false);
                 }
               }}
               className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5"
@@ -1358,6 +1411,176 @@ export default function Research() {
         )}
 
       </main>
+
+      {/* ════════════════════════════════════════════════════════════
+          PERPLEXITY-STYLE SOURCES PANEL (Right Sidebar)
+          Feature 8 — slides in after stream completes with sources
+      ════════════════════════════════════════════════════════════ */}
+      {sourcePanelOpen && (
+        <aside
+          style={{
+            width: "280px",
+            background: "var(--bg-sidebar)",
+            borderLeft: "1px solid var(--border-color-subtle)",
+            overflowY: "auto",
+            flexShrink: 0,
+            transition: "width 0.25s ease",
+          }}
+          className="flex flex-col h-full sidebar-scroll"
+        >
+          {/* Panel Header */}
+          <div
+            className="flex items-center justify-between px-4 h-14 shrink-0"
+            style={{ borderBottom: "1px solid var(--border-color-subtle)" }}
+          >
+            <div className="flex items-center gap-2">
+              <Globe className="w-4 h-4" style={{ color: "var(--brand-primary)" }} />
+              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "var(--text-primary)" }}>
+                Sources
+              </p>
+            </div>
+            <button
+              onClick={() => setSourcePanelOpen(false)}
+              className="p-1.5 rounded-lg transition-colors"
+              style={{ color: "var(--text-muted)" }}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-3 py-4 space-y-5 sidebar-scroll">
+
+            {/* Web Sources */}
+            {activeSources.web.length > 0 && (
+              <section>
+                <p className="text-[10px] font-semibold uppercase tracking-widest mb-2 px-1" style={{ color: "var(--text-muted)" }}>
+                  🌐 Live Web Results
+                </p>
+                <div className="space-y-2">
+                  {activeSources.web.map((src, i) => {
+                    const confLevel = src.confidence >= 70 ? "high" : src.confidence >= 45 ? "medium" : "low";
+                    const confColor = confLevel === "high" ? "#10b981" : confLevel === "medium" ? "#f59e0b" : "#ef4444";
+                    const confLabel = confLevel === "high" ? "High" : confLevel === "medium" ? "Med" : "Low";
+                    return (
+                      <a
+                        key={i}
+                        href={src.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block p-3 rounded-xl border transition-all group"
+                        style={{
+                          background: "var(--bg-card)",
+                          borderColor: "var(--border-color-subtle)",
+                          textDecoration: "none",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = "var(--brand-primary)";
+                          e.currentTarget.style.background = "rgba(142,78,20,0.05)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = "var(--border-color-subtle)";
+                          e.currentTarget.style.background = "var(--bg-card)";
+                        }}
+                      >
+                        {/* Favicon + domain */}
+                        <div className="flex items-center gap-2 mb-1.5">
+                          {src.favicon_url ? (
+                            <img
+                              src={src.favicon_url}
+                              alt=""
+                              className="w-4 h-4 rounded-sm flex-shrink-0"
+                              onError={(e) => { e.target.style.display = "none"; }}
+                            />
+                          ) : (
+                            <Globe className="w-4 h-4 flex-shrink-0" style={{ color: "var(--text-muted)" }} />
+                          )}
+                          <span className="text-[10px] font-medium truncate" style={{ color: "var(--text-muted)" }}>
+                            {src.domain || new URL(src.url || "https://example.com").hostname}
+                          </span>
+                          <span
+                            className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                            style={{ background: `${confColor}20`, color: confColor }}
+                          >
+                            {confLabel}
+                          </span>
+                        </div>
+                        {/* Title */}
+                        <p className="text-xs font-medium leading-tight line-clamp-2" style={{ color: "var(--text-primary)" }}>
+                          {src.title}
+                        </p>
+                        {/* Snippet */}
+                        {src.snippet && (
+                          <p className="text-[11px] mt-1 line-clamp-2 leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                            {src.snippet}
+                          </p>
+                        )}
+                      </a>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* RAG Document Sources */}
+            {activeSources.rag.length > 0 && (
+              <section>
+                <p className="text-[10px] font-semibold uppercase tracking-widest mb-2 px-1" style={{ color: "var(--text-muted)" }}>
+                  📄 Knowledge Base
+                </p>
+                <div className="space-y-2">
+                  {activeSources.rag.map((src, i) => {
+                    const conf = src.confidence || {};
+                    const level = conf.level || "medium";
+                    const confColor = level === "high" ? "#10b981" : level === "medium" ? "#f59e0b" : "#ef4444";
+                    const confLabel = level === "high" ? "High" : level === "medium" ? "Med" : "Low";
+                    return (
+                      <div
+                        key={i}
+                        className="p-3 rounded-xl border"
+                        style={{ background: "var(--bg-card)", borderColor: "var(--border-color-subtle)" }}
+                      >
+                        <div className="flex items-start gap-2">
+                          <FileText className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "var(--brand-primary)" }} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                              {src.source?.replace(/\.[^/.]+$/, "") || "Document"}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                                {src.chunks || 1} chunk{src.chunks !== 1 ? "s" : ""}
+                              </span>
+                              <span
+                                className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                                style={{ background: `${confColor}20`, color: confColor }}
+                              >
+                                {confLabel}
+                              </span>
+                              {conf.score != null && (
+                                <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>
+                                  {conf.score}%
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* Empty state */}
+            {activeSources.web.length === 0 && activeSources.rag.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
+                <Globe className="w-8 h-8" style={{ color: "var(--text-muted)" }} />
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>No sources yet</p>
+              </div>
+            )}
+          </div>
+        </aside>
+      )}
+
     </div>
   );
 }
