@@ -42,10 +42,10 @@ const SUGGESTIONS = [
 
 /* ─── Detail Levels → mapped to backend answer_style values ─────── */
 const DETAIL_LEVELS = [
-  { label: "Short",     value: "short"     },
-  { label: "Technical", value: "technical"  },
-  { label: "Detailed",  value: "detailed"   },
-  { label: "CTF Mode",  value: "ctf"        },
+  { label: "Short", value: "short" },
+  { label: "Technical", value: "technical" },
+  { label: "Detailed", value: "detailed" },
+  { label: "CTF Mode", value: "ctf" },
 ];
 
 /* ─── Markdown renderer config ──────────────────────────────────────
@@ -438,7 +438,7 @@ export default function Research() {
               if (payload.done) {
                 // Feature 8: populate Sources Panel when stream completes
                 const webResultsFull = payload.web_results || [];
-                const ragDetails     = payload.rag_source_details || [];
+                const ragDetails = payload.rag_source_details || [];
                 setActiveSources({ rag: ragDetails, web: webResultsFull });
                 if (webResultsFull.length > 0 || ragDetails.length > 0) {
                   setSourcePanelOpen(true);
@@ -451,14 +451,14 @@ export default function Research() {
                   if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
                     msgs[lastIdx] = {
                       ...msgs[lastIdx],
-                      sources:          payload.sources || [],
-                      webSources:       payload.web_sources || [],
-                      webResults:       webResultsFull,
+                      sources: payload.sources || [],
+                      webSources: payload.web_sources || [],
+                      webResults: webResultsFull,
                       ragSourceDetails: ragDetails,
-                      isWebFallback:    payload.is_web_fallback || false,
-                      intent:           payload.intent || msgs[lastIdx].intent,
-                      intentInfo:       payload.intent_info || msgs[lastIdx].intentInfo,
-                      isRefused:        payload.refused ? true : msgs[lastIdx].isRefused,
+                      isWebFallback: payload.is_web_fallback || false,
+                      intent: payload.intent || msgs[lastIdx].intent,
+                      intentInfo: payload.intent_info || msgs[lastIdx].intentInfo,
+                      isRefused: payload.refused ? true : msgs[lastIdx].isRefused,
                     };
                   }
                   return { ...prev, [chatId]: msgs };
@@ -538,9 +538,8 @@ export default function Research() {
           width: sidebarCollapsed ? "64px" : "260px",
           transition: "width 0.25s ease",
         }}
-        className={`flex flex-col h-full shrink-0 z-50 fixed lg:static inset-y-0 left-0 ${
-          mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        }`}
+        className={`flex flex-col h-full shrink-0 z-50 fixed lg:static inset-y-0 left-0 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          }`}
       >
         {/* Logo row */}
         <div
@@ -772,9 +771,8 @@ export default function Research() {
           <div className="px-3 py-2 shrink-0 space-y-1" style={{ borderTop: "1px solid var(--border-color-subtle)" }}>
             <button
               onClick={() => navigate("/admin")}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all ${
-                sidebarCollapsed ? "justify-center" : ""
-              }`}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all ${sidebarCollapsed ? "justify-center" : ""
+                }`}
               style={{ color: "var(--brand-primary)", background: "rgba(142,78,20,0.08)" }}
             >
               <Settings className="w-4 h-4 shrink-0" />
@@ -783,9 +781,8 @@ export default function Research() {
 
             <button
               onClick={() => navigate("/documents")}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all ${
-                sidebarCollapsed ? "justify-center" : ""
-              }`}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all ${sidebarCollapsed ? "justify-center" : ""
+                }`}
               style={{ color: "var(--text-muted)" }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = "rgba(142,78,20,0.08)";
@@ -808,9 +805,8 @@ export default function Research() {
           style={{ borderTop: "1px solid var(--border-color-subtle)" }}
         >
           <div
-            className={`flex items-center gap-2.5 p-2 rounded-xl cursor-pointer transition-colors ${
-              sidebarCollapsed ? "justify-center" : ""
-            }`}
+            className={`flex items-center gap-2.5 p-2 rounded-xl cursor-pointer transition-colors ${sidebarCollapsed ? "justify-center" : ""
+              }`}
             onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(142,78,20,0.06)")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
           >
@@ -1354,7 +1350,7 @@ export default function Research() {
 
                 {/* Pro Plan */}
                 <div className="p-4 rounded-2xl border-2 text-left relative overflow-hidden"
-                     style={{ background: "rgba(142,78,20,0.06)", borderColor: "var(--brand-primary)" }}>
+                  style={{ background: "rgba(142,78,20,0.06)", borderColor: "var(--brand-primary)" }}>
                   <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[9px] font-bold text-white uppercase tracking-wider" style={{ background: "var(--brand-primary)" }}>
                     Popular
                   </span>
