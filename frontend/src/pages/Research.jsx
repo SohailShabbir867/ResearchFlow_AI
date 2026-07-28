@@ -266,6 +266,31 @@ export default function Research() {
   }, []);
 
   /* ── Handlers ──────────────────────────────────────────────────── */
+function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSources = []) {
+  const web = (webResults && webResults.length > 0)
+    ? webResults
+    : (webSources || []).map((url) => {
+        let domain = "";
+        try { domain = new URL(url).hostname; } catch (_e) { domain = String(url); }
+        return {
+          url,
+          title: domain,
+          domain,
+          favicon_url: `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
+          confidence: 85
+        };
+      });
+
+  const rag = (ragDetails && ragDetails.length > 0)
+    ? ragDetails
+    : (sources || []).map(s => ({
+        source: typeof s === "string" ? s : s?.source || "Knowledge Base Document",
+        score: 85
+      }));
+
+  return { rag, web };
+}
+
   const handleSelectChat = async (chatId) => {
     setActiveChatId(chatId);
     let msgs = messagesMap[chatId];
@@ -283,6 +308,8 @@ export default function Research() {
             text: m.text,
             sources: m.sources || [],
             webSources: m.webSources || [],
+            webResults: m.webResults || [],
+            ragSourceDetails: m.ragSourceDetails || [],
             isWebFallback: m.isWebFallback || false,
             time: m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
           }));
@@ -298,11 +325,17 @@ export default function Research() {
     if (msgs && msgs.length > 0) {
       const lastAssis = [...msgs].reverse().find((m) => m.role === "assistant");
       if (lastAssis) {
-        setActiveSources({
-          rag: lastAssis.ragSourceDetails || lastAssis.sources?.map(s => ({ source: s })) || [],
-          web: lastAssis.webResults || lastAssis.webSources?.map(s => ({ url: s, title: s })) || [],
-        });
+        setActiveSources(formatSourcesData(
+          lastAssis.ragSourceDetails,
+          lastAssis.webResults,
+          lastAssis.sources,
+          lastAssis.webSources
+        ));
+      } else {
+        setActiveSources({ rag: [], web: [] });
       }
+    } else {
+      setActiveSources({ rag: [], web: [] });
     }
   };
 
@@ -513,10 +546,14 @@ export default function Research() {
 
               if (payload.done) {
                 // Feature 8: populate Sources Panel when stream completes
-                const webResultsFull = payload.web_results || [];
-                const ragDetails = payload.rag_source_details || [];
-                setActiveSources({ rag: ragDetails, web: webResultsFull });
-                if (webResultsFull.length > 0 || ragDetails.length > 0) {
+                const formatted = formatSourcesData(
+                  payload.rag_source_details,
+                  payload.web_results,
+                  payload.sources,
+                  payload.web_sources
+                );
+                setActiveSources(formatted);
+                if (formatted.web.length > 0 || formatted.rag.length > 0) {
                   setSourcePanelOpen(true);
                 }
                 setStreamingIntent(null);
@@ -529,8 +566,8 @@ export default function Research() {
                       ...msgs[lastIdx],
                       sources: payload.sources || [],
                       webSources: payload.web_sources || [],
-                      webResults: webResultsFull,
-                      ragSourceDetails: ragDetails,
+                      webResults: formatted.web,
+                      ragSourceDetails: formatted.rag,
                       isWebFallback: payload.is_web_fallback || false,
                       intent: payload.intent || msgs[lastIdx].intent,
                       intentInfo: payload.intent_info || msgs[lastIdx].intentInfo,
@@ -1020,21 +1057,19 @@ export default function Research() {
                 <span>Upgrade Pro RAG</span>
               </button>
             )}
-            {(activeSources.web.length > 0 || activeSources.rag.length > 0) && (
-              <button
-                onClick={() => setSourcePanelOpen(!sourcePanelOpen)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5"
-                style={{
-                  color: sourcePanelOpen ? "var(--brand-primary)" : "var(--text-muted)",
-                  borderColor: sourcePanelOpen ? "var(--brand-primary)" : "var(--border-color-subtle)",
-                  background: sourcePanelOpen ? "rgba(142,78,20,0.08)" : "transparent",
-                }}
-                title="Toggle Sources Panel"
-              >
-                <Globe className="w-3.5 h-3.5" />
-                <span>Sources {activeSources.web.length + activeSources.rag.length > 0 ? `(${activeSources.web.length + activeSources.rag.length})` : ""}</span>
-              </button>
-            )}
+            <button
+              onClick={() => setSourcePanelOpen(!sourcePanelOpen)}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5 cursor-pointer"
+              style={{
+                color: sourcePanelOpen ? "var(--brand-primary)" : "var(--text-muted)",
+                borderColor: sourcePanelOpen ? "var(--brand-primary)" : "var(--border-color-subtle)",
+                background: sourcePanelOpen ? "rgba(142,78,20,0.08)" : "transparent",
+              }}
+              title="Toggle Sources Panel"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>Sources {activeSources.web.length + activeSources.rag.length > 0 ? `(${activeSources.web.length + activeSources.rag.length})` : ""}</span>
+            </button>
             <ThemeToggle />
             <button
               onClick={() => {
@@ -1243,8 +1278,12 @@ export default function Research() {
                           {/* Sources pill button if available */}
                           {((msg.sources && msg.sources.length > 0) || (msg.webSources && msg.webSources.length > 0)) && (
                             <button
-                              onClick={() => setSourcesOpen((p) => ({ ...p, [msg.id]: !p[msg.id] }))}
-                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-colors border"
+                              onClick={() => {
+                                setSourcesOpen((p) => ({ ...p, [msg.id]: !p[msg.id] }));
+                                setActiveSources(formatSourcesData(msg.ragSourceDetails, msg.webResults, msg.sources, msg.webSources));
+                                setSourcePanelOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-colors border cursor-pointer"
                               style={{
                                 borderColor: "var(--border-color)",
                                 color: "var(--text-muted)",
