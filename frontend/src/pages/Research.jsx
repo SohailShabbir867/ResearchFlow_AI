@@ -46,6 +46,7 @@ const DETAIL_LEVELS = [
   { label: "Technical", value: "technical" },
   { label: "Detailed", value: "detailed" },
   { label: "CTF Mode", value: "ctf" },
+  { label: "Code / Script", value: "code" },
 ];
 
 /* ─── Markdown renderer config ──────────────────────────────────────

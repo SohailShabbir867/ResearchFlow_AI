@@ -55,22 +55,61 @@ def _count_tokens(text: str, tokenizer) -> int:
 
 # ─── Code block extraction ────────────────────────────────────────────────────
 
-def _extract_code_blocks(text: str) -> tuple[str, dict[str, str]]:
+def _extract_code_blocks(text: str, max_code_tokens: int = 500) -> tuple[str, dict[str, str]]:
     """
-    Replace fenced code blocks with placeholders so they are never split.
+    Replace fenced code blocks with placeholders. Small code blocks stay whole.
+    Large code blocks (> max_code_tokens) are safely split into valid fenced sub-blocks
+    so individual code chunks never exceed chunk token limits when restored.
     Returns (text_with_placeholders, {placeholder: original_block}).
     """
+    tokenizer = _get_tokenizer()
     placeholders = {}
     idx = 0
 
     def replace_block(m):
         nonlocal idx
-        key = f"__CODE_BLOCK_{idx}__"
-        idx += 1
-        placeholders[key] = m.group(0)
-        return key
+        block = m.group(0)
+        tokens = _count_tokens(block, tokenizer)
 
-    # Match fenced code blocks (``` ... ```)
+        if tokens <= max_code_tokens:
+            key = f"__CODE_BLOCK_{idx}__"
+            idx += 1
+            placeholders[key] = block
+            return key
+
+        # Split large code block into valid fenced sub-blocks preserving language header
+        lines = block.split("\n")
+        first_line = lines[0] if lines[0].startswith("```") else "```"
+        last_line  = "```"
+        body_lines = lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
+
+        sub_keys = []
+        cur_lines = []
+        cur_tok = 0
+
+        for line in body_lines:
+            line_tok = _count_tokens(line, tokenizer)
+            if cur_tok + line_tok > max_code_tokens and cur_lines:
+                sub_code = first_line + "\n" + "\n".join(cur_lines) + "\n" + last_line
+                key = f"__CODE_BLOCK_{idx}__"
+                idx += 1
+                placeholders[key] = sub_code
+                sub_keys.append(key)
+                cur_lines = [line]
+                cur_tok = line_tok
+            else:
+                cur_lines.append(line)
+                cur_tok += line_tok
+
+        if cur_lines:
+            sub_code = first_line + "\n" + "\n".join(cur_lines) + "\n" + last_line
+            key = f"__CODE_BLOCK_{idx}__"
+            idx += 1
+            placeholders[key] = sub_code
+            sub_keys.append(key)
+
+        return "\n\n".join(sub_keys)
+
     pattern = re.compile(r'```[\s\S]*?```', re.DOTALL)
     replaced = pattern.sub(replace_block, text)
     return replaced, placeholders
@@ -80,6 +119,12 @@ def _restore_code_blocks(text: str, placeholders: dict[str, str]) -> str:
     for key, val in placeholders.items():
         text = text.replace(key, val)
     return text
+
+
+def _count_para_tokens(para: str, placeholders: dict[str, str], tokenizer) -> int:
+    """Calculate actual restored token count for a paragraph containing code placeholders."""
+    restored = _restore_code_blocks(para, placeholders)
+    return _count_tokens(restored, tokenizer)
 
 
 # ─── Sentence splitter (cybersec-safe) ───────────────────────────────────────
@@ -138,18 +183,18 @@ def split_by_tokens(text: str, chunk_size: int, chunk_overlap: int) -> list[str]
             chunks.append(_restore_code_blocks(chunk_text, code_placeholders))
 
             # Keep overlap
-            overlap_paras, overlap_tok = _build_overlap(current_paras, chunk_overlap, tokenizer)
+            overlap_paras, overlap_tok = _build_overlap(current_paras, chunk_overlap, code_placeholders, tokenizer)
             current_paras = overlap_paras
             current_tokens = overlap_tok
 
-        para_tokens = _count_tokens(para, tokenizer)
+        para_tokens = _count_para_tokens(para, code_placeholders, tokenizer)
 
         # Single para larger than chunk_size → split by sentences
         if para_tokens > chunk_size:
             if current_paras:
                 chunk_text = "\n\n".join(current_paras)
                 chunks.append(_restore_code_blocks(chunk_text, code_placeholders))
-                overlap_paras, overlap_tok = _build_overlap(current_paras, chunk_overlap, tokenizer)
+                overlap_paras, overlap_tok = _build_overlap(current_paras, chunk_overlap, code_placeholders, tokenizer)
                 current_paras = overlap_paras
                 current_tokens = overlap_tok
 
@@ -170,7 +215,7 @@ def split_by_tokens(text: str, chunk_size: int, chunk_overlap: int) -> list[str]
             chunk_text = "\n\n".join(current_paras)
             chunks.append(_restore_code_blocks(chunk_text, code_placeholders))
 
-            overlap_paras, overlap_tok = _build_overlap(current_paras, chunk_overlap, tokenizer)
+            overlap_paras, overlap_tok = _build_overlap(current_paras, chunk_overlap, code_placeholders, tokenizer)
             current_paras = overlap_paras
             current_tokens = overlap_tok
 
@@ -185,12 +230,12 @@ def split_by_tokens(text: str, chunk_size: int, chunk_overlap: int) -> list[str]
     return [c.strip() for c in chunks if c.strip()]
 
 
-def _build_overlap(paras: list[str], overlap_budget: int, tokenizer) -> tuple[list[str], int]:
+def _build_overlap(paras: list[str], overlap_budget: int, placeholders: dict[str, str], tokenizer) -> tuple[list[str], int]:
     """Walk backwards through paragraphs, accumulate up to overlap_budget tokens."""
     overlap_paras: list[str] = []
     overlap_tok = 0
     for p in reversed(paras):
-        t = _count_tokens(p, tokenizer)
+        t = _count_para_tokens(p, placeholders, tokenizer)
         if overlap_tok + t > overlap_budget:
             break
         overlap_paras.insert(0, p)

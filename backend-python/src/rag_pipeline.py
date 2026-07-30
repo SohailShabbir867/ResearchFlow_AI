@@ -135,7 +135,32 @@ ANSWER_STYLES = {
         ),
         "max_tokens": 3000,
     },
+    "code": {
+        "instruction": (
+            "Focus 80%+ of output on 100% complete, fully functional, production-ready, runnable code:\n"
+            "- Start directly with a 1-2 sentence overview of what the code does.\n"
+            "- Provide complete, self-contained code in properly tagged fenced blocks (```python, ```bash, ```c, ```cpp, ```javascript, ```powershell, ```go, ```rust, ```sql, etc.).\n"
+            "- NEVER use placeholder comments like `// TODO`, `...`, or truncated code stubs. Include all required imports, main guards (`if __name__ == '__main__':`), error handling, and robust input checks.\n"
+            "- Include an `### Installation & Dependencies` section with exact setup commands (`pip install ...`, etc.).\n"
+            "- Include a `### Usage & Execution` section showing exact CLI commands to run the script.\n"
+            "- Include a concise `### Code Walkthrough` explaining key functions and logic flow."
+        ),
+        "max_tokens": 4096,
+    },
 }
+
+_CODE_KEYWORDS_RE = re.compile(
+    r'\b(?:write|code|script|program|implement|function|class|build|create|develop|'
+    r'python|bash|c\+\+|cpp|csharp|golang|rust|powershell|js|javascript|typescript|'
+    r'fix bug|refactor|exploit script|payload generator|automation|algorithm|snippet)\b',
+    re.IGNORECASE
+)
+
+
+def detect_programming_intent(question: str) -> bool:
+    """Return True if the query is asking for programming, code, or script generation."""
+    return bool(_CODE_KEYWORDS_RE.search(question))
+
 
 DEFAULT_STYLE     = "technical"
 GLOBAL_MAX_TOKENS = 4096   # Maximum generation capacity of 70B model
@@ -145,8 +170,9 @@ GLOBAL_MAX_TOKENS = 4096   # Maximum generation capacity of 70B model
 
 # Intent → label and emoji shown in the frontend
 INTENT_META = {
-    "cve":       {"label": "CVE / Vulnerability",     "emoji": "🔴", "style": "technical"},
-    "tool":      {"label": "Tool / Usage",            "emoji": "🛠",  "style": "short"},
+    "code":      {"label": "Code / Programming",      "emoji": "💻",  "style": "code"},
+    "cve":       {"label": "CVE / Vulnerability",     "emoji": "🔴",  "style": "technical"},
+    "tool":      {"label": "Tool / Usage",            "emoji": "🛠",   "style": "short"},
     "ctf":       {"label": "CTF Challenge",           "emoji": "🚩",  "style": "ctf"},
     "exploit":   {"label": "Exploit / Attack",        "emoji": "🔥",  "style": "technical"},
     "ad":        {"label": "Active Directory",        "emoji": "🏢",  "style": "detailed"},
@@ -167,13 +193,15 @@ _FORENSICS_RE = re.compile(r'\b(forensics|volatility|memory dump|pcap|wireshark|
 def classify_query_intent(question: str) -> str:
     """
     Fast regex-based intent classifier (<1ms).
-    Returns one of: cve | tool | ctf | exploit | ad | cloud | forensics | general
+    Returns one of: code | cve | tool | ctf | exploit | ad | cloud | forensics | general
 
     Used to:
     - Auto-select answer_style when user leaves it as default
     - Emit intent badge in SSE stream for frontend display
-    - Tune downstream behavior (e.g., CTF → ctf style)
+    - Tune downstream behavior (e.g., Code → code style)
     """
+    if detect_programming_intent(question):
+        return "code"
     if _CVE_RE.search(question):
         return "cve"
     if _CTF_RE.search(question):
