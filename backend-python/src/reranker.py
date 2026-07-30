@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-RERANKER_MODEL = os.getenv("RERANKER_MODEL", "Xenova/ms-marco-MiniLM-L-6-v2")
+RERANKER_MODEL = os.getenv("RERANKER_MODEL", "Xenova/ms-marco-MiniLM-L-12-v2")  # v6.0: 12-layer model (better precision)
 RERANKER_TOP_K = int(os.getenv("RERANKER_TOP_K", "8"))
 
 # Lazy-load reranker

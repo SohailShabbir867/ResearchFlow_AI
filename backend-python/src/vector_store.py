@@ -164,13 +164,14 @@ def store_chunks(embedded_chunks: list[dict], recreate: bool = True):
 
 
 def search(query_vector: list[float], top_k: int = 30) -> list[dict]:
-    """Dense vector search via Qdrant."""
+    """Dense vector search via Qdrant with tuned HNSW ef_runtime."""
     client = get_client()
 
     results = client.query_points(
         collection_name=COLLECTION_NAME,
         query=query_vector,
-        limit=top_k
+        limit=top_k,
+        search_params={"hnsw_ef": 128}  # v6.0: up from default 64 → better recall
     )
 
     matches = []

@@ -306,28 +306,31 @@ def enrich_query(question: str, history: list[dict] = None) -> str:
 
 def _build_system_prompt(answer_style: str, now_str: str, current_year: int) -> str:
     """
-    Compact CyberSecAI system prompt — tuned for the 12k TPM Groq free tier.
-    ~700 tokens vs the previous ~4,500 token version.
-    All critical behavioral directives preserved; verbose checklists removed
-    (the LLM already knows them from pretraining).
+    CyberSecAI v6.0 system prompt — tuned for ALL query types.
+    Handles: ethical hacking, programming, general CS, security research.
+    ~700 tokens (12k TPM safe).
     """
     style = ANSWER_STYLES.get(answer_style, ANSWER_STYLES[DEFAULT_STYLE])
 
-    return f"""You are CyberSecAI — an elite ethical hacking and cybersecurity expert assistant.
+    return f"""You are CyberSecAI — an elite AI expert assistant specializing in cybersecurity and programming.
 Current date/time: {now_str}. Answer date questions from this anchor.
 
-DOMAIN: You have expert-level mastery of: web/API attacks (OWASP Top 10, SQLi, XSS, SSRF, XXE, SSTI, IDOR, JWT, OAuth), network pentesting (nmap, Wireshark, MITM), Active Directory attacks (Kerberoasting, Pass-the-Hash, BloodHound, DCSync, Golden Ticket), cloud security (AWS IAM, S3, SSRF→IMDS, Azure AD, GCP), binary exploitation (ROP, heap, format strings, ASLR/NX/PIE bypass), reverse engineering (Ghidra, GDB, pwndbg), CTF challenges (pwn, web, crypto, forensics, reversing), malware analysis, OSINT, red team OPSEC, blue team detection, SIEM/YARA rules, MITRE ATT&CK framework.
+DOMAIN: You have expert-level mastery of:
+- Cybersecurity: web/API attacks (OWASP Top 10, SQLi, XSS, SSRF, XXE, SSTI, IDOR, JWT, OAuth), network pentesting (nmap, Wireshark, MITM), Active Directory attacks (Kerberoasting, Pass-the-Hash, BloodHound, DCSync, Golden Ticket), cloud security (AWS IAM, S3, SSRF→IMDS, Azure AD, GCP), binary exploitation (ROP, heap, format strings, ASLR/NX/PIE bypass), reverse engineering (Ghidra, GDB, pwndbg), CTF challenges (pwn, web, crypto, forensics, reversing), malware analysis, OSINT, red team OPSEC, blue team detection, SIEM/YARA rules, MITRE ATT&CK framework.
+- Programming: Python, JavaScript, TypeScript, Bash, C, C++, Go, Rust, PowerShell, SQL, Assembly, Ruby. Algorithms, data structures, APIs, databases, system design, debugging, refactoring.
+- General: answer any factual, conceptual, or analytical question with expert depth.
 
 RULES:
-1. Answer decisively — be concrete, use exact tool flags, CVE IDs, MITRE Tactic/Technique IDs.
-2. RAG documents (<rag_documents>) are your primary source — cite as [Doc: source].
+1. Answer decisively — be concrete, use exact tool flags, CVE IDs, MITRE Tactic/Technique IDs where relevant.
+2. RAG documents (<rag_documents>) are your PRIMARY source — cite as [Doc: source].
 3. Live web intel (<live_web_intel>) enriches answers — cite as [Web: Title](url).
-4. When RAG and web are silent, answer from expert knowledge freely.
-5. Generate complete, runnable, well-commented code in the right language (python/bash/c/powershell/ruby/sql/nasm).
-6. Refuse ONLY if targeting real systems without authorization, building real-world malware, or aiding doxxing/harassment.
-7. Emit INSUFFICIENT_DOCUMENT_COVERAGE only if question is completely outside cybersecurity.
-8. No meta-talk — never say "based on the context" or "the documents say".
-9. Pair every offensive technique with its MITRE ATT&CK ID and a detection/mitigation note.
+4. When RAG and web are silent, answer from expert knowledge freely and confidently.
+5. Generate complete, runnable, well-commented code in the right language (python/bash/c/powershell/ruby/sql/nasm/go/rust/javascript/typescript).
+6. Refuse ONLY if: targeting real systems without authorization, building real-world malware for deployment, or aiding doxxing/harassment.
+7. Emit INSUFFICIENT_DOCUMENT_COVERAGE only if the question is completely unanswerable even with expert knowledge.
+8. No meta-talk — never say "based on the context" or "the documents say". Just answer directly.
+9. For cybersecurity offensive techniques: pair every technique with its MITRE ATT&CK ID and a detection/mitigation note.
+10. For programming questions: ALWAYS provide complete, runnable code. No truncated stubs or TODOs.
 
 FORMAT: {style['instruction']}"""
 
@@ -392,22 +395,46 @@ def build_fused_prompt(
     Build the FUSED prompt combining RAG documents (authoritative) with
     live web intelligence (enrichment) into one synthesized context.
 
-    Bug 7 Fix: Returns (system_content, user_content) as separate strings
-    so the caller can use role:"system" + role:"user" for proper Groq behavior.
+    v6.0: Context budget calculator prevents silent TPM overflow.
+    The 12k TPM free tier means total prompt+answer must stay under ~10k tokens.
+    System prompt ~750 tokens + headroom for answer leaves ~4500-5500 chars of context.
     """
     if answer_style not in ANSWER_STYLES:
         answer_style = DEFAULT_STYLE
 
-    # ── RAG context ──────────────────────────────────────────────────────────
+    # ── Context budget per answer style (v6.0: prevents TPM overflow) ────────────
+    # Budget = chars allocated to ALL rag chunks combined.
+    # Short answers need less context; detailed/code get more.
+    CONTEXT_BUDGETS = {
+        "short":     2000,
+        "technical": 3500,
+        "detailed":  4500,
+        "ctf":       3500,
+        "code":      4000,
+    }
+    total_rag_budget = CONTEXT_BUDGETS.get(answer_style, 3500)
+
+    # ── RAG context (budget-aware) ──────────────────────────────────────────────
     context_blocks = []
+    chars_used = 0
     for i, chunk in enumerate(context_chunks):
         source_name  = chunk.get("source",       f"Document {i+1}")
         text_content = chunk.get("text",         "").strip()
-        if len(text_content) > 800:
-            text_content = text_content[:800] + "..."
         content_type = chunk.get("content_type", "general")
         cves         = chunk.get("cves",         [])
         section      = chunk.get("section",      "")
+
+        # Per-chunk budget: top-ranked chunks get more space
+        rank_budget = max(300, total_rag_budget // max(len(context_chunks), 1))
+        if len(text_content) > rank_budget:
+            text_content = text_content[:rank_budget] + "..."
+
+        # Stop adding chunks if budget exhausted
+        if chars_used + len(text_content) > total_rag_budget:
+            remaining = total_rag_budget - chars_used
+            if remaining < 100:
+                break
+            text_content = text_content[:remaining] + "..."
 
         meta_attrs = f'index="{i+1}" source="{source_name}" type="{content_type}"'
         if cves:
@@ -415,12 +442,14 @@ def build_fused_prompt(
         if section:
             meta_attrs += f' section="{section[:80]}"'
 
-        context_blocks.append(f'<document {meta_attrs}>\n{text_content}\n</document>')
+        block = f'<document {meta_attrs}>\n{text_content}\n</document>'
+        context_blocks.append(block)
+        chars_used += len(text_content)
 
     rag_context = "\n\n".join(context_blocks) if context_blocks else "<document>No local documents indexed yet.</document>"
 
-    # ── Web context ──────────────────────────────────────────────────────────
-    web_context = format_web_context(web_results) if web_results else "<web_source>No live web results available.</web_source>"
+    # ── Web context (capped at 1500 chars to save budget for answer) ─────────
+    web_context = format_web_context(web_results, max_snippet_len=250) if web_results else "<web_source>No live web results available.</web_source>"
 
     history_xml  = _build_history_xml(history)
     now_str      = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")

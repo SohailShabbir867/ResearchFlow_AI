@@ -146,14 +146,17 @@ def build_cybersec_web_query(question: str) -> str:
 
 def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
     """
-    Perform a live web search using DuckDuckGo.
+    Perform a live web search using DuckDuckGo with retry + exponential backoff.
 
-    Bug 6 Fix: All cache reads and writes are now protected by _cache_lock to
-    ensure thread safety when called from concurrent ThreadPoolExecutor workers.
+    v6.0: Added 3-attempt retry with exponential backoff to handle rate limits
+    and transient DuckDuckGo blocks. Each retry uses a fresh DDGS instance since
+    the connection state may be bad after a rate-limit error.
+
+    Bug 6 Fix: All cache reads and writes are protected by _cache_lock.
 
     Args:
-        query:       Raw search query (will be transformed by build_cybersec_web_query)
-        max_results: Maximum number of results (default 6 for richer coverage)
+        query:       Raw search query (transformed by build_cybersec_web_query)
+        max_results: Maximum number of results
 
     Returns:
         List of dicts: [{
@@ -183,28 +186,51 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
     print(f"  [Web Search] DuckDuckGo: '{refined_query[:80]}'")
 
     results = []
-    try:
-        ddgs = DDGS()
-        raw = list(ddgs.text(refined_query, max_results=max_results))
-        total = len(raw)
-        for rank, r in enumerate(raw):
-            title   = r.get("title", "").strip()
-            snippet = r.get("body", r.get("snippet", "")).strip()
-            url     = r.get("href", r.get("link", "")).strip()
-            if title and snippet:
-                domain = _extract_domain(url)
-                results.append({
-                    "title":       title,
-                    "snippet":     snippet,
-                    "url":         url,
-                    "domain":      domain,
-                    "favicon_url": _favicon_url(domain),
-                    "confidence":  _result_confidence(rank, total),
-                })
+    last_error = None
 
-        print(f"  [Web Search OK] {len(results)} results for: '{query[:50]}'")
-    except Exception as e:
-        print(f"  [Web Search Warning] DuckDuckGo failed: {e}")
+    # v6.0: Retry loop with exponential backoff
+    for attempt in range(3):
+        try:
+            if attempt > 0:
+                wait = 2 ** attempt   # 2s, 4s
+                print(f"  [Web Search] Retry {attempt}/2 after {wait}s (last error: {last_error})")
+                time.sleep(wait)
+
+            ddgs = DDGS()   # Fresh instance on each attempt
+            raw = list(ddgs.text(refined_query, max_results=max_results))
+            total = len(raw)
+            for rank, r in enumerate(raw):
+                title   = r.get("title", "").strip()
+                snippet = r.get("body", r.get("snippet", "")).strip()
+                url     = r.get("href", r.get("link", "")).strip()
+                if title and snippet:
+                    domain = _extract_domain(url)
+                    results.append({
+                        "title":       title,
+                        "snippet":     snippet,
+                        "url":         url,
+                        "domain":      domain,
+                        "favicon_url": _favicon_url(domain),
+                        "confidence":  _result_confidence(rank, total),
+                    })
+
+            print(f"  [Web Search OK] {len(results)} results for: '{query[:50]}'")
+            break   # Success — exit retry loop
+
+        except Exception as e:
+            last_error = str(e)
+            error_lower = last_error.lower()
+            is_rate_limit = "ratelimit" in error_lower or "rate limit" in error_lower or "429" in last_error
+            if is_rate_limit:
+                print(f"  [Web Search] Rate limited (attempt {attempt+1}/3)")
+            else:
+                print(f"  [Web Search Warning] DuckDuckGo error (attempt {attempt+1}/3): {last_error[:120]}")
+                if attempt == 2:
+                    # Non-rate-limit errors are unlikely to succeed on retry
+                    break
+
+    if not results:
+        print(f"  [Web Search] All attempts failed — returning empty results")
         return []
 
     # Thread-safe cache write

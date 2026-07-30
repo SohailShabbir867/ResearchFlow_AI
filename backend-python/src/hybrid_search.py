@@ -25,7 +25,7 @@ from src.vector_store import search as vector_search, get_client
 load_dotenv()
 
 COLLECTION_NAME        = os.getenv("COLLECTION_NAME",        "cybersec")
-HYBRID_CANDIDATE_COUNT = int(os.getenv("HYBRID_CANDIDATE_COUNT", "30"))
+HYBRID_CANDIDATE_COUNT = int(os.getenv("HYBRID_CANDIDATE_COUNT", "50"))  # v6.0: increased from 30 for wider recall
 
 # ─── Thread-safe BM25 index cache (Bug 4 & 5 Fix) ────────────────────────────
 _bm25_index   = None
@@ -269,7 +269,7 @@ def get_bm25_results(query: str, top_k: int = 30) -> list[dict]:
 def reciprocal_rank_fusion(
     vector_results: list[dict],
     bm25_results:   list[dict],
-    k: int = 60
+    k: int = 40    # v6.0: tuned from 60 → 40 for stronger rank boosting of top hits
 ) -> list[dict]:
     """
     Reciprocal Rank Fusion (RRF) to merge vector and BM25 results.

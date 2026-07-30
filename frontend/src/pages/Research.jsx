@@ -28,6 +28,8 @@ import {
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { atomDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useSelector, useDispatch } from "react-redux";
 import { logoutUser } from "../store/authSlice.js";
 import ThemeToggle from "../components/ThemeToggle.jsx";
@@ -116,8 +118,39 @@ const mdComponents = (streaming) => ({
 
 function CodeBlock({ children, className }) {
   const [copied, setCopied] = useState(false);
-  const language = (className || "").replace("language-", "").trim() || "code";
   const rawCode  = String(children || "").replace(/\n$/, "");
+
+  // Detect language from className (e.g. "language-python" → "python")
+  const langRaw  = (className || "").replace("language-", "").trim();
+  const language = langRaw || "text";
+
+  // Friendly display label for the language badge
+  const LANG_LABELS = {
+    python: "Python", py: "Python",
+    bash: "Bash", sh: "Bash", shell: "Shell",
+    javascript: "JavaScript", js: "JavaScript",
+    typescript: "TypeScript", ts: "TypeScript",
+    c: "C", cpp: "C++", "c++": "C++",
+    go: "Go", rust: "Rust", ruby: "Ruby",
+    sql: "SQL", powershell: "PowerShell", ps1: "PowerShell",
+    assembly: "Assembly", asm: "Assembly", nasm: "NASM",
+    json: "JSON", yaml: "YAML", toml: "TOML",
+    html: "HTML", css: "CSS", xml: "XML",
+    java: "Java", kotlin: "Kotlin", swift: "Swift",
+    php: "PHP", csharp: "C#", "c#": "C#",
+    dockerfile: "Dockerfile", makefile: "Makefile",
+  };
+  const langLabel = LANG_LABELS[language.toLowerCase()] || language.toUpperCase();
+
+  // Brand color for the language badge
+  const LANG_COLORS = {
+    python: "#3B82F6", bash: "#10B981", sh: "#10B981", shell: "#10B981",
+    javascript: "#F59E0B", typescript: "#06B6D4",
+    c: "#6366F1", cpp: "#8B5CF6", go: "#22D3EE",
+    rust: "#F97316", ruby: "#EF4444", sql: "#14B8A6",
+    powershell: "#A78BFA", assembly: "#EC4899", nasm: "#EC4899",
+  };
+  const badgeColor = LANG_COLORS[language.toLowerCase()] || "#9CA3AF";
 
   const handleCopy = () => {
     navigator.clipboard.writeText(rawCode);
@@ -126,34 +159,45 @@ function CodeBlock({ children, className }) {
   };
 
   return (
-    <div className="my-4 rounded-xl overflow-hidden border shadow-lg" style={{ background: "#0D1117", borderColor: "rgba(255,255,255,0.1)" }}>
-      {/* ChatGPT / Claude Style Header Bar */}
-      <div className="flex items-center justify-between px-4 py-2 text-xs font-mono select-none" style={{ background: "#161B22", borderBottom: "1px solid rgba(255,255,255,0.08)", color: "#8B949E" }}>
-        <span className="font-semibold uppercase tracking-wider text-[11px]" style={{ color: "var(--brand-primary)" }}>{language}</span>
+    <div className="my-4 rounded-xl overflow-hidden shadow-lg" style={{ border: `1px solid ${badgeColor}30` }}>
+      {/* Header bar with language badge + copy button */}
+      <div className="flex items-center justify-between px-4 py-2 select-none" style={{ background: "#161B22", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+        <span className="text-[11px] font-bold uppercase tracking-widest font-mono" style={{ color: badgeColor }}>
+          {langLabel}
+        </span>
         <button
           onClick={handleCopy}
           type="button"
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors hover:bg-white/10 cursor-pointer"
-          style={{ color: copied ? "#10B981" : "#C9D1D9" }}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all text-xs cursor-pointer"
+          style={{ color: copied ? "#10B981" : "#8B949E", background: copied ? "rgba(16,185,129,0.1)" : "transparent" }}
         >
           {copied ? (
-            <>
-              <Check className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-emerald-400 font-semibold">Copied!</span>
-            </>
+            <><Check className="w-3.5 h-3.5" /><span className="font-semibold">Copied!</span></>
           ) : (
-            <>
-              <Copy className="w-3.5 h-3.5" />
-              <span>Copy code</span>
-            </>
+            <><Copy className="w-3.5 h-3.5" /><span>Copy</span></>
           )}
         </button>
       </div>
 
-      {/* Code Container */}
-      <pre className="p-4 overflow-x-auto text-xs font-mono leading-relaxed" style={{ background: "#0D1117", color: "#E6EDE3" }}>
-        <code>{rawCode}</code>
-      </pre>
+      {/* Syntax-highlighted code */}
+      <SyntaxHighlighter
+        language={language}
+        style={atomDark}
+        showLineNumbers={rawCode.split("\n").length > 4}
+        lineNumberStyle={{ color: "#4B5563", fontSize: "11px", minWidth: "2.5em" }}
+        customStyle={{
+          margin: 0,
+          borderRadius: 0,
+          fontSize: "12.5px",
+          lineHeight: "1.65",
+          background: "#0D1117",
+          padding: "1rem 1.25rem",
+        }}
+        codeTagProps={{ style: { fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace" } }}
+        wrapLongLines={false}
+      >
+        {rawCode}
+      </SyntaxHighlighter>
     </div>
   );
 }
@@ -1411,7 +1455,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                     handleSend();
                   }
                 }}
-                placeholder="Ask a question about your uploaded documents... (Enter to send)"
+                placeholder="Ask anything — cybersecurity, hacking, programming, or general questions... (Enter to send)"
                 className="flex-1 bg-transparent text-sm px-2 py-2 outline-none resize-none min-h-[36px] max-h-32"
                 style={{
                   color: "var(--text-primary)",

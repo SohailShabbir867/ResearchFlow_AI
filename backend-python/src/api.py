@@ -1,25 +1,21 @@
 """
 CyberSecAI — FastAPI REST Service
-v5.1.0 — Bug Fixes + Perplexity Streaming
+v6.0.0 — AsyncGroq Streaming + Startup Warmup + Keep-Alive
 
-Bug Fixes:
-  Bug 8  — All module imports removed from inside the generate() async generator.
-            Imports are now at module level (resolved once on startup, not per request).
-  Bug 9  — Groq client is no longer instantiated inside generate(); the singleton
-            from rag_pipeline is used instead.
-  Feature 9 — GROQ_API_KEY checked during startup with a clear warning log.
-
-New Features:
-  - /stream SSE events now include: intent, intent_info, rag_source_details,
-    web_results (with domain/favicon/confidence) in the 'done' event.
-  - Proper system/user message split used in all Groq calls (via call_groq).
+Bug Fixes (v6.0):
+  AsyncGroq   — Replaced sync Groq client with AsyncGroq inside async generate().
+                The sync Groq client was blocking the FastAPI event loop on every
+                streaming request, causing the frontend to receive no tokens.
+  Keep-Alive  — SSE keep-alive comment frames prevent proxy/nginx timeout on slow LLM.
+  Warmup      — Embedder + BM25 index warm up at startup → no cold-start delay.
+  Import Bug  — source_confidence_score import moved from inside generate() to module-level.
 
 Endpoints:
   GET  /health          — Service status and config
   GET  /documents       — List indexed cybersec documents
   POST /query           — Standard RAG query (full response)
-  POST /stream          — Streaming RAG query (SSE token-by-token)
-  POST /upload          — Upload cybersec document (PDF/TXT/DOCX/MD)
+  POST /stream          — Streaming RAG query (SSE token-by-token, AsyncGroq)
+  POST /upload          — Upload document (PDF/TXT/DOCX/MD)
   DELETE /documents/:s  — Delete document and its vectors
   GET  /settings        — Get active guardrail config
   POST /settings        — Update runtime settings
@@ -28,9 +24,10 @@ Endpoints:
 import os
 import json
 import time
+import asyncio
 
-# ── Module-level imports (Bug 8 Fix: never import inside generate()) ──────────
-from groq import Groq
+# ── Module-level imports (v6.0: AsyncGroq replaces sync Groq — never blocks event loop) ──
+from groq import AsyncGroq
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -46,6 +43,7 @@ from src.rag_pipeline import (
     detect_off_document_answer,
     enrich_query,
     classify_query_intent,
+    source_confidence_score,   # v6.0: module-level import (was wrongly inside generate())
     INTENT_META,
     REFUSAL_MSG,
     RELEVANCE_THRESHOLD,
@@ -53,7 +51,6 @@ from src.rag_pipeline import (
     ANSWER_STYLES,
     DEFAULT_STYLE,
     LLM_TEMPERATURE,
-    _get_groq_client,     # reuse the singleton from rag_pipeline
 )
 from src.vector_store import get_collection_info, get_indexed_sources
 from src.hybrid_search import rebuild_bm25_index, _build_bm25_index
@@ -70,14 +67,28 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL   = os.getenv("GROQ_MODEL",   "llama-3.3-70b-versatile")
 
 app = FastAPI(
-    title="CyberSecAI — Ethical Hacking Expert RAG Service",
+    title="CyberSecAI — AI Expert RAG Service",
     description=(
-        "Elite cybersecurity knowledge retrieval powered by BGE-base embeddings, "
-        "hybrid BM25+vector search, cross-encoder reranking, and Groq LLM. "
-        "Supports Python, Bash, C/C++, JavaScript, PowerShell, Ruby, SQL, Assembly."
+        "Expert knowledge retrieval for cybersecurity, programming, and general queries. "
+        "Powered by BGE-base embeddings, hybrid BM25+vector search, cross-encoder reranking, "
+        "and Groq LLM (AsyncGroq). Supports Python, Bash, C/C++, JavaScript, PowerShell, "
+        "Ruby, SQL, Assembly, Go, Rust."
     ),
-    version="5.1.0"
+    version="6.0.0"
 )
+
+# ─── AsyncGroq singleton (v6.0) — one async client reused across all requests ──
+# AsyncGroq is non-blocking: awaiting it yields control to asyncio event loop
+# between token chunks, allowing FastAPI to serve other requests concurrently.
+_async_groq: AsyncGroq = None
+
+def _get_async_groq() -> AsyncGroq:
+    """Return or create the module-level AsyncGroq singleton."""
+    global _async_groq
+    if _async_groq is None:
+        _async_groq = AsyncGroq(api_key=GROQ_API_KEY)
+        print("  [AsyncGroq] Singleton initialized.")
+    return _async_groq
 
 app.add_middleware(
     CORSMiddleware,
@@ -85,6 +96,37 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+
+# ─── Startup warmup ───────────────────────────────────────────────────────────
+@app.on_event("startup")
+async def on_startup():
+    """
+    v6.0: Warm up expensive components at server start so the first user
+    request doesn't suffer a 2-5 second cold-start delay.
+    """
+    import threading
+    if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
+        print("  [Startup] WARNING: GROQ_API_KEY not set -- streaming will fail.")
+    else:
+        _get_async_groq()   # pre-init AsyncGroq singleton
+        print("  [Startup] OK: AsyncGroq singleton ready.")
+
+    def _warmup():
+        try:
+            warmup_embedder()
+            print("  [Startup] OK: BGE embedder warmed up.")
+        except Exception as e:
+            print(f"  [Startup] WARNING: Embedder warmup failed: {e}")
+        try:
+            from src.hybrid_search import _build_bm25_index
+            _build_bm25_index()
+            print("  [Startup] OK: BM25 index ready.")
+        except Exception as e:
+            print(f"  [Startup] WARNING: BM25 warmup failed: {e}")
+
+    threading.Thread(target=_warmup, daemon=True).start()
+    print("  [Startup] CyberSecAI v6.0 ready.")
 
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────────
@@ -130,51 +172,6 @@ class OpenAIChatRequest(BaseModel):
     max_tokens:  Optional[int]               = None
     stream:      Optional[bool]              = False
 
-
-# ─── Startup: pre-load models + BM25 index ───────────────────────────────────
-
-@app.on_event("startup")
-async def startup_event():
-    print("=" * 60)
-    print("CyberSecAI — Ethical Hacking Expert RAG Service v5.1.0")
-    print("  Parallel RAG + Web Fusion Engine (Bug Fixes Edition)")
-    print("=" * 60)
-
-    # Feature 9: Validate API key at startup — fail loudly instead of silently
-    if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
-        print("⚠️  WARNING: GROQ_API_KEY is not set in backend-python/.env!")
-        print("   Streaming and query endpoints will return 503 until key is configured.")
-    else:
-        print(f"✅ GROQ_API_KEY configured (model: {GROQ_MODEL})")
-
-    print("Step 1/3: Warming up BGE-base embedding model...")
-    try:
-        warmup_embedder()
-    except Exception as e:
-        print(f"  Warning: Embedder warmup failed ({e})")
-
-    print("Step 2/3: Warming up cross-encoder reranker...")
-    try:
-        from src.reranker import _get_reranker
-        _get_reranker()
-    except Exception as e:
-        print(f"  Warning: Reranker warmup failed ({e})")
-
-    print("Step 3/3: Pre-building BM25 index from Qdrant...")
-    try:
-        _build_bm25_index()
-        info   = get_collection_info()
-        points = info.get("points_count", 0)
-        print(f"  BM25 index ready — {points} cybersec chunks indexed.")
-    except Exception as e:
-        print(f"  Warning: BM25 pre-build failed ({e}). Will retry on first query.")
-
-    print("=" * 60)
-    print(f"CyberSecAI v5.1 is ready. All models loaded.")
-    print(f"  Web Fusion: {'ALWAYS-ON (parallel)' if rag.WEB_ALWAYS_ON else 'fallback-only'}")
-    print(f"  Max Web Results: {rag.MAX_WEB_RESULTS}")
-    print(f"  LLM Temperature: {LLM_TEMPERATURE}")
-    print("=" * 60)
 
 
 # ─── Health ───────────────────────────────────────────────────────────────────
@@ -310,28 +307,28 @@ def openai_chat_completions(request: OpenAIChatRequest):
     }
 
 
-# ─── Stream (token-by-token SSE — Parallel RAG+Web Fusion) ───────────────────
+# ─── Stream (token-by-token SSE — AsyncGroq Parallel RAG+Web Fusion) ──────────
 
 @app.post("/stream")
 async def stream_query(request: QueryRequest):
     """
     Streaming CyberSecAI RAG+Web Fusion query via Server-Sent Events (SSE).
 
-    Bug 8 Fix: All imports are now at module level (top of file).
-    The generate() function no longer imports anything — every symbol is
-    already in scope from the module-level imports.
+    v6.0 Critical Fix — AsyncGroq:
+      The previous version used sync Groq inside async def generate(), which
+      blocked the entire FastAPI event loop on every streaming request.
+      This is now fixed: AsyncGroq + `async for chunk in stream` is used so
+      the event loop is never blocked and tokens stream in real-time.
 
-    Bug 9 Fix: Groq client is the module-level singleton from rag_pipeline
-    (_get_groq_client()), not a new instance per request.
-
-    v5.1 SSE events:
+    v6.0 SSE events:
       {status_text: str}           — pipeline stage update
-      {intent: str, intent_info: {label, emoji}}  — query intent (NEW)
+      {intent: str, intent_info: {label, emoji}}  — query intent
       {token: str}                 — streaming LLM token
       {replace: str}               — replace accumulated text (L3 retry)
       {done: true, sources, web_sources, web_results, rag_source_details,
              is_web_fallback, refused, intent}  — final metadata
       {error: str}                 — pipeline error
+      : keep-alive                 — SSE heartbeat (prevents proxy timeout)
     """
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
@@ -368,20 +365,38 @@ async def stream_query(request: QueryRequest):
             search_query = enrich_query(request.question, history)
 
             # ── Step 2: Fire web search IMMEDIATELY in background ─────────────
+            # Keep-alive: yield an SSE comment to prevent proxy timeout during
+            # the CPU-heavy embed + search + rerank phase (can take 1-3s).
+            yield ": keep-alive\n\n"
+
             web_future = rag._executor.submit(
                 perform_web_search, search_query, rag.MAX_WEB_RESULTS
             ) if rag.WEB_ALWAYS_ON else None
 
             # ── Step 3: Embed + RAG search (web runs concurrently) ────────────
-            query_vector = get_embedding(search_query, is_query=True)
-            candidates   = hybrid_search(query_vector, search_query)
+            # Run CPU-bound work in thread pool to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            query_vector = await loop.run_in_executor(
+                rag._executor, get_embedding, search_query, True
+            )
+            candidates = await loop.run_in_executor(
+                rag._executor, hybrid_search, query_vector, search_query
+            )
 
-            # ── Step 4: Cross-encoder reranking ──────────────────────────────
-            reranked = rerank(request.question, candidates, top_k=request.top_k) if candidates else []
+            # ── Step 4: Cross-encoder reranking (thread pool, non-blocking) ───
+            if candidates:
+                reranked = await loop.run_in_executor(
+                    rag._executor, rerank, request.question, candidates, request.top_k
+                )
+            else:
+                reranked = []
 
             # ── Step 5: Collect web results ───────────────────────────────────
             yield f"data: {json.dumps({'status_text': '🌐 Enriching with live web intel...'})}\n\n"
-            web_results = web_future.result() if web_future else []
+            if web_future:
+                web_results = await loop.run_in_executor(None, web_future.result)
+            else:
+                web_results = []
             print(f"  [Stream] Web results collected: {len(web_results)}")
 
             # ── Step 6: Guardrails ────────────────────────────────────────────
@@ -408,14 +423,16 @@ async def stream_query(request: QueryRequest):
                 answer_style=style_name,
             )
 
-            # ── Step 8: Stream from Groq (Bug 9 Fix: singleton client) ────────
-            client = _get_groq_client()
+            # ── Step 8: Stream from Groq via AsyncGroq (v6.0 critical fix) ────
+            # Using AsyncGroq + async for means the event loop is NEVER blocked.
+            # Each `async for chunk` yields control back to asyncio between tokens.
+            client = _get_async_groq()
             effective_max_tokens = min(
-                style.get("max_tokens", 2500),
-                getattr(rag, "GLOBAL_MAX_TOKENS", 4096)
+                style.get("max_tokens", 2000),
+                getattr(rag, "GLOBAL_MAX_TOKENS", 3000)
             )
 
-            groq_stream = client.chat.completions.create(
+            groq_stream = await client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[
                     {"role": "system", "content": sys_c},
@@ -427,11 +444,17 @@ async def stream_query(request: QueryRequest):
             )
 
             full_response = ""
-            for chunk in groq_stream:
+            token_count   = 0
+            async for chunk in groq_stream:
                 token = chunk.choices[0].delta.content or ""
                 if token:
                     full_response += token
+                    token_count   += 1
                     yield f"data: {json.dumps({'token': token})}\n\n"
+                    # Yield control to event loop every 20 tokens so other
+                    # concurrent requests can be served during long generations
+                    if token_count % 20 == 0:
+                        await asyncio.sleep(0)
 
             # ── Step 9: Layer 3 — off-document detection ──────────────────────
             if detect_off_document_answer(full_response) and passing_chunks and web_results:
@@ -443,7 +466,7 @@ async def stream_query(request: QueryRequest):
                     request.question, [], web_results,
                     history=history, answer_style=style_name,
                 )
-                groq_stream2 = client.chat.completions.create(
+                groq_stream2 = await client.chat.completions.create(
                     model=GROQ_MODEL,
                     messages=[
                         {"role": "system", "content": sys_c2},
@@ -453,7 +476,7 @@ async def stream_query(request: QueryRequest):
                     max_tokens=effective_max_tokens,
                     stream=True,
                 )
-                for chunk2 in groq_stream2:
+                async for chunk2 in groq_stream2:
                     token2 = chunk2.choices[0].delta.content or ""
                     if token2:
                         yield f"data: {json.dumps({'token': token2})}\n\n"
@@ -467,8 +490,7 @@ async def stream_query(request: QueryRequest):
             rag_sources = list({c["source"] for c in passing_chunks})
             web_sources = [r["url"] for r in web_results if r.get("url")]
 
-            # Build rag_source_details with confidence
-            from src.rag_pipeline import source_confidence_score
+            # Build rag_source_details with confidence (v6.0: no inline import)
             rag_source_details = []
             for src in rag_sources:
                 src_chunks = [c for c in passing_chunks if c["source"] == src]
@@ -486,7 +508,7 @@ async def stream_query(request: QueryRequest):
             print(f"  [Stream Error] {error_msg}")
 
             if "rate_limit" in error_msg.lower() or "429" in error_msg:
-                friendly = "⏳ Groq API rate limit reached. Please wait a few minutes and try again, or upgrade your Groq plan at console.groq.com"
+                friendly = "⏳ Groq API rate limit reached. Please wait a few minutes and try again."
             elif "model_decommissioned" in error_msg.lower():
                 friendly = "🔧 The configured LLM model has been retired. Please update GROQ_MODEL in backend-python/.env"
             elif "GROQ_API_KEY" in error_msg:

@@ -286,6 +286,10 @@ router.post("/chats/:id/stream", async (req, res) => {
     res.write(`data: ${JSON.stringify({ chatId: chat._id.toString(), chatTitle: chat.title })}\n\n`);
   }
 
+  // Valid answer_style values accepted by the Python pipeline
+  const VALID_STYLES = ["short", "technical", "detailed", "ctf", "code"];
+  const safeStyle = VALID_STYLES.includes(answer_style) ? answer_style : "technical";
+
   try {
     const appSettings = await AppSettings.findOne({ key: "global" }).lean();
     const maxTokens = appSettings?.data?.llm?.maxTokens ? parseInt(appSettings.data.llm.maxTokens) : 4000;
@@ -295,11 +299,11 @@ router.post("/chats/:id/stream", async (req, res) => {
       {
         question: question.trim(),
         top_k: top_k || 8,
-        answer_style: answer_style || "technical",
+        answer_style: safeStyle,
         history,
         max_tokens: maxTokens,
       },
-      { responseType: "stream", timeout: 120000 }
+      { responseType: "stream", timeout: 180000 }  // 3 min for long detailed answers
     );
 
     let fullAnswer = "";
@@ -309,24 +313,38 @@ router.post("/chats/:id/stream", async (req, res) => {
     let finalRagSourceDetails = [];
     let isRefused = false;
 
+    // v6.0: SSE buffer accumulator — axios chunks don't respect SSE event
+    // boundaries. A single SSE event can span two chunks, or two events can
+    // arrive in one chunk. Without buffering, split events are silently dropped
+    // causing fullAnswer to be incomplete in MongoDB.
+    let nodeBuffer = "";
+
     pyResponse.data.on("data", (chunk) => {
+      // Forward raw bytes to frontend IMMEDIATELY (before parsing)
       res.write(chunk);
 
-      const str = chunk.toString();
-      const lines = str.split("\n").filter(l => l.startsWith("data: "));
-      for (const line of lines) {
-        try {
-          const data = JSON.parse(line.replace("data: ", ""));
-          if (data.token) fullAnswer += data.token;
-          if (data.replace) { fullAnswer = data.replace; isRefused = true; }
-          if (data.done) {
-            finalSources = data.sources || [];
-            finalWebSources = data.web_sources || [];
-            finalWebResults = data.web_results || [];
-            finalRagSourceDetails = data.rag_source_details || [];
-            if (data.refused) isRefused = true;
-          }
-        } catch (_e) {}
+      // Accumulate into buffer and extract complete SSE events
+      nodeBuffer += chunk.toString();
+      const parts = nodeBuffer.split("\n\n");
+      // Last element is an incomplete event — keep in buffer
+      nodeBuffer = parts.pop() || "";
+
+      for (const part of parts) {
+        const lines = part.split("\n").filter(l => l.startsWith("data: "));
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line.slice(6)); // strip "data: "
+            if (data.token)   fullAnswer += data.token;
+            if (data.replace !== undefined) { fullAnswer = data.replace || ""; isRefused = !data.replace; }
+            if (data.done) {
+              finalSources          = data.sources           || [];
+              finalWebSources       = data.web_sources       || [];
+              finalWebResults       = data.web_results       || [];
+              finalRagSourceDetails = data.rag_source_details || [];
+              if (data.refused) isRefused = true;
+            }
+          } catch (_e) {}
+        }
       }
     });
 
