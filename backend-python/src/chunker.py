@@ -1,13 +1,13 @@
 """
 ResearchFlow AI — Smart Document Chunking Engine
-Optimized for ethical hacking books, CTF writeups, CVE databases, and tool documentation.
+Optimized for academic papers, technical documentation, and research articles.
 
 Key improvements over generic chunkers:
-  1. Semantic boundary detection  — never splits inside a ## section or CVE block
+  1. Semantic boundary detection  — never splits inside a ## section or citation block
   2. Code block preservation      — fenced ``` blocks are NEVER split mid-code
-  3. Larger chunks (600 tokens)   — keeps attack sequences and technique descriptions whole
+  3. Larger chunks (600 tokens)   — keeps technical explanations whole
   4. Bigger overlap (100 tokens)  — catches answers that straddle boundaries
-  5. Sentence-aware splitting     — handles IPs (192.168.1.1), CVE IDs, file paths
+  5. Sentence-aware splitting     — handles IPs, DOIs, citations, file paths
 
 Supports: PDF, TXT, DOCX, MD
 """
@@ -16,18 +16,16 @@ import re
 from pathlib import Path
 
 # ─── Chunking config (in TOKENS) ─────────────────────────────────────────────
-CHUNK_SIZE    = 600   # Larger for dense cybersec text (attack chains, CVE details)
+CHUNK_SIZE    = 600   # Larger for dense technical/research text
 CHUNK_OVERLAP = 100   # Bigger overlap catches answers at boundaries
 
-# Cybersecurity section header patterns (never split mid-section)
+# Research section header patterns (never split mid-section)
 _SECTION_HEADER_RE = re.compile(
     r'^(#+\s|'                          # Markdown headers (#, ##, ###)
     r'CVE-\d{4}-\d+|'                  # CVE identifiers
     r'(?:CHAPTER|SECTION|MODULE|LAB|EXERCISE|STEP)\s+\d+|'  # Book structure
-    r'(?:Attack|Exploit|Payload|Enumeration|Reconnaissance|'
-    r'Post.Exploitation|Privilege.Escalation|Lateral.Movement|'
-    r'Defense.Evasion|Persistence|Command.and.Control|Exfiltration|'
-    r'Impact|Discovery|Collection|Credential.Access)'
+    r'(?:Abstract|Introduction|Methods|Methodology|Results|Discussion|'
+    r'Conclusion|References|Appendix|Background)'
     r'\s*[:\-])',
     re.IGNORECASE | re.MULTILINE
 )
@@ -127,12 +125,12 @@ def _count_para_tokens(para: str, placeholders: dict[str, str], tokenizer) -> in
     return _count_tokens(restored, tokenizer)
 
 
-# ─── Sentence splitter (cybersec-safe) ───────────────────────────────────────
+# ─── Sentence splitter (research-safe) ───────────────────────────────────────
 
 def _split_sentences(text: str) -> list[str]:
     """
     Split text into sentences. Uses nltk if available; otherwise uses a
-    cybersec-safe regex that doesn't split on IPs, CVE IDs, or file paths.
+    research-safe regex that doesn't split on IPs, DOIs, CVE IDs, or file paths.
     """
     try:
         import nltk
@@ -154,7 +152,7 @@ def _split_sentences(text: str) -> list[str]:
 
 def split_by_tokens(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
     """
-    Semantic, token-aware chunking for cybersecurity documents:
+    Semantic, token-aware chunking for research documents:
 
     1. Extract and protect code blocks (never split inside them)
     2. Split text into semantic units (section headers trigger chunk boundary)
@@ -274,18 +272,10 @@ def _detect_content_type(text: str) -> str:
         return "code"
     if re.search(r'CVE-\d{4}-\d+', text, re.IGNORECASE):
         return "cve"
-    if re.search(r'(?:nmap|metasploit|burp|wireshark|sqlmap|hydra|hashcat|aircrack|'
-                 r'nikto|dirb|gobuster|netcat|nc |curl|wget)\b', text, re.IGNORECASE):
-        return "tool_usage"
-    if re.search(r'(?:exploit|payload|shellcode|buffer.overflow|heap.spray|'
-                 r'use.after.free|format.string|race.condition)\b', text, re.IGNORECASE):
-        return "exploit"
-    if re.search(r'(?:MITRE|ATT&CK|T\d{4}|TA\d{4})', text):
-        return "mitre"
-    if re.search(r'(?:password|hash|crack|brute.force|rainbow|credential)', text, re.IGNORECASE):
-        return "credential"
-    if re.search(r'(?:network|port|protocol|TCP|UDP|ICMP|HTTP|HTTPS|SSH|FTP|SMB|DNS|LDAP)', text, re.IGNORECASE):
-        return "network"
+    if re.search(r'(?:abstract|methodology|results|discussion|conclusion)', text, re.IGNORECASE):
+        return "academic"
+    if re.search(r'(?:network|protocol|API|database|architecture)', text, re.IGNORECASE):
+        return "technical"
     return "general"
 
 

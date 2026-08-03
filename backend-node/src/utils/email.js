@@ -86,64 +86,95 @@ function emailButton(url, label) {
 const P  = `style="margin:0 0 16px;font-size:15px;color:rgba(255,255,255,0.80);line-height:1.65;"`;
 const SM = `style="margin:0 0 8px;font-size:13px;color:rgba(255,255,255,0.45);line-height:1.5;"`;
 
+// ─── Helper: check if email credentials configured ────────────────────────────
+function isEmailConfigured() {
+  return Boolean(process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD);
+}
+
 // ─── sendVerificationEmail ────────────────────────────────────────────────────
 async function sendVerificationEmail(user, token) {
-  const url = `${process.env.FRONTEND_URL}/verify-email/${token}`;
+  if (!isEmailConfigured()) {
+    console.warn(`[Email Skip] SMTP not configured. Verification token for ${user.email}: ${token}`);
+    return;
+  }
+
+  const url = `${process.env.FRONTEND_URL || "http://localhost:5173"}/verify-email/${token}`;
 
   const body = `
 <p ${P}>Hi <strong style="color:#ffffff;">${user.name}</strong>,</p>
-<p ${P}>Welcome to <strong style="color:#E21B70;">ResearchFlow AI</strong>! Please verify your email address to activate your account and start your research journey.</p>
+<p ${P}>Welcome to <strong style="color:#E21B70;">NexusAI</strong>! Please verify your email address to activate your account and start your research journey.</p>
 ${emailButton(url, "✉️  Verify My Email")}
 <p ${SM}>Or copy and paste this link into your browser:</p>
 <p style="margin:0 0 20px;font-size:12px;color:#E21B70;word-break:break-all;">${url}</p>
 <p ${SM}>This link expires in <strong style="color:rgba(255,255,255,0.6);">24 hours</strong>. After that, you'll need to request a new verification email.</p>`;
 
-  await transporter.sendMail({
-    from: `"ResearchFlow AI" <${process.env.EMAIL_FROM}>`,
-    to:   user.email,
-    subject: "Verify your ResearchFlow AI account",
-    html: emailWrapper("Verify Your Email", body),
-  });
+  try {
+    await transporter.sendMail({
+      from: `"NexusAI" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      to:   user.email,
+      subject: "Verify your NexusAI account",
+      html: emailWrapper("Verify Your Email", body),
+    });
+  } catch (err) {
+    console.error(`[Email Error] Failed to send verification email to ${user.email}:`, err.message);
+  }
 }
 
 // ─── sendPasswordResetEmail ───────────────────────────────────────────────────
 async function sendPasswordResetEmail(user, token) {
-  const url = `${process.env.FRONTEND_URL}/reset-password/${token}`;
+  if (!isEmailConfigured()) {
+    console.warn(`[Email Skip] SMTP not configured. Reset token for ${user.email}: ${token}`);
+    return;
+  }
+
+  const url = `${process.env.FRONTEND_URL || "http://localhost:5173"}/reset-password/${token}`;
 
   const body = `
 <p ${P}>Hi <strong style="color:#ffffff;">${user.name}</strong>,</p>
-<p ${P}>We received a request to reset the password for your ResearchFlow AI account associated with <strong style="color:#E21B70;">${user.email}</strong>.</p>
+<p ${P}>We received a request to reset the password for your NexusAI account associated with <strong style="color:#E21B70;">${user.email}</strong>.</p>
 ${emailButton(url, "🔑  Reset My Password")}
 <p ${SM}>Or copy and paste this link into your browser:</p>
 <p style="margin:0 0 20px;font-size:12px;color:#E21B70;word-break:break-all;">${url}</p>
 <p ${SM}>This link expires in <strong style="color:rgba(255,255,255,0.6);">1 hour</strong>. If you did not request a password reset, no action is needed — your password will remain unchanged.</p>`;
 
-  await transporter.sendMail({
-    from: `"ResearchFlow AI" <${process.env.EMAIL_FROM}>`,
-    to:   user.email,
-    subject: "Reset your ResearchFlow AI password",
-    html: emailWrapper("Password Reset Request", body),
-  });
+  try {
+    await transporter.sendMail({
+      from: `"NexusAI" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      to:   user.email,
+      subject: "Reset your NexusAI password",
+      html: emailWrapper("Password Reset Request", body),
+    });
+  } catch (err) {
+    console.error(`[Email Error] Failed to send reset email to ${user.email}:`, err.message);
+  }
 }
 
 // ─── sendWelcomeEmail ─────────────────────────────────────────────────────────
 async function sendWelcomeEmail(user) {
+  if (!isEmailConfigured()) return;
+
   const body = `
 <p ${P}>Hi <strong style="color:#ffffff;">${user.name}</strong>,</p>
-<p ${P}>Your email has been verified and your account is now <strong style="color:#10B981;">active</strong>. Welcome to the ResearchFlow AI research platform!</p>
-${emailButton(`${process.env.FRONTEND_URL}/`, "🔬  Start Researching")}
+<p ${P}>Your email has been verified and your account is now <strong style="color:#10B981;">active</strong>. Welcome to the NexusAI research platform!</p>
+${emailButton(`${process.env.FRONTEND_URL || "http://localhost:5173"}/`, "🔬  Start Researching")}
 <p ${SM}>You can now log in and start asking research questions from your indexed document library.</p>`;
 
-  await transporter.sendMail({
-    from: `"ResearchFlow AI" <${process.env.EMAIL_FROM}>`,
-    to:   user.email,
-    subject: "Welcome to ResearchFlow AI — Account Activated",
-    html: emailWrapper("Account Activated!", body),
-  });
+  try {
+    await transporter.sendMail({
+      from: `"NexusAI" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      to:   user.email,
+      subject: "Welcome to NexusAI — Account Activated",
+      html: emailWrapper("Account Activated!", body),
+    });
+  } catch (err) {
+    console.error(`[Email Error] Failed to send welcome email to ${user.email}:`, err.message);
+  }
 }
 
 // ─── sendAdminNotification ────────────────────────────────────────────────────
 async function sendAdminNotification(newUser) {
+  if (!isEmailConfigured() || !process.env.ADMIN_EMAIL) return;
+
   const body = `
 <p ${P}>A new user has registered and is pending email verification:</p>
 <table style="width:100%;border-collapse:collapse;margin:16px 0;">
@@ -151,14 +182,18 @@ async function sendAdminNotification(newUser) {
   <tr><td style="padding:10px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.5);font-size:12px;">Email</td><td style="padding:10px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#E21B70;">${newUser.email}</td></tr>
   <tr><td style="padding:10px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:0 0 8px 8px;color:rgba(255,255,255,0.5);font-size:12px;">Registered</td><td style="padding:10px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#fff;">${new Date().toLocaleString()}</td></tr>
 </table>
-${emailButton(`${process.env.FRONTEND_URL}/admin/users`, "👥  Manage Users")}`;
+${emailButton(`${process.env.FRONTEND_URL || "http://localhost:5173"}/admin/users`, "👥  Manage Users")}`;
 
-  await transporter.sendMail({
-    from: `"ResearchFlow AI" <${process.env.EMAIL_FROM}>`,
-    to:   process.env.EMAIL_FROM,
-    subject: `New registration: ${newUser.name} <${newUser.email}>`,
-    html: emailWrapper("New User Registration", body),
-  });
+  try {
+    await transporter.sendMail({
+      from: `"NexusAI" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      to: process.env.ADMIN_EMAIL,
+      subject: `New User Registration: ${newUser.name}`,
+      html: emailWrapper("New User Pending", body),
+    });
+  } catch (err) {
+    console.error(`[Email Error] Failed to send admin notification:`, err.message);
+  }
 }
 
 module.exports = {

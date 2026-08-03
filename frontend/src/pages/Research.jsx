@@ -47,7 +47,7 @@ const DETAIL_LEVELS = [
   { label: "Short", value: "short" },
   { label: "Technical", value: "technical" },
   { label: "Detailed", value: "detailed" },
-  { label: "CTF Mode", value: "ctf" },
+  { label: "Case Study Mode", value: "case_study" },
   { label: "Code / Script", value: "code" },
 ];
 
@@ -1177,7 +1177,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                     Get answers with code in Python, Bash, C, PowerShell, Ruby, and Assembly.
                   </p>
                   <p className="text-xs mt-1 font-medium" style={{ color: "var(--brand-primary)" }}>
-                    Hybrid RAG · Semantic Chunking · Multi-Language Code Generation · CTF Support
+                    Hybrid RAG · Semantic Chunking · Multi-Language Code Generation · Case Study Support
                   </p>
                 </div>
 

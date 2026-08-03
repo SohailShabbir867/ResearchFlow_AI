@@ -144,7 +144,7 @@ class QueryRequest(BaseModel):
     )
     answer_style: Optional[str] = Field(
         default=None,
-        description="short | technical | detailed | ctf"
+        description="short | technical | detailed | case_study"
     )
     max_tokens:   Optional[int] = Field(
         default=None,
@@ -213,7 +213,7 @@ def health():
 
 @app.get("/documents")
 def list_documents():
-    """List all indexed cybersecurity document sources and total chunk count."""
+    """List all indexed research document sources and total chunk count."""
     sources = get_indexed_sources()
     info    = get_collection_info()
     return {
@@ -279,10 +279,10 @@ def openai_chat_completions(request: OpenAIChatRequest):
         _handle_groq_error(e)
 
     return {
-        "id": f"chatcmpl-cybersec-{int(time.time())}",
+        "id": f"chatcmpl-researchflow-{int(time.time())}",
         "object": "chat.completion",
         "created": int(time.time()),
-        "model": request.model or "cybersec-rag",
+        "model": request.model or "researchflow-rag",
         "choices": [
             {
                 "index": 0,
@@ -298,7 +298,7 @@ def openai_chat_completions(request: OpenAIChatRequest):
             "completion_tokens": 0,
             "total_tokens": 0
         },
-        "cybersecai_metadata": {
+        "researchflow_metadata": {
             "sources":         result.get("sources", []),
             "web_sources":     result.get("web_sources", []),
             "is_web_fallback": result.get("is_web_fallback", False),
@@ -526,7 +526,7 @@ async def stream_query(request: QueryRequest):
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
     """
-    Upload a cybersecurity document (PDF, TXT, DOCX, MD).
+    Upload a research document (PDF, TXT, DOCX, MD).
     Auto-chunks with semantic boundaries, embeds with BGE-base, stores in Qdrant.
     """
     allowed = {".pdf", ".txt", ".docx", ".md"}
@@ -590,7 +590,7 @@ async def upload_document(file: UploadFile = File(...)):
 
 @app.delete("/documents/{source}")
 def delete_document(source: str):
-    """Delete a cybersec document and all its vector chunks from Qdrant."""
+    """Delete a research document and all its vector chunks from Qdrant."""
     from src.vector_store import delete_document_by_source
 
     print(f"Deleting document: '{source}'...")

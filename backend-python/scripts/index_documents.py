@@ -39,7 +39,7 @@ def main(incremental: bool = False):
 
     print("="*60)
     print("  ResearchFlow AI — Document Indexing Pipeline v1.0")
-    print("  BGE-base embeddings · Semantic chunking · Cybersec tokenizer")
+    print("  BGE-base embeddings · Semantic chunking · Research tokenizer")
     print("="*60)
     print(f"  Mode: {'Incremental (skip existing)' if incremental else 'Full re-index'}")
     print(f"  Documents folder: {docs_folder}")
@@ -114,7 +114,7 @@ def main(incremental: bool = False):
     print(f"  Embed time      : {format_time(t_embed)}")
     print(f"  Store time      : {format_time(t_store)}")
     print()
-    print("  Your cybersec documents are ready to query!")
+    print("  Your research documents are ready to query!")
     print("  Run: venv\\Scripts\\uvicorn src.api:app --reload --port 8000")
     print("=" * 60)
 

@@ -47,7 +47,7 @@ export const askQuestion = createAsyncThunk(
     try {
       const res = await axios.post(
         `${API}/chats/${chatId}/ask`,
-        { question, answer_style: answer_style || "classical" },
+        { question, answer_style: answer_style || "technical" },
         { timeout: 120000 }
       );
       return res.data;
@@ -56,84 +56,6 @@ export const askQuestion = createAsyncThunk(
     }
   }
 );
-
-// ─── Streaming thunk (Fix #5) ─────────────────────────────────────────────────
-// Uses fetch() + ReadableStream to consume SSE tokens one by one.
-// Dispatches appendStreamToken on each token, then finalizeStream with sources.
-
-export const askQuestionStream = (chatId, question, answer_style = "classical") => async (dispatch, getState) => {
-  // Push user message immediately
-  dispatch(pushUserMessage(question));
-  // Open a blank assistant message to stream into
-  dispatch(openAssistantMessage());
-
-  // Build conversation history from current messages for context
-  const { messages } = getState().research;
-  const recentMsgs = messages.slice(-7, -1); // exclude the just-pushed user msg
-  const history = recentMsgs.length > 0
-    ? recentMsgs.map(m => ({ role: m.role, text: (m.text || "").substring(0, 500) }))
-    : null;
-
-  // Get JWT token for auth header
-  const token = localStorage.getItem("researchflow_token");
-
-  try {
-    const response = await fetch(`/api/research/chats/${chatId}/stream`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { "Authorization": `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ question, top_k: 5, answer_style, history })
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.detail || "Stream request failed");
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const text = decoder.decode(value, { stream: true });
-      // SSE lines: "data: {...}\n\n"
-      const lines = text.split("\n").filter(l => l.startsWith("data: "));
-
-      for (const line of lines) {
-        try {
-          const payload = JSON.parse(line.replace("data: ", ""));
-
-          if (payload.error) {
-            dispatch(streamError(payload.error));
-            return;
-          }
-
-          if (payload.replace) {
-            // Layer 3 guardrail: replace streamed text with refusal
-            dispatch(replaceStreamText(payload.replace));
-          }
-
-          if (payload.done) {
-            dispatch(finalizeStream({ sources: payload.sources || [], refused: payload.refused || false }));
-            return;
-          }
-
-          if (payload.token) {
-            dispatch(appendStreamToken(payload.token));
-          }
-        } catch (_e) {
-          // Ignore malformed lines
-        }
-      }
-    }
-  } catch (err) {
-    dispatch(streamError(err.message || "Streaming failed."));
-  }
-};
 
 // ─── Slice ───────────────────────────────────────────────────────────────────
 
@@ -148,7 +70,6 @@ const researchSlice = createSlice({
     currentChatId: null,
     messages: [],        // { role, text, sources? }
     loading: false,
-    streaming: false,    // true while stream is active
     error: null
   },
 
@@ -158,55 +79,8 @@ const researchSlice = createSlice({
       state.error = null;
       state.currentChatId = null;
     },
-
     setCurrentChatId(state, action) {
       state.currentChatId = action.payload;
-    },
-
-    // Streaming reducers
-    pushUserMessage(state, action) {
-      state.messages.push({ role: "user", text: action.payload });
-      state.streaming = true;
-      state.error = null;
-    },
-
-    openAssistantMessage(state) {
-      // Add empty assistant message — tokens will be appended here
-      state.messages.push({ role: "assistant", text: "", sources: [] });
-    },
-
-    appendStreamToken(state, action) {
-      const last = state.messages[state.messages.length - 1];
-      if (last && last.role === "assistant") {
-        last.text += action.payload;
-      }
-    },
-
-    replaceStreamText(state, action) {
-      const last = state.messages[state.messages.length - 1];
-      if (last && last.role === "assistant") {
-        last.text = action.payload;
-        last.isRefused = true;
-      }
-    },
-
-    finalizeStream(state, action) {
-      const last = state.messages[state.messages.length - 1];
-      if (last && last.role === "assistant") {
-        last.sources = action.payload.sources || action.payload;
-        if (action.payload.refused) last.isRefused = true;
-      }
-      state.streaming = false;
-    },
-
-    streamError(state, action) {
-      state.streaming = false;
-      state.error = action.payload;
-      // Remove the empty assistant placeholder
-      const last = state.messages[state.messages.length - 1];
-      if (last && last.role === "assistant" && last.text === "") {
-        state.messages.pop();
-      }
     }
   },
 
@@ -275,13 +149,7 @@ const researchSlice = createSlice({
 
 export const {
   clearMessages,
-  setCurrentChatId,
-  pushUserMessage,
-  openAssistantMessage,
-  appendStreamToken,
-  replaceStreamText,
-  finalizeStream,
-  streamError
+  setCurrentChatId
 } = researchSlice.actions;
 
 export default researchSlice.reducer;

@@ -24,7 +24,7 @@ from src.vector_store import search as vector_search, get_client
 
 load_dotenv()
 
-COLLECTION_NAME        = os.getenv("COLLECTION_NAME",        "cybersec")
+COLLECTION_NAME        = os.getenv("COLLECTION_NAME",        "researchflow")
 HYBRID_CANDIDATE_COUNT = int(os.getenv("HYBRID_CANDIDATE_COUNT", "50"))  # v6.0: increased from 30 for wider recall
 
 # ─── Thread-safe BM25 index cache (Bug 4 & 5 Fix) ────────────────────────────
@@ -34,66 +34,10 @@ _bm25_lock    = threading.Lock()   # Protects reads/writes to index+chunks
 _bm25_building = threading.Event() # Signals when a build is in progress
 _bm25_ready   = threading.Event() # Signals when index is valid and ready
 
-# ─── Cybersec acronym expansion map ──────────────────────────────────────────
+# ─── Acronym expansion map ──────────────────────────────────────────
 # Expands common abbreviations so BM25 finds them in verbose document text
 _ACRONYM_MAP: dict[str, str] = {
-    "xss":    "cross site scripting xss",
-    "sqli":   "sql injection sqli",
-    "rce":    "remote code execution rce",
-    "lfi":    "local file inclusion lfi",
-    "rfi":    "remote file inclusion rfi",
-    "ssrf":   "server side request forgery ssrf",
-    "csrf":   "cross site request forgery csrf",
-    "xxe":    "xml external entity xxe",
-    "idor":   "insecure direct object reference idor",
-    "mitm":   "man in the middle mitm",
-    "dos":    "denial of service dos",
-    "ddos":   "distributed denial of service ddos",
-    "aslr":   "address space layout randomization aslr",
-    "dep":    "data execution prevention dep",
-    "nx":     "no execute nx bit",
-    "pie":    "position independent executable pie",
-    "ret2libc": "return to libc ret2libc",
-    "rop":    "return oriented programming rop",
-    "bof":    "buffer overflow bof",
-    "uaf":    "use after free uaf",
-    "oob":    "out of bounds oob",
-    "priv":   "privilege escalation privesc",
-    "privesc": "privilege escalation privesc",
-    "pe":     "privilege escalation pe",
-    "c2":     "command and control c2",
-    "c&c":    "command and control cnc",
-    "ioc":    "indicator of compromise ioc",
-    "ttp":    "tactics techniques procedures ttp",
-    "apt":    "advanced persistent threat apt",
-    "rat":    "remote access trojan rat",
-    "osint":  "open source intelligence osint",
-    "recon":  "reconnaissance recon",
-    "enum":   "enumeration enum",
-    "pe32":   "portable executable pe32",
-    "elf":    "executable linkable format elf",
-    "got":    "global offset table got",
-    "plt":    "procedure linkage table plt",
-    "heap":   "heap memory heap spray",
-    "rev":    "reverse engineering rev shell",
-    "webshell": "web shell webshell backdoor",
-    "lpe":    "local privilege escalation lpe",
-    "msfvenom": "metasploit venom payload msfvenom",
-    "msf":    "metasploit framework msf",
-    "smb":    "server message block smb",
-    "rdp":    "remote desktop protocol rdp",
-    "ldap":   "lightweight directory access protocol ldap",
-    "ad":     "active directory ad",
-    "dc":     "domain controller dc",
-    "gpo":    "group policy object gpo",
-    "wmi":    "windows management instrumentation wmi",
-    "lsass":  "local security authority subsystem lsass",
-    "ntlm":   "nt lan manager ntlm hash",
-    "sam":    "security account manager sam",
-    "kerberoasting": "kerberos ticket granting service kerberoasting",
-    "asrep":  "as rep roasting asrep",
-    "dce":    "distributed computing environment dce rpc",
-    "shellcode": "shellcode assembly exploit payload",
+    # Add domain-specific acronyms here if needed
 }
 
 # Generic English stopwords to remove from BM25 — but KEEP security terms
@@ -112,7 +56,7 @@ _GENERIC_STOPWORDS = {
 
 def _tokenize(text: str) -> list[str]:
     """
-    Cybersec-aware tokenizer:
+    Research-aware tokenizer:
     - Lowercases everything
     - Preserves hyphens in CVE IDs (CVE-2021-44228)
     - Removes generic stopwords but keeps all security terms
@@ -126,7 +70,7 @@ def _tokenize(text: str) -> list[str]:
 
 def _expand_query(query: str) -> str:
     """
-    Expand cybersecurity acronyms in the query so BM25 can find verbose descriptions.
+    Expand research acronyms in the query so BM25 can find verbose descriptions.
     E.g.: "explain XSS" → "explain XSS cross site scripting xss"
     """
     expanded_terms = []
@@ -208,7 +152,7 @@ def _build_bm25_index():
                 tokenized_corpus = [_tokenize(c["text"]) for c in all_chunks]
                 _bm25_index  = BM25Okapi(tokenized_corpus)
                 _bm25_chunks = all_chunks
-                print(f"  BM25 index built: {len(all_chunks)} chunks indexed (cybersec tokenizer)")
+                print(f"  BM25 index built: {len(all_chunks)} chunks indexed (research tokenizer)")
     except Exception as e:
         print(f"  [BM25] Build failed: {e}")
     finally:
@@ -309,7 +253,7 @@ def hybrid_search(query_vector: list[float], query_text: str, top_k: int = None)
     """
     Full hybrid search:
     1. Dense vector search (BGE embeddings, Qdrant HNSW)
-    2. BM25 keyword search (with cybersec query expansion)
+    2. BM25 keyword search (with query expansion)
     3. RRF fusion of both result lists
     """
     if top_k is None:

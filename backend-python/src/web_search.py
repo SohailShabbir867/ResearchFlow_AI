@@ -31,52 +31,12 @@ _CACHE_MAX     = 256
 _web_cache     = OrderedDict()
 _cache_lock    = threading.Lock()   # Protects all _web_cache mutations
 _CACHE_TTL     = 3600       # 1 hour default
-_CVE_CACHE_TTL = 1800       # 30 min for CVE / vuln queries (fresher results)
-
-# ─── Security-focused site boosters ──────────────────────────────────────────
-_VULN_SITES = (
-    "site:nvd.nist.gov OR site:exploit-db.com OR site:github.com "
-    "OR site:hackerone.com OR site:cvedetails.com OR site:packetstormsecurity.com"
-)
-_TOOL_SITES = (
-    "site:github.com OR site:kali.org OR site:man7.org OR site:gtfobins.github.io "
-    "OR site:lolbas-project.github.io OR site:book.hacktricks.xyz"
-)
-_CTF_SITES = (
-    "site:ctftime.org OR site:github.com OR site:medium.com OR site:writeups.ropemporium.com"
-)
+_FRESH_CACHE_TTL = 1800     # 30 min for news/recent queries (fresher results)
 
 
 def _cache_key(query: str) -> str:
     return hashlib.md5(query.strip().lower().encode("utf-8")).hexdigest()
 
-
-def _is_cve_query(q: str) -> bool:
-    return bool(re.search(r"CVE-\d{4}-\d+", q, re.IGNORECASE))
-
-
-def _is_tool_query(q: str) -> bool:
-    tools = [
-        "nmap", "burp", "metasploit", "sqlmap", "ffuf", "gobuster", "hashcat",
-        "hydra", "ncrack", "nikto", "wfuzz", "dirb", "dirbuster", "john",
-        "bloodhound", "impacket", "mimikatz", "crackmapexec", "evil-winrm",
-        "netcat", "nc", "socat", "pwncat", "ghidra", "ida", "gdb", "pwndbg",
-        "radare2", "binwalk", "frida", "objection", "apktool", "jadx",
-        "wireshark", "tshark", "responder", "bettercap", "aircrack", "reaver",
-        "shodan", "censys", "amass", "subfinder", "nuclei", "nessus", "openvas",
-    ]
-    q_lower = q.lower()
-    return any(t in q_lower for t in tools)
-
-
-def _is_ctf_query(q: str) -> bool:
-    ctf_markers = [
-        "ctf", "hackthebox", "htb", "tryhackme", "thm", "picoctf",
-        "pwn", "ret2win", "rop chain", "format string", "heap exploit",
-        "writeup", "challenge", "flag{", "ctf{",
-    ]
-    q_lower = q.lower()
-    return any(m in q_lower for m in ctf_markers)
 
 
 def _extract_domain(url: str) -> str:
@@ -109,15 +69,13 @@ def _result_confidence(rank: int, total: int) -> int:
     return max(30, round(100 - (rank / max(total - 1, 1)) * 60))
 
 
-def build_cybersec_web_query(question: str) -> str:
+def build_research_web_query(question: str) -> str:
     """
     Transform a raw user question into an adaptive high-signal web query.
 
     Strategy:
-      - CVE questions       → NVD + ExploitDB + CVEDetails site filters
-      - Tool/Tech questions → Tutorial flags & documentation boosters
-      - CTF questions       → Writeup & solution boosters
-      - General queries     → Clean original query to search diverse open web sources
+      - Short queries      → Search as-is
+      - General queries    → Clean original query to search diverse open web sources
     """
     q = question.strip()
     words = q.split()
@@ -126,19 +84,10 @@ def build_cybersec_web_query(question: str) -> str:
     if len(words) <= 4:
         return q
 
-    # Extract CVE IDs
-    cve_match = re.findall(r"CVE-\d{4}-\d+", q, re.IGNORECASE)
-    if cve_match:
-        cve_str = " OR ".join(cve_match)
-        return f"{cve_str} exploit PoC technical details"
-
-    # Tool / Command specific
-    if _is_tool_query(q):
-        return f"{q} usage examples tutorial documentation"
-
-    # CTF specific
-    if _is_ctf_query(q):
-        return f"{q} writeup solution approach"
+    # Identify if it asks for recent news or fresh info
+    news_markers = ["latest", "recent", "news", "today", "update"]
+    if any(m in q.lower() for m in news_markers):
+        return f"{q} latest news updates"
 
     # General / Open Web query → return clean question to allow DuckDuckGo to hit diverse open web sources
     return q
@@ -155,7 +104,7 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
     Bug 6 Fix: All cache reads and writes are protected by _cache_lock.
 
     Args:
-        query:       Raw search query (transformed by build_cybersec_web_query)
+        query:       Raw search query (transformed by build_research_web_query)
         max_results: Maximum number of results
 
     Returns:
@@ -164,12 +113,13 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
             "domain": str, "favicon_url": str, "confidence": int
         }, ...]
     """
-    refined_query = build_cybersec_web_query(query)
+    refined_query = build_research_web_query(query)
     if not refined_query:
         return []
 
     # TTL depends on query type
-    ttl = _CVE_CACHE_TTL if _is_cve_query(query) else _CACHE_TTL
+    is_news = any(m in query.lower() for m in ["latest", "recent", "news", "today", "update"])
+    ttl = _FRESH_CACHE_TTL if is_news else _CACHE_TTL
 
     key = _cache_key(refined_query)
     now = time.time()

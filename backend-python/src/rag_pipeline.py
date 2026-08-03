@@ -81,7 +81,7 @@ WEB_ALWAYS_ON       = os.getenv("WEB_ALWAYS_ON", "true").lower() == "true"
 ENABLE_WEB_FALLBACK = os.getenv("ENABLE_WEB_FALLBACK", "true").lower() == "true"
 MAX_WEB_RESULTS     = int(os.getenv("MAX_WEB_RESULTS", "4"))   # Reduced from 6 to stay under 12k TPM
 
-# ─── Guardrail thresholds (loosened for technical cybersec content) ───────────
+# ─── Guardrail thresholds ───────────
 RELEVANCE_THRESHOLD = float(os.getenv("RELEVANCE_THRESHOLD", "-3.5"))
 MIN_RELEVANT_CHUNKS = int(os.getenv("MIN_RELEVANT_CHUNKS", "1"))
 
@@ -128,10 +128,10 @@ ANSWER_STYLES = {
         ),
         "max_tokens": 4096,
     },
-    "ctf": {
+    "case_study": {
         "instruction": (
-            "Structure as a CTF walkthrough: Challenge Analysis, Progressive Hints (3), "
-            "Approach, Exploit/Payload (commented, tagged fenced blocks), Flag Location & Format, Concepts Learned."
+            "Structure as a Case Study: Background Analysis, Core Challenge, "
+            "Methodology/Approach, Findings/Results (commented, tagged fenced blocks if code), Conclusion & Future Work."
         ),
         "max_tokens": 3000,
     },
@@ -179,13 +179,7 @@ INTENT_META = {
     "general":   {"label": "General Research",         "emoji": "🔍",  "style": "technical"},
 }
 
-_CVE_RE      = re.compile(r'\bCVE-\d{4}-\d+\b', re.IGNORECASE)
-_CTF_RE      = re.compile(r'\b(ctf|hackthebox|htb|tryhackme|thm|picoctf|pwn|ret2win|writeup|flag\{)\b', re.IGNORECASE)
-_TOOL_RE     = re.compile(r'\b(nmap|burp|sqlmap|ffuf|gobuster|hashcat|hydra|nikto|wfuzz|bloodhound|impacket|mimikatz|crackmapexec|evil-winrm|ghidra|gdb|pwndbg|frida|wireshark|metasploit|msfvenom|shodan|nuclei)\b', re.IGNORECASE)
-_EXPLOIT_RE  = re.compile(r'\b(exploit|payload|shellcode|rce|buffer overflow|rop chain|format string|heap|use.after.free|injection|bypass|privesc|privilege escalation)\b', re.IGNORECASE)
-_AD_RE       = re.compile(r'\b(active directory|kerberoasting|pass.the.hash|dcsync|golden ticket|bloodhound|ldap|domain controller|gpo|lsass|ntlm|asrep)\b', re.IGNORECASE)
-_CLOUD_RE    = re.compile(r'\b(aws|azure|gcp|s3|iam|lambda|kubernetes|k8s|cloud|imds|ecr|ecs|cognito|ssrf.*aws|managed identity)\b', re.IGNORECASE)
-_FORENSICS_RE = re.compile(r'\b(forensics|volatility|memory dump|pcap|wireshark|timeline|artifact|log analysis|malware analysis|yara|incident response|ir)\b', re.IGNORECASE)
+
 
 
 def classify_query_intent(question: str) -> str:
@@ -301,7 +295,7 @@ def enrich_query(question: str, history: list[dict] = None) -> str:
 def _build_system_prompt(answer_style: str, now_str: str, current_year: int) -> str:
     """
     ResearchFlow AI v6.0 system prompt — tuned for ALL query types.
-    Handles: ethical hacking, programming, general CS, security research.
+    Handles: multidisciplinary academic, scientific, and technical research.
     ~700 tokens (12k TPM safe).
     """
     style = ANSWER_STYLES.get(answer_style, ANSWER_STYLES[DEFAULT_STYLE])
@@ -407,7 +401,7 @@ def build_fused_prompt(
         "short":     2000,
         "technical": 3500,
         "detailed":  4500,
-        "ctf":       3500,
+        "case_study":3500,
         "code":      4000,
     }
     total_rag_budget = CONTEXT_BUDGETS.get(answer_style, 3500)
@@ -601,7 +595,7 @@ def answer(
         question:     User's cybersecurity question
         top_k:        Number of RAG chunks to pass to LLM (default: RERANKER_TOP_K)
         history:      Previous conversation turns [{role, text}, ...]
-        answer_style: "short" | "technical" | "detailed" | "ctf"
+        answer_style: "short" | "technical" | "detailed" | "case_study"
     """
     # ── Bug 10 Fix: Validate API key FIRST before any expensive steps ─────────
     if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":

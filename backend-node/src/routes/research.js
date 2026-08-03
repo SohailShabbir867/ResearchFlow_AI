@@ -133,7 +133,7 @@ router.post("/chats/:id/ask", async (req, res) => {
           question: question.trim(),
           top_k: 5,
           history: history.length > 0 ? history : null,
-          answer_style: answer_style || "classical",
+          answer_style: answer_style || "technical",
         },
         { timeout: 120000 }
       );
@@ -287,12 +287,20 @@ router.post("/chats/:id/stream", async (req, res) => {
   }
 
   // Valid answer_style values accepted by the Python pipeline
-  const VALID_STYLES = ["short", "technical", "detailed", "ctf", "code"];
+  const VALID_STYLES = ["short", "technical", "detailed", "case_study", "code"];
   const safeStyle = VALID_STYLES.includes(answer_style) ? answer_style : "technical";
 
   try {
     const appSettings = await AppSettings.findOne({ key: "global" }).lean();
     const maxTokens = appSettings?.data?.llm?.maxTokens ? parseInt(appSettings.data.llm.maxTokens) : 4000;
+
+    // Sanitize and cap conversation history (last 6 messages max, 500 chars max per text)
+    const sanitizedHistory = Array.isArray(history)
+      ? history.slice(-6).map(m => ({
+          role: m.role === "assistant" ? "assistant" : "user",
+          text: String(m.text || m.content || "").substring(0, 500),
+        }))
+      : null;
 
     const pyResponse = await axios.post(
       `${PYTHON_URL()}/stream`,
@@ -300,7 +308,7 @@ router.post("/chats/:id/stream", async (req, res) => {
         question: question.trim(),
         top_k: top_k || 8,
         answer_style: safeStyle,
-        history,
+        history: sanitizedHistory,
         max_tokens: maxTokens,
       },
       { responseType: "stream", timeout: 180000 }  // 3 min for long detailed answers
