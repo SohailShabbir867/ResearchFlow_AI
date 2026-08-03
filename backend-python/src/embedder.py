@@ -19,13 +19,12 @@ from fastembed import TextEmbedding
 
 load_dotenv()
 
-# BGE-base-en-v1.5: 768-dim, 440MB, great for technical/security content
-EMBED_MODEL      = os.getenv("EMBED_MODEL", "BAAI/bge-base-en-v1.5")
+# BAAI/bge-m3: 1024-dim, multilingual (Urdu support)
+EMBED_MODEL      = os.getenv("EMBED_MODEL", "BAAI/bge-m3")
 EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "16"))  # Safe for 8GB RAM
 
-# BGE query prefix — required for correct semantic search with BGE models
-# Documents use "Represent this sentence for searching relevant passages: " automatically
-BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+# BGE-m3 does not require a query prefix for standard usage
+BGE_QUERY_PREFIX = ""
 
 # Lazy-load model (downloads ~440MB on first run, cached after that)
 _model = None

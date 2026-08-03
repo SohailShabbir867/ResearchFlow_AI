@@ -147,12 +147,26 @@ ANSWER_STYLES = {
         ),
         "max_tokens": 4096,
     },
+    "conversational": {
+        "instruction": (
+            "Respond conversationally and naturally. Keep it concise. "
+            "If the user is just saying hello or making small talk, respond warmly and briefly. "
+            "Do not use headings or structured sections unless absolutely necessary. "
+            "Cite sources only if you are answering a factual question based on the documents or web."
+        ),
+        "max_tokens": 1024,
+    },
 }
 
 _CODE_KEYWORDS_RE = re.compile(
     r'\b(?:write|code|script|program|implement|function|class|build|create|develop|'
     r'python|bash|c\+\+|cpp|csharp|golang|rust|powershell|js|javascript|typescript|'
     r'fix bug|refactor|exploit script|payload generator|automation|algorithm|snippet)\b',
+    re.IGNORECASE
+)
+
+_CHAT_RE = re.compile(
+    r'^(hello|hi|hey|greetings|how are you|thanks|thank you|good morning|good afternoon|good evening)[\s\!\.\?]*$',
     re.IGNORECASE
 )
 
@@ -176,7 +190,8 @@ INTENT_META = {
     "literature":{"label": "Literature / Papers",      "emoji": "📚",  "style": "technical"},
     "data":      {"label": "Data / Analytics",         "emoji": "📊",  "style": "technical"},
     "security":  {"label": "Security / Cyber",         "emoji": "🛡",  "style": "technical"},
-    "general":   {"label": "General Research",         "emoji": "🔍",  "style": "technical"},
+    "general":   {"label": "General Research",         "emoji": "🔍",  "style": "conversational"},
+    "chat":      {"label": "Conversational",           "emoji": "👋",  "style": "conversational"},
 }
 
 
@@ -194,6 +209,8 @@ def classify_query_intent(question: str) -> str:
     """
     if detect_programming_intent(question):
         return "code"
+    if bool(_CHAT_RE.match(question.strip())):
+        return "chat"
     if re.search(r'\b(study|trial|experiment|hypothesis|methodology|peer.review|journal|paper|arxiv|pubmed|doi|citation|abstract|results|findings|literature)\b', question, re.IGNORECASE):
         return "literature"
     if re.search(r'\b(patient|clinical|diagnosis|treatment|drug|medicine|symptom|disease|therapy|dosage|side effect|FDA|NHS|hospital|surgery|anatomy|pathology|pharmacology)\b', question, re.IGNORECASE):
@@ -617,6 +634,39 @@ def answer(
 
     style   = ANSWER_STYLES[answer_style]
     t_start = time.time()
+
+    # ── Fast-path for chat intent ──────────────────────────────────────────────
+    if intent == "chat" and answer_style == "conversational":
+        print("  [Pipeline] Chat fast-path triggered (bypassing search)")
+        now_str      = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")
+        current_year = datetime.now().year
+        sys_c = _build_system_prompt(answer_style, now_str, current_year)
+        usr_c = f"{_build_history_xml(history)}<user_query>\n{question}\n</user_query>\n\n<response>"
+        t4 = time.time()
+        answer_text = call_groq(sys_c, usr_c, max_tokens=style["max_tokens"])
+        t_llm = time.time() - t4
+        return {
+            "answer":             answer_text,
+            "sources":            [],
+            "rag_source_details": [],
+            "web_sources":        [],
+            "web_results":        [],
+            "is_web_fallback":    False,
+            "refused":            False,
+            "intent":             intent,
+            "intent_info":        intent_info,
+            "provider":           "groq",
+            "model":              GROQ_MODEL,
+            "answer_style":       answer_style,
+            "timing": {
+                "embed_ms":      0,
+                "search_ms":     0,
+                "rerank_ms":     0,
+                "web_search_ms": 0,
+                "llm_ms":        round(t_llm * 1000),
+                "total_ms":      round((time.time() - t_start) * 1000),
+            }
+        }
 
     # ── Step 1: Enrich query ──────────────────────────────────────────────────
     search_query = enrich_query(question, history)

@@ -45,6 +45,7 @@ const SUGGESTIONS = [
 /* ─── Detail Levels → mapped to backend answer_style values ─────── */
 const DETAIL_LEVELS = [
   { label: "Short", value: "short" },
+  { label: "Conversational", value: "conversational" },
   { label: "Technical", value: "technical" },
   { label: "Detailed", value: "detailed" },
   { label: "Case Study Mode", value: "case_study" },
@@ -99,7 +100,7 @@ const mdComponents = (streaming) => ({
   ),
   hr: () => <hr className="chat-hr" />,
   a: ({ children, href }) => (
-    <a className="chat-link" href={href} target="_blank" rel="noreferrer">{children}</a>
+    <a className="bg-blue-900/50 text-blue-300 text-xs px-1.5 py-0.5 rounded-md mx-1 hover:bg-blue-800 transition-colors" href={href} target="_blank" rel="noreferrer" title={href}>{children}</a>
   ),
   code: ({ inline, children, className }) =>
     inline ? (
@@ -202,9 +203,9 @@ function CodeBlock({ children, className }) {
   );
 }
 
-function MarkdownContent({ text, streaming = false }) {
+function MarkdownContent({ text, streaming = false, language = "en" }) {
   return (
-    <div className="prose-chat max-w-none">
+    <div className={`prose-chat max-w-none ${language === "ur" ? "urdu-text" : ""}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={mdComponents(streaming)}
@@ -252,10 +253,13 @@ export default function Research() {
   const [copiedId, setCopiedId] = useState(null);
   const [feedbacks, setFeedbacks] = useState({});
   const [detailLevel, setDetailLevel] = useState("technical");
+  const [isDeepResearch, setIsDeepResearch] = useState(false);
+  const [model, setModel] = useState('llama-3.3-70b-versatile');
   const [sourcesOpen, setSourcesOpen] = useState({});
 
   // Perplexity-style Sources Panel
   const [streamingIntent, setStreamingIntent] = useState(null);    // {intent, intent_info} while streaming
+  const [language, setLanguage] = useState("en");                  // language state for urdu support
   const [sourcePanelOpen, setSourcePanelOpen] = useState(false);   // right-panel toggle
   const [activeSources, setActiveSources] = useState({ rag: [], web: [] }); // currently shown sources
 
@@ -460,6 +464,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
 
     // Reset sources panel for new query
     setStreamingIntent(null);
+    setLanguage("en");
     setActiveSources({ rag: [], web: [] });
     setSourcePanelOpen(false);
 
@@ -483,6 +488,8 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
           question,
           top_k: 8,           // Bug 12 Fix: was hardcoded to 5, now matches backend default of 8
           answer_style: detailLevel,
+          research_mode: isDeepResearch ? 'deep' : 'quick',
+          model: model,
           history: history.length > 0 ? history : null,
         }),
       });
@@ -498,7 +505,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
         ...prev,
         [chatId]: [
           ...(prev[chatId] || []),
-          { id: assistantId, role: "assistant", text: "", sources: [], webSources: [], webResults: [], ragSourceDetails: [], isWebFallback: false, intent: null, intentInfo: null, time: now },
+          { id: assistantId, role: "assistant", text: "", sources: [], webSources: [], webResults: [], ragSourceDetails: [], isWebFallback: false, intent: null, intentInfo: null, language: "en", time: now },
         ],
       }));
 
@@ -539,6 +546,10 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                   }
                   return { ...prev, [chatId]: msgs };
                 });
+              }
+
+              if (payload.language) {
+                setLanguage(payload.language);
               }
 
               if (payload.chatId) {
@@ -613,9 +624,11 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                       webSources: payload.web_sources || [],
                       webResults: formatted.web,
                       ragSourceDetails: formatted.rag,
+                      relatedQuestions: payload.related_questions || [],
                       isWebFallback: payload.is_web_fallback || false,
                       intent: payload.intent || msgs[lastIdx].intent,
                       intentInfo: payload.intent_info || msgs[lastIdx].intentInfo,
+                      language: payload.language || language,
                       isRefused: payload.refused ? true : msgs[lastIdx].isRefused,
                     };
                   }
@@ -626,16 +639,31 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
               }
 
               if (payload.token) {
-                fullText += payload.token;
-                const captured = fullText;
-                setMessagesMap((prev) => {
-                  const msgs = [...(prev[chatId] || [])];
-                  const lastIdx = msgs.length - 1;
-                  if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
-                    msgs[lastIdx] = { ...msgs[lastIdx], text: captured };
-                  }
-                  return { ...prev, [chatId]: msgs };
-                });
+                if (payload.model) {
+                  setMessagesMap((prev) => {
+                    const msgs = [...(prev[chatId] || [])];
+                    const lastIdx = msgs.length - 1;
+                    if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
+                      const msg = { ...msgs[lastIdx] };
+                      if (!msg.councilTexts) msg.councilTexts = {};
+                      msg.councilTexts = { ...msg.councilTexts };
+                      msg.councilTexts[payload.model] = (msg.councilTexts[payload.model] || "") + payload.token;
+                      msgs[lastIdx] = msg;
+                    }
+                    return { ...prev, [chatId]: msgs };
+                  });
+                } else {
+                  fullText += payload.token;
+                  const captured = fullText;
+                  setMessagesMap((prev) => {
+                    const msgs = [...(prev[chatId] || [])];
+                    const lastIdx = msgs.length - 1;
+                    if (lastIdx >= 0 && msgs[lastIdx].role === "assistant") {
+                      msgs[lastIdx] = { ...msgs[lastIdx], text: captured };
+                    }
+                    return { ...prev, [chatId]: msgs };
+                  });
+                }
               }
             } catch (_e) {
               // Ignore malformed SSE lines
@@ -666,6 +694,18 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleExportMD = (text, idx) => {
+    const blob = new Blob([text], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `response_${idx}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   /* ── Styles ──────────────────────────────────────────────────────
@@ -1281,7 +1321,20 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                             </div>
                           ) : null}
 
-                          <MarkdownContent text={msg.text} streaming={isStreaming} />
+                          {msg.councilTexts && Object.keys(msg.councilTexts).length > 0 ? (
+                            <div className="flex gap-4 overflow-x-auto pb-2">
+                              {Object.entries(msg.councilTexts).map(([mName, text]) => (
+                                <div key={mName} className="flex-1 min-w-[300px] border rounded-xl p-4 transition-all" style={{ background: "var(--bg-card)", borderColor: "var(--border-color)" }}>
+                                  <div className="text-xs font-bold uppercase tracking-widest mb-3 pb-2" style={{ color: "var(--brand-primary)", borderBottom: "1px solid var(--border-color)" }}>
+                                    {mName}
+                                  </div>
+                                  <MarkdownContent text={text} streaming={isStreaming} language={msg.language || (isStreaming ? language : "en")} />
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <MarkdownContent text={msg.text} streaming={isStreaming} language={msg.language || (isStreaming ? language : "en")} />
+                          )}
                         </div>
 
                         {/* Clean bottom action bar (Copy, Feedback, Sources button) */}
@@ -1318,6 +1371,15 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                             title="Bad response"
                           >
                             <ThumbsDown className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            onClick={() => handleExportMD(msg.text, idx)}
+                            className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
+                            style={{ color: "var(--text-muted)" }}
+                            title="Export to MD"
+                          >
+                            <FileText className="w-4 h-4" />
                           </button>
 
                           {/* Sources pill button if available */}
@@ -1361,17 +1423,54 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                             ))}
 
                             {/* Web source URLs */}
-                            {msg.webSources && msg.webSources.map((url, i) => (
-                              <a
-                                key={`web_${i}`}
-                                href={url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-cyan-900/60 text-cyan-200 border border-cyan-700/60 hover:bg-cyan-800/70 transition-all"
+                            {msg.webSources && msg.webSources.map((url, i) => {
+                              let domain = "";
+                              try { domain = new URL(url).hostname; } catch(e) { domain = url; }
+                              return (
+                                <a
+                                  key={`web_${i}`}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-cyan-900/60 text-cyan-200 border border-cyan-700/60 hover:bg-cyan-800/70 transition-all"
+                                >
+                                  <img 
+                                    src={`https://www.google.com/s2/favicons?domain=${domain}`} 
+                                    alt="" 
+                                    className="w-4 h-4 rounded-sm flex-shrink-0"
+                                    onError={(e) => { e.target.style.display = "none"; }}
+                                  />
+                                  <span className="max-w-[200px] truncate">{url}</span>
+                                </a>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Related Questions */}
+                        {msg.relatedQuestions && msg.relatedQuestions.length > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {msg.relatedQuestions.map((q, i) => (
+                              <button
+                                key={`rq_${i}`}
+                                onClick={() => handleSend(q)}
+                                className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer"
+                                style={{
+                                  background: "var(--bg-card)",
+                                  borderColor: "var(--border-color)",
+                                  color: "var(--text-secondary)",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.borderColor = "var(--brand-primary)";
+                                  e.currentTarget.style.color = "var(--brand-primary)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.borderColor = "var(--border-color)";
+                                  e.currentTarget.style.color = "var(--text-secondary)";
+                                }}
                               >
-                                <Globe className="w-3.5 h-3.5 text-cyan-400" />
-                                <span className="max-w-[200px] truncate">{url}</span>
-                              </a>
+                                {q}
+                              </button>
                             ))}
                           </div>
                         )}
@@ -1486,7 +1585,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
 
             {/* Detail level + footer */}
             <div className="flex items-center justify-between mt-2.5 px-1">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
                   Detail:
                 </span>
@@ -1504,6 +1603,34 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                     {label}
                   </button>
                 ))}
+                <div className="h-4 w-px bg-gray-500/30 mx-1"></div>
+                <button
+                  onClick={() => setIsDeepResearch(!isDeepResearch)}
+                  className="px-3 py-1 rounded-full text-xs font-medium border transition-all flex items-center gap-1.5"
+                  style={
+                    isDeepResearch
+                      ? { background: "rgba(139, 92, 246, 0.1)", color: "#8B5CF6", borderColor: "#8B5CF6" }
+                      : { background: "transparent", color: "var(--text-muted)", borderColor: "var(--border-color)" }
+                  }
+                >
+                  {isDeepResearch ? <Microscope className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {isDeepResearch ? "Deep Research" : "Quick Search"}
+                </button>
+                <div className="h-4 w-px bg-gray-500/30 mx-1"></div>
+                <select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  className="px-2 py-1 rounded-md text-xs font-medium border outline-none bg-transparent"
+                  style={{
+                    color: "var(--text-muted)",
+                    borderColor: "var(--border-color)",
+                  }}
+                >
+                  <option value="llama-3.3-70b-versatile">Llama 3.3 (70B)</option>
+                  <option value="mixtral-8x7b-32768">Mixtral (8x7B)</option>
+                  <option value="gemma2-9b-it">Gemma 2 (9B)</option>
+                  <option value="council">Council Mode (Compare)</option>
+                </select>
               </div>
               <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
                 Groq LLaMA 3.3 70B · Hybrid Search · Live RAG

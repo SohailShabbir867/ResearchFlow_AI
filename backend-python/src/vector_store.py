@@ -24,7 +24,7 @@ load_dotenv()
 
 QDRANT_URL      = os.getenv("QDRANT_URL",      "http://localhost:6333")
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "researchflow")
-VECTOR_SIZE     = 768  # BAAI/bge-base-en-v1.5 outputs 768-dim vectors
+VECTOR_SIZE     = 1024  # BAAI/bge-m3 outputs 1024-dim vectors
 
 # ─── Singleton Qdrant client (Bug 9 Fix) ─────────────────────────────────────
 # One persistent connection shared across all requests — no TCP overhead per call.
@@ -68,7 +68,7 @@ def create_collection(recreate: bool = False):
                 indexing_threshold=10000,   # Start HNSW after 10k points
             )
         )
-        print(f"  Collection '{COLLECTION_NAME}' created (768-dim, COSINE, HNSW ef=300).")
+        print(f"  Collection '{COLLECTION_NAME}' created (1024-dim, COSINE, HNSW ef=300).")
 
         # Create payload indexes for filtered search
         try:

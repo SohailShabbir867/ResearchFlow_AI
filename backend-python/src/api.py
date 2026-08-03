@@ -25,6 +25,9 @@ import os
 import json
 import time
 import asyncio
+import hashlib
+import re
+from collections import OrderedDict
 
 # ── Module-level imports (v6.0: AsyncGroq replaces sync Groq — never blocks event loop) ──
 from groq import AsyncGroq
@@ -76,6 +79,27 @@ app = FastAPI(
     ),
     version="6.0.0"
 )
+
+# ─── Query Cache (Phase 1: LRU In-Memory Cache) ───────────────────────────────
+class QueryCache:
+    def __init__(self, capacity=100):
+        self.cache = OrderedDict()
+        self.capacity = capacity
+    
+    def get(self, key):
+        if key not in self.cache:
+            return None
+        self.cache.move_to_end(key)
+        return self.cache[key]
+        
+    def put(self, key, value):
+        self.cache[key] = value
+        self.cache.move_to_end(key)
+        if len(self.cache) > self.capacity:
+            self.cache.popitem(last=False)
+
+# Store full SSE text for repeat queries (TTFT < 50ms)
+_query_cache = QueryCache(capacity=100)
 
 # ─── AsyncGroq singleton (v6.0) — one async client reused across all requests ──
 # AsyncGroq is non-blocking: awaiting it yields control to asyncio event loop
@@ -144,11 +168,19 @@ class QueryRequest(BaseModel):
     )
     answer_style: Optional[str] = Field(
         default=None,
-        description="short | technical | detailed | case_study"
+        description="short | technical | detailed | case_study | conversational"
     )
     max_tokens:   Optional[int] = Field(
         default=None,
         description="Override max LLM generation tokens"
+    )
+    research_mode: Optional[str] = Field(
+        default="quick",
+        description="quick | deep"
+    )
+    model: Optional[str] = Field(
+        default="llama-3.3-70b-versatile",
+        description="Model identifier or 'council'"
     )
 
 class QueryResponse(BaseModel):
@@ -344,10 +376,36 @@ async def stream_query(request: QueryRequest):
     if request.history:
         history = [{"role": m.role, "text": m.text} for m in request.history]
 
+    # Generate a cache key
+    cache_key_raw = f"{request.question}_{style_name}_{request.research_mode}_{json.dumps(history)}"
+    cache_key = hashlib.md5(cache_key_raw.encode()).hexdigest()
+
+    # Check cache for Quick Search mode
+    if request.research_mode == "quick":
+        cached_events = _query_cache.get(cache_key)
+        if cached_events:
+            print("  [Stream] Cache hit! Serving instantly.")
+            async def replay_cache():
+                for event in cached_events:
+                    yield event
+                    # Tiny sleep to let frontend render text smoothly instead of instantaneously pasting it all
+                    await asyncio.sleep(0.005)
+            return StreamingResponse(replay_cache(), media_type="text/event-stream")
+
     async def generate():
+        events_to_cache = []
+        
+        # Intercept yield to populate cache
+        async def yield_event(data):
+            events_to_cache.append(data)
+            return data
+
         try:
-            # ── Step 0: Classify intent immediately ───────────────────────────
+            # ── Step 0: Classify intent and language immediately ──────────────
             intent      = classify_query_intent(request.question)
+            
+            # Simple Unicode block check for Urdu/Arabic script
+            language = "ur" if re.search(r'[\u0600-\u06FF]', request.question) else "en"
             intent_info = INTENT_META.get(intent, INTENT_META["general"])
 
             # Auto-select style from intent if not user-specified
@@ -358,45 +416,94 @@ async def stream_query(request: QueryRequest):
             style = ANSWER_STYLES[style_name]
 
             # Emit intent badge right away — frontend shows it immediately
-            yield f"data: {json.dumps({'intent': intent, 'intent_info': intent_info})}\n\n"
-            yield f"data: {json.dumps({'status_text': '🔍 Searching knowledge base...'})}\n\n"
+            yield await yield_event(f"data: {json.dumps({'intent': intent, 'intent_info': intent_info, 'language': language})}\n\n")
+
+            # ── Fast-path for chat intent ──────────────────────────────────────────────
+            if intent == "chat" and style_name == "conversational":
+                print("  [Stream] Chat fast-path triggered (bypassing search)")
+                yield await yield_event(f"data: {json.dumps({'status_text': '⚡ Chatting...'})}\n\n")
+                
+                now_str      = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")
+                current_year = datetime.now().year
+                sys_c = rag._build_system_prompt(style_name, now_str, current_year)
+                
+                if language == "ur":
+                    sys_c += "\n\nCRITICAL DIRECTIVE: The user is speaking Urdu. You MUST reply completely in native Urdu language (using Urdu script)."
+                
+                usr_c = f"{rag._build_history_xml(history)}<user_query>\n{request.question}\n</user_query>\n\n<response>"
+                
+                client = _get_async_groq()
+                groq_stream = await client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=[
+                        {"role": "system", "content": sys_c},
+                        {"role": "user",   "content": usr_c},
+                    ],
+                    temperature=rag.LLM_TEMPERATURE,
+                    max_tokens=style["max_tokens"],
+                    stream=True,
+                )
+                
+                async for chunk in groq_stream:
+                    token = chunk.choices[0].delta.content or ""
+                    if token:
+                        yield await yield_event(f"data: {json.dumps({'token': token})}\n\n")
+                        
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'rag_source_details': []})}\n\n")
+                
+                # Save to cache
+                _query_cache.put(cache_key, events_to_cache)
+                return
+
+            # ── Deep Research Mode ───────────────────────────────────────────────────
+            if request.research_mode == "deep":
+                from src.deep_research import perform_deep_research
+                await perform_deep_research(
+                    request=request, 
+                    history=history, 
+                    style_name=style_name, 
+                    intent=intent, 
+                    intent_info=intent_info, 
+                    language=language,
+                    client=_get_async_groq(), 
+                    yield_event=yield_event, 
+                    cache_key=cache_key, 
+                    events_to_cache=events_to_cache, 
+                    query_cache=_query_cache
+                )
+                return
+
+            yield await yield_event(f"data: {json.dumps({'status_text': '🔍 Searching knowledge base...'})}\n\n")
 
             # ── Step 1: Enrich query ──────────────────────────────────────────
             search_query = enrich_query(request.question, history)
 
-            # ── Step 2: Fire web search IMMEDIATELY in background ─────────────
-            # Keep-alive: yield an SSE comment to prevent proxy timeout during
-            # the CPU-heavy embed + search + rerank phase (can take 1-3s).
             yield ": keep-alive\n\n"
-
-            web_future = rag._executor.submit(
-                perform_web_search, search_query, rag.MAX_WEB_RESULTS
-            ) if rag.WEB_ALWAYS_ON else None
-
-            # ── Step 3: Embed + RAG search (web runs concurrently) ────────────
-            # Run CPU-bound work in thread pool to avoid blocking event loop
             loop = asyncio.get_event_loop()
-            query_vector = await loop.run_in_executor(
-                rag._executor, get_embedding, search_query, True
-            )
-            candidates = await loop.run_in_executor(
-                rag._executor, hybrid_search, query_vector, search_query
-            )
 
-            # ── Step 4: Cross-encoder reranking (thread pool, non-blocking) ───
-            if candidates:
-                reranked = await loop.run_in_executor(
-                    rag._executor, rerank, request.question, candidates, request.top_k
-                )
-            else:
-                reranked = []
+            # ── Step 2 & 3 & 4: Parallel RAG & Web Search ─────────────────────
+            async def do_rag():
+                try:
+                    q_vec = await loop.run_in_executor(rag._executor, get_embedding, search_query, True)
+                    cands = await loop.run_in_executor(rag._executor, hybrid_search, q_vec, search_query)
+                    if cands:
+                        return await loop.run_in_executor(rag._executor, rerank, request.question, cands, request.top_k)
+                    return []
+                except Exception as e:
+                    print(f"RAG error: {e}")
+                    return []
 
-            # ── Step 5: Collect web results ───────────────────────────────────
-            yield f"data: {json.dumps({'status_text': '🌐 Enriching with live web intel...'})}\n\n"
-            if web_future:
-                web_results = await loop.run_in_executor(None, web_future.result)
-            else:
-                web_results = []
+            async def do_web():
+                if not rag.WEB_ALWAYS_ON: return []
+                try:
+                    return await loop.run_in_executor(rag._executor, perform_web_search, search_query, rag.MAX_WEB_RESULTS)
+                except Exception as e:
+                    print(f"Web search error: {e}")
+                    return []
+
+            reranked, web_results = await asyncio.gather(do_rag(), do_web())
+
+            yield await yield_event(f"data: {json.dumps({'status_text': '🌐 Enriching with live web intel...'})}\n\n")
             print(f"  [Stream] Web results collected: {len(web_results)}")
 
             # ── Step 6: Guardrails ────────────────────────────────────────────
@@ -408,12 +515,13 @@ async def stream_query(request: QueryRequest):
                 passing_chunks = []
 
             if should_refuse and not web_results:
-                yield f"data: {json.dumps({'token': REFUSAL_MSG})}\n\n"
-                yield f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': True, 'intent': intent})}\n\n"
+                yield await yield_event(f"data: {json.dumps({'token': REFUSAL_MSG})}\n\n")
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': True, 'intent': intent})}\n\n")
+                _query_cache.put(cache_key, events_to_cache)
                 return
 
             # ── Step 7: Build FUSED prompt ────────────────────────────────────
-            yield f"data: {json.dumps({'status_text': '⚡ Synthesizing answer...'})}\n\n"
+            yield await yield_event(f"data: {json.dumps({'status_text': '⚡ Synthesizing answer...'})}\n\n")
 
             sys_c, usr_c = build_fused_prompt(
                 request.question,
@@ -423,7 +531,35 @@ async def stream_query(request: QueryRequest):
                 answer_style=style_name,
             )
 
+            if language == "ur":
+                sys_c += "\n\nCRITICAL DIRECTIVE: The user is speaking Urdu. You MUST reply completely in native Urdu language (using Urdu script), ensuring high-quality formatting and correct terminology."
+
             # ── Step 8: Stream from Groq via AsyncGroq (v6.0 critical fix) ────
+            
+            # Start fetching related questions concurrently
+            async def fetch_related_questions():
+                try:
+                    sys_r = "You are an AI research assistant. Based on the user's query, suggest exactly 3 short, relevant follow-up questions they could ask to learn more. Output ONLY a JSON object with a single key 'questions' containing an array of 3 strings."
+                    if language == "ur":
+                        sys_r += " The user's query is in Urdu, so the follow-up questions MUST be in Urdu."
+                    resp = await client.chat.completions.create(
+                        model=rag.GROQ_MODEL,
+                        messages=[
+                            {"role": "system", "content": sys_r},
+                            {"role": "user", "content": request.question},
+                        ],
+                        temperature=0.3,
+                        max_tokens=200,
+                        response_format={"type": "json_object"}
+                    )
+                    parsed = json.loads(resp.choices[0].message.content)
+                    return parsed.get("questions", [])[:3]
+                except Exception as e:
+                    print(f"  [Related Questions Error]: {e}")
+                    return []
+
+            related_task = asyncio.create_task(fetch_related_questions())
+
             # Using AsyncGroq + async for means the event loop is NEVER blocked.
             # Each `async for chunk` yields control back to asyncio between tokens.
             client = _get_async_groq()
@@ -432,40 +568,102 @@ async def stream_query(request: QueryRequest):
                 getattr(rag, "GLOBAL_MAX_TOKENS", 3000)
             )
 
-            groq_stream = await client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=[
-                    {"role": "system", "content": sys_c},
-                    {"role": "user",   "content": usr_c},
-                ],
-                temperature=rag.LLM_TEMPERATURE,
-                max_tokens=effective_max_tokens,
-                stream=True,
-            )
-
+            is_council = (request.model == "council")
+            target_models = ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"] if is_council else [request.model or GROQ_MODEL]
+            
             full_response = ""
-            token_count   = 0
-            async for chunk in groq_stream:
-                token = chunk.choices[0].delta.content or ""
-                if token:
-                    full_response += token
-                    token_count   += 1
-                    yield f"data: {json.dumps({'token': token})}\n\n"
-                    # Yield control to event loop every 20 tokens so other
-                    # concurrent requests can be served during long generations
-                    if token_count % 20 == 0:
+            
+            async def stream_model(mod_name):
+                nonlocal full_response
+                try:
+                    stream = await client.chat.completions.create(
+                        model=mod_name,
+                        messages=[
+                            {"role": "system", "content": sys_c},
+                            {"role": "user",   "content": usr_c},
+                        ],
+                        temperature=rag.LLM_TEMPERATURE,
+                        max_tokens=effective_max_tokens,
+                        stream=True,
+                    )
+                    count = 0
+                    async for chunk in stream:
+                        token = chunk.choices[0].delta.content or ""
+                        if token:
+                            count += 1
+                            if not is_council:
+                                full_response += token
+                            
+                            payload = {'model': mod_name, 'token': token} if is_council else {'token': token}
+                            yield await yield_event(f"data: {json.dumps(payload)}\n\n")
+                            
+                            if count % 20 == 0:
+                                await asyncio.sleep(0)
+                except Exception as e:
+                    print(f"  [Stream Error for {mod_name}]: {e}")
+
+            # Run all models concurrently, but we must yield from them as they produce chunks.
+            # To do this safely inside an async generator, we use an asyncio.Queue
+            queue = asyncio.Queue()
+            
+            async def producer(mod_name):
+                try:
+                    stream = await client.chat.completions.create(
+                        model=mod_name,
+                        messages=[
+                            {"role": "system", "content": sys_c},
+                            {"role": "user",   "content": usr_c},
+                        ],
+                        temperature=rag.LLM_TEMPERATURE,
+                        max_tokens=effective_max_tokens,
+                        stream=True,
+                    )
+                    async for chunk in stream:
+                        token = chunk.choices[0].delta.content or ""
+                        if token:
+                            await queue.put({'model': mod_name, 'token': token})
+                except Exception as e:
+                    print(f"  [Stream Error for {mod_name}]: {e}")
+                finally:
+                    await queue.put({"_done": mod_name})
+
+            # Start producers
+            tasks = [asyncio.create_task(producer(m)) for m in target_models]
+            
+            # Consume from queue
+            active_producers = len(target_models)
+            count = 0
+            while active_producers > 0:
+                item = await queue.get()
+                if "_done" in item:
+                    active_producers -= 1
+                else:
+                    if not is_council:
+                        full_response += item['token']
+                        payload = {'token': item['token']}
+                    else:
+                        payload = item
+                    
+                    yield await yield_event(f"data: {json.dumps(payload)}\n\n")
+                    
+                    count += 1
+                    if count % 20 == 0:
                         await asyncio.sleep(0)
+
 
             # ── Step 9: Layer 3 — off-document detection ──────────────────────
             if detect_off_document_answer(full_response) and passing_chunks and web_results:
                 print("  [Stream L3] INSUFFICIENT_DOCUMENT_COVERAGE — retrying web-primary")
-                yield f"data: {json.dumps({'replace': ''})}\n\n"
-                yield f"data: {json.dumps({'status_text': '🌐 Re-fetching with web-primary context...'})}\n\n"
+                yield await yield_event(f"data: {json.dumps({'replace': ''})}\n\n")
+                yield await yield_event(f"data: {json.dumps({'status_text': '🌐 Re-fetching with web-primary context...'})}\n\n")
 
                 sys_c2, usr_c2 = build_fused_prompt(
                     request.question, [], web_results,
                     history=history, answer_style=style_name,
                 )
+                
+                if language == "ur":
+                    sys_c2 += "\n\nCRITICAL DIRECTIVE: The user is speaking Urdu. You MUST reply completely in native Urdu language (using Urdu script)."
                 groq_stream2 = await client.chat.completions.create(
                     model=GROQ_MODEL,
                     messages=[
@@ -479,11 +677,12 @@ async def stream_query(request: QueryRequest):
                 async for chunk2 in groq_stream2:
                     token2 = chunk2.choices[0].delta.content or ""
                     if token2:
-                        yield f"data: {json.dumps({'token': token2})}\n\n"
+                        yield await yield_event(f"data: {json.dumps({'token': token2})}\n\n")
 
                 web_sources = [r["url"]   for r in web_results if r.get("url")]
                 web_titles  = [r["title"] for r in web_results if r.get("title")]
-                yield f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': [], 'is_web_fallback': True, 'refused': False, 'intent': intent, 'intent_info': intent_info})}\n\n"
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': [], 'is_web_fallback': True, 'refused': False, 'intent': intent, 'intent_info': intent_info})}\n\n")
+                _query_cache.put(cache_key, events_to_cache)
                 return
 
             # ── Done — return enriched metadata ───────────────────────────────
@@ -501,7 +700,12 @@ async def stream_query(request: QueryRequest):
                     "confidence": source_confidence_score(top_score),
                 })
 
-            yield f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info})}\n\n"
+            related_questions = await related_task
+            yield await yield_event(f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'related_questions': related_questions})}\n\n")
+
+            # Cache the successful response
+            if request.research_mode == "quick":
+                _query_cache.put(cache_key, events_to_cache)
 
         except Exception as e:
             error_msg = str(e)

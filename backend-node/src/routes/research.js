@@ -247,7 +247,7 @@ router.post("/feedback/:chatId/:messageIndex", async (req, res) => {
 // Proxies SSE streaming from Python RAG with auth check + MongoDB persistence
 router.post("/chats/:id/stream", async (req, res) => {
   const { id } = req.params;
-  const { question, top_k, answer_style, history } = req.body;
+  const { question, top_k, answer_style, history, research_mode, model } = req.body;
 
   if (!question || !question.trim()) {
     return res.status(400).json({ error: "Question is required." });
@@ -287,7 +287,7 @@ router.post("/chats/:id/stream", async (req, res) => {
   }
 
   // Valid answer_style values accepted by the Python pipeline
-  const VALID_STYLES = ["short", "technical", "detailed", "case_study", "code"];
+  const VALID_STYLES = ["short", "technical", "detailed", "case_study", "code", "conversational"];
   const safeStyle = VALID_STYLES.includes(answer_style) ? answer_style : "technical";
 
   try {
@@ -308,6 +308,8 @@ router.post("/chats/:id/stream", async (req, res) => {
         question: question.trim(),
         top_k: top_k || 8,
         answer_style: safeStyle,
+        research_mode: research_mode || 'quick',
+        model: model || 'llama-3.3-70b-versatile',
         history: sanitizedHistory,
         max_tokens: maxTokens,
       },
@@ -315,6 +317,7 @@ router.post("/chats/:id/stream", async (req, res) => {
     );
 
     let fullAnswer = "";
+    let fullAnswerObj = null; // Used for Council Mode multiplexing
     let finalSources = [];
     let finalWebSources = [];
     let finalWebResults = [];
@@ -342,7 +345,15 @@ router.post("/chats/:id/stream", async (req, res) => {
         for (const line of lines) {
           try {
             const data = JSON.parse(line.slice(6)); // strip "data: "
-            if (data.token)   fullAnswer += data.token;
+            if (data.token) {
+              if (data.model) {
+                if (!fullAnswerObj) fullAnswerObj = {};
+                if (!fullAnswerObj[data.model]) fullAnswerObj[data.model] = "";
+                fullAnswerObj[data.model] += data.token;
+              } else {
+                fullAnswer += data.token;
+              }
+            }
             if (data.replace !== undefined) { fullAnswer = data.replace || ""; isRefused = !data.replace; }
             if (data.done) {
               finalSources          = data.sources           || [];
@@ -358,6 +369,12 @@ router.post("/chats/:id/stream", async (req, res) => {
 
     pyResponse.data.on("end", async () => {
       try {
+        if (fullAnswerObj) {
+          fullAnswer = Object.entries(fullAnswerObj)
+            .map(([m, text]) => `### 🤖 ${m}\n${text}\n---`)
+            .join('\n\n');
+        }
+        
         if (fullAnswer.trim()) {
           const lastUserMsg = chat.messages.length > 0 ? chat.messages[chat.messages.length - 1] : null;
           if (!lastUserMsg || lastUserMsg.role !== "user" || lastUserMsg.text !== question.trim()) {

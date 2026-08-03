@@ -787,6 +787,15 @@
   word-break: break-word;
 }
 
+/* ==========================================================================
+   URDU RTL STYLING (PHASE 3)
+========================================================================== */
+.urdu-text {
+  direction: rtl;
+  text-align: right;
+  font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', sans-serif;
+}
+
 /* ── Headings ─────────────────────────────────────────────── */
 .prose-chat .chat-h1 {
   font-size: 1.3rem;
