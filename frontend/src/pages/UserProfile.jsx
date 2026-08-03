@@ -37,8 +37,8 @@ export default function UserProfile() {
 
   // Profile Form State
   const [fullName, setFullName] = useState(user?.name || "Dr. Sohail Shabbir");
-  const [email] = useState(user?.email || "sohail.shabbir@medresearch.ai");
-  const [specialty, setSpecialty] = useState(user?.specialty || "Cardiology & Medical AI");
+  const [email] = useState(user?.email || "sohail.shabbir@researchflow.ai");
+  const [specialty, setSpecialty] = useState(user?.specialty || "General Research");
   const [profileSuccessMsg, setProfileSuccessMsg] = useState("");
   const [profileErrorMsg, setProfileErrorMsg] = useState("");
 
@@ -83,7 +83,7 @@ export default function UserProfile() {
     setProfileSuccessMsg("");
     setProfileErrorMsg("");
     try {
-      const token = localStorage.getItem("medresearch_token");
+      const token = localStorage.getItem("researchflow_token");
       await axios.patch("/api/auth/profile", { name: fullName, specialty }, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -110,7 +110,7 @@ export default function UserProfile() {
     }
 
     try {
-      const token = localStorage.getItem("medresearch_token");
+      const token = localStorage.getItem("researchflow_token");
       await axios.post("/api/auth/change-password", { currentPassword, newPassword }, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -128,7 +128,7 @@ export default function UserProfile() {
   const handleConfirmDelete = async () => {
     if (deleteConfirmText.trim() !== "DELETE") return;
     try {
-      const token = localStorage.getItem("medresearch_token");
+      const token = localStorage.getItem("researchflow_token");
       await axios.delete("/api/auth/account", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -401,11 +401,11 @@ export default function UserProfile() {
                   </p>
                 </div>
 
-                {/* Medical Specialty */}
+                {/* Research Specialty */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="block text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
-                      Medical specialty
+                      Research specialty
                     </label>
                     <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>optional</span>
                   </div>

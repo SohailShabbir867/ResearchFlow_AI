@@ -79,7 +79,7 @@ export default function Login() {
           <div className="relative z-10 my-10 sm:my-12">
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/60 mb-3">Ethical Hacking workspace</p>
             <h1 className="text-3xl sm:text-4xl font-bold font-serif leading-[1.15] text-white mb-4">
-              AI-Powered<br />Cybersecurity Assistant.
+              AI-Powered<br />Research Assistant.
             </h1>
             <p className="text-sm text-white/75 leading-relaxed font-medium max-w-sm">
               Chat with up-to-date ethical hacking intelligence or upload custom RAG datasets for private security research.

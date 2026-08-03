@@ -466,7 +466,7 @@ export default function UserManagement() {
 
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: "var(--text-secondary)" }}>
-                    Medical specialty
+                    Research specialty
                   </label>
                   <input
                     type="text"

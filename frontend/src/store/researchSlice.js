@@ -75,7 +75,7 @@ export const askQuestionStream = (chatId, question, answer_style = "classical") 
     : null;
 
   // Get JWT token for auth header
-  const token = localStorage.getItem("medresearch_token");
+  const token = localStorage.getItem("researchflow_token");
 
   try {
     const response = await fetch(`/api/research/chats/${chatId}/stream`, {

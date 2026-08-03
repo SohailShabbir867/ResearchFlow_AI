@@ -271,7 +271,7 @@ export default function Research() {
   useEffect(() => {
     const fetchUserChats = async () => {
       try {
-        const token = localStorage.getItem("medresearch_token");
+        const token = localStorage.getItem("researchflow_token");
         const res = await axios.get("/api/research/chats", {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
@@ -342,7 +342,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
     if (chatId && (!msgs || msgs.length === 0)) {
       setChatLoading(true);
       try {
-        const token = localStorage.getItem("medresearch_token");
+        const token = localStorage.getItem("researchflow_token");
         const res = await axios.get(`/api/research/chats/${chatId}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
@@ -388,7 +388,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
     setFeedbacks((prev) => ({ ...prev, [messageIndex]: type }));
     if (!chatId) return;
     try {
-      const token = localStorage.getItem("medresearch_token");
+      const token = localStorage.getItem("researchflow_token");
       await axios.post(
         `/api/research/feedback/${chatId}/${messageIndex}`,
         { feedback: type === "up" ? "positive" : "negative" },
@@ -402,7 +402,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
   const handleDeleteChat = async (e, group, chatId) => {
     if (e) e.stopPropagation();
     try {
-      const token = localStorage.getItem("medresearch_token");
+      const token = localStorage.getItem("researchflow_token");
       if (chatId && !chatId.startsWith("c_")) {
         await axios.delete(`/api/research/chats/${chatId}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -472,7 +472,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
       }));
 
       // Call Node proxy stream endpoint (authenticated)
-      const token = localStorage.getItem("medresearch_token");
+      const token = localStorage.getItem("researchflow_token");
       const response = await fetch(`/api/research/chats/${chatId}/stream`, {
         method: "POST",
         headers: {
@@ -759,7 +759,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
               >
                 <Upload className="w-4 h-4 mx-auto mb-1" style={{ color: "var(--brand-primary)" }} />
                 <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
-                  Upload Cybersec RAG Dataset
+                  Upload ResearchFlow Dataset
                 </p>
                 <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
                   PDF / TXT / DOCX / MD · Max 50 MB
@@ -1455,7 +1455,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                     handleSend();
                   }
                 }}
-                placeholder="Ask anything — cybersecurity, hacking, programming, or general questions... (Enter to send)"
+                placeholder="Ask anything — science, medicine, data, tech, programming, or general questions... (Enter to send)"
                 className="flex-1 bg-transparent text-sm px-2 py-2 outline-none resize-none min-h-[36px] max-h-32"
                 style={{
                   color: "var(--text-primary)",

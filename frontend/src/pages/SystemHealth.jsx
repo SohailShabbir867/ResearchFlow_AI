@@ -40,13 +40,13 @@ export default function SystemHealth() {
   const [qdrantStats, setQdrantStats] = useState({
     totalChunks: null,
     vectorDimensions: 768,
-    collection: "cybersec",
+    collection: "researchflow",
   });
 
   const fetchHealth = async () => {
     setIsRefreshing(true);
     try {
-      const token = localStorage.getItem("medresearch_token");
+      const token = localStorage.getItem("researchflow_token");
       const res = await fetch("/api/admin/health", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -60,7 +60,7 @@ export default function SystemHealth() {
         setQdrantStats({
           totalChunks: pData.total_chunks ?? pData.chunks_count ?? pData.points_count ?? null,
           vectorDimensions: pData.vector_dim ?? pData.vector_size ?? 768,
-          collection: pData.collection_name ?? pData.collection ?? "cybersec",
+          collection: pData.collection_name ?? pData.collection ?? "researchflow",
         });
       }
       const newServices = [

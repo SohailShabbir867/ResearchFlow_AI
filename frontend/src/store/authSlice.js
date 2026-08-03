@@ -65,7 +65,7 @@ export const loadCurrentUser = createAsyncThunk(
       return { token, user: res.data };
     } catch (err) {
       localStorage.removeItem("researchflow_token");
-      localStorage.removeItem("medresearch_token");
+      localStorage.removeItem("researchflow_token");
       setAxiosAuth(null);
       return rejectWithValue(err.response?.data?.error || "Session expired.");
     }

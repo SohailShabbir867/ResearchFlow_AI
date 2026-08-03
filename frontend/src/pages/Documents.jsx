@@ -56,7 +56,7 @@ export default function Documents() {
           chunks: docNames.length ? Math.round(totalChunks / docNames.length) : 0,
           dateAdded: "Indexed",
           fileSize: "Active",
-          description: `Medical research document indexed in Qdrant hybrid search vector store.`
+          description: `Research document indexed in Qdrant hybrid search vector store.`
         }));
         setDocumentsList(formatted);
       } catch (err) {
@@ -389,7 +389,7 @@ export default function Documents() {
               No documents indexed yet
             </h3>
             <p className="text-gray-400 text-sm max-w-md">
-              Contact your administrator to add medical documents to the system.
+              Contact your administrator to add documents to the system.
             </p>
           </div>
         )}

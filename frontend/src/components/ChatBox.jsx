@@ -145,7 +145,7 @@ export default function ChatBox() {
                 <span className="text-3xl">🔬</span>
               </div>
               <div>
-                <p className="font-semibold text-base" style={{ color: "var(--text-primary)" }}>Medical Research Assistant</p>
+                <p className="font-semibold text-base" style={{ color: "var(--text-primary)" }}>AI Research Assistant</p>
                 <p className="text-sm mt-1 flex flex-col gap-0.5" style={{ color: "var(--text-muted)" }}>
                   <span>Ask any question — answers come from your indexed documents</span>
                   <span className="text-xs font-semibold" style={{ color: "var(--brand-primary)" }}>Saved locally to MongoDB</span>
@@ -257,7 +257,7 @@ export default function ChatBox() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask a medical research question… (Enter to send, Shift+Enter for newline)"
+              placeholder="Ask a research question… (Enter to send, Shift+Enter for newline)"
               rows={2}
               className="flex-1 resize-none rounded-xl px-4 py-2.5 text-sm
                          focus:outline-none transition-all"
