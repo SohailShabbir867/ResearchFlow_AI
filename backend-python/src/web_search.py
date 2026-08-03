@@ -1,5 +1,5 @@
 """
-CyberSecAI — Live Web Search Engine
+ResearchFlow AI — Live Web Search Engine
 v5.1 — Bug Fixes + Perplexity Metadata
 
 Bug 6 Fix: Added threading.Lock around all _web_cache reads/writes.

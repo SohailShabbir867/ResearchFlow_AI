@@ -89,8 +89,8 @@ app.use("/api/admin", adminRoutes);
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
-    service: "cyberSecAI-node",
-    version: "4.0.0",
+    service: "ResearchFlow-Node",
+    version: "1.1.0",
     port: PORT,
     mongodb: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
     env: process.env.NODE_ENV || "development",
@@ -122,7 +122,7 @@ app.use((err, _req, res, _next) => {
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`\n🚀 Node server running on http://localhost:${PORT}`);
+  console.log(`\n🚀 ResearchFlow AI — Node server running on http://localhost:${PORT}`);
   console.log(`📡 Python RAG service expected at ${process.env.PYTHON_RAG_URL || "http://localhost:8000"}`);
   console.log(`🌐 Frontend expected at ${process.env.FRONTEND_URL || "http://localhost:5173"}`);
   console.log(`🔧 Environment: ${process.env.NODE_ENV || "development"}\n`);

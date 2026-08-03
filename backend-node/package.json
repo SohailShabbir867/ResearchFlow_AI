@@ -1,7 +1,7 @@
 {
   "name": "medresearch-node",
   "version": "1.1.0",
-  "description": "MedResearch AI — Node.js backend API server",
+  "description": "ResearchFlow AI — Node.js backend API server",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

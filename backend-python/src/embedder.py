@@ -1,5 +1,5 @@
 """
-CyberSecAI — Local Embedding Engine
+ResearchFlow AI — Local Embedding Engine
 Uses BAAI/bge-base-en-v1.5 via FastEmbed (ONNX runtime).
 
 Why BGE-base over nomic-embed:

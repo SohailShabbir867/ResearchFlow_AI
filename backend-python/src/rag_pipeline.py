@@ -1,5 +1,5 @@
 """
-CyberSecAI — Elite Ethical Hacking & Cybersecurity RAG Pipeline
+ResearchFlow AI — Multidisciplinary Research RAG Pipeline
 
 v5.1 — Perplexity-Style Fusion Engine (Bug Fixes + New Features)
 
@@ -16,7 +16,7 @@ Bug Fixes:
 
 New Features:
   Feature 6 — classify_query_intent(): fast regex classifier (<1ms) that detects
-               cve | tool | ctf | exploit | ad | cloud | forensics | general.
+               code | science | medical | literature | general.
                Used to auto-select answer_style and enrich SSE stream.
   Feature 7 — source_confidence_score(): maps rerank scores to human-readable
                0–100 scale. Returned in pipeline result for frontend display.
@@ -26,17 +26,17 @@ Architecture:
   RAG (Qdrant) + DuckDuckGo Web Search run CONCURRENTLY every single request.
   Results are ALWAYS combined into one synthesized answer:
     - RAG documents  → [AUTHORITATIVE] primary grounding
-    - Live web intel → [LIVE-WEB] CVEs, PoCs, tool updates, latest techniques
+    - Live web intel → [LIVE-WEB] latest papers, news, tool updates
 
 Pipeline flow:
   1.  Classify query intent (<1ms regex)
   2.  Validate API key early (fail fast before any expensive steps)
-  3.  Enrich query with conversation context + cybersec acronym awareness
+  3.  Enrich query with conversation context
   4.  Embed query locally (BGE-base ONNX, LRU-256 cached)
   5a. Hybrid RAG search: BGE vector + BM25 + RRF → top 30 candidates  [THREAD A]
-  5b. DuckDuckGo web search with cybersec site filters                  [THREAD B]
+  5b. DuckDuckGo web search                                              [THREAD B]
   6.  Rerank RAG candidates with cross-encoder → top 8
-  7.  Layer 1 + Layer 2 guardrail check (loosened for technical content)
+  7.  Layer 1 + Layer 2 guardrail check
   8.  Build FUSED prompt: RAG chunks (primary) + Web results (enrichment)
   9.  Call Groq LLM via system+user message split (temperature=0.05)
   10. Layer 3 — detect INSUFFICIENT_DOCUMENT_COVERAGE sentinel
@@ -86,14 +86,14 @@ RELEVANCE_THRESHOLD = float(os.getenv("RELEVANCE_THRESHOLD", "-3.5"))
 MIN_RELEVANT_CHUNKS = int(os.getenv("MIN_RELEVANT_CHUNKS", "1"))
 
 # ─── Thread pool (kept warm for fast parallel execution) ──────────────────────
-_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="cybersec-worker")
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="researchflow-worker")
 
 # ─── Refusal message ──────────────────────────────────────────────────────────
 REFUSAL_MSG = (
-    "I don't have sufficient coverage to answer that well. CyberSecAI specialises in "
-    "ethical hacking and security topics — penetration testing, CVEs, exploit development, "
-    "CTF challenges, bug bounty, malware analysis, forensics, and blue-team defence. "
-    "Try rephrasing your question, or upload a relevant resource (PDF/DOCX/TXT) and ask again."
+    "I don't have sufficient information to answer that question well. "
+    "ResearchFlow AI is a multidisciplinary research assistant — you can ask about science, medicine, "
+    "technology, programming, law, history, and more. "
+    "Try rephrasing your question, or upload a relevant document (PDF/DOCX/TXT) and ask again."
 )
 
 # ─── Answer styles — token budgets tuned for 12k TPM free tier ───────────────
@@ -171,14 +171,12 @@ GLOBAL_MAX_TOKENS = 4096   # Maximum generation capacity of 70B model
 # Intent → label and emoji shown in the frontend
 INTENT_META = {
     "code":      {"label": "Code / Programming",      "emoji": "💻",  "style": "code"},
-    "cve":       {"label": "CVE / Vulnerability",     "emoji": "🔴",  "style": "technical"},
-    "tool":      {"label": "Tool / Usage",            "emoji": "🛠",   "style": "short"},
-    "ctf":       {"label": "CTF Challenge",           "emoji": "🚩",  "style": "ctf"},
-    "exploit":   {"label": "Exploit / Attack",        "emoji": "🔥",  "style": "technical"},
-    "ad":        {"label": "Active Directory",        "emoji": "🏢",  "style": "detailed"},
-    "cloud":     {"label": "Cloud Security",          "emoji": "☁️",  "style": "technical"},
-    "forensics": {"label": "Forensics / IR",          "emoji": "🔬",  "style": "detailed"},
-    "general":   {"label": "General Security",        "emoji": "🛡",  "style": "technical"},
+    "science":   {"label": "Science / Research",       "emoji": "🔬",  "style": "detailed"},
+    "medical":   {"label": "Medical / Clinical",       "emoji": "🦵",  "style": "detailed"},
+    "literature":{"label": "Literature / Papers",      "emoji": "📚",  "style": "technical"},
+    "data":      {"label": "Data / Analytics",         "emoji": "📊",  "style": "technical"},
+    "security":  {"label": "Security / Cyber",         "emoji": "🛡",  "style": "technical"},
+    "general":   {"label": "General Research",         "emoji": "🔍",  "style": "technical"},
 }
 
 _CVE_RE      = re.compile(r'\bCVE-\d{4}-\d+\b', re.IGNORECASE)
@@ -193,7 +191,7 @@ _FORENSICS_RE = re.compile(r'\b(forensics|volatility|memory dump|pcap|wireshark|
 def classify_query_intent(question: str) -> str:
     """
     Fast regex-based intent classifier (<1ms).
-    Returns one of: code | cve | tool | ctf | exploit | ad | cloud | forensics | general
+    Returns one of: code | science | medical | literature | data | security | general
 
     Used to:
     - Auto-select answer_style when user leaves it as default
@@ -202,20 +200,16 @@ def classify_query_intent(question: str) -> str:
     """
     if detect_programming_intent(question):
         return "code"
-    if _CVE_RE.search(question):
-        return "cve"
-    if _CTF_RE.search(question):
-        return "ctf"
-    if _AD_RE.search(question):
-        return "ad"
-    if _CLOUD_RE.search(question):
-        return "cloud"
-    if _FORENSICS_RE.search(question):
-        return "forensics"
-    if _TOOL_RE.search(question):
-        return "tool"
-    if _EXPLOIT_RE.search(question):
-        return "exploit"
+    if re.search(r'\b(study|trial|experiment|hypothesis|methodology|peer.review|journal|paper|arxiv|pubmed|doi|citation|abstract|results|findings|literature)\b', question, re.IGNORECASE):
+        return "literature"
+    if re.search(r'\b(patient|clinical|diagnosis|treatment|drug|medicine|symptom|disease|therapy|dosage|side effect|FDA|NHS|hospital|surgery|anatomy|pathology|pharmacology)\b', question, re.IGNORECASE):
+        return "medical"
+    if re.search(r'\b(biology|chemistry|physics|genomics|protein|molecule|cell|DNA|RNA|genome|neural|quantum|thermodynamics|ecology|evolution)\b', question, re.IGNORECASE):
+        return "science"
+    if re.search(r'\b(dataset|statistics|regression|clustering|machine learning|deep learning|neural network|model|accuracy|precision|recall|AUC|SQL|pandas|numpy|matplotlib)\b', question, re.IGNORECASE):
+        return "data"
+    if re.search(r'\b(CVE|exploit|vulnerability|pentest|malware|hack|cybersec|firewall|intrusion|SIEM|SOC|threat|phishing|ransomware)\b', question, re.IGNORECASE):
+        return "security"
     return "general"
 
 
@@ -306,30 +300,34 @@ def enrich_query(question: str, history: list[dict] = None) -> str:
 
 def _build_system_prompt(answer_style: str, now_str: str, current_year: int) -> str:
     """
-    CyberSecAI v6.0 system prompt — tuned for ALL query types.
+    ResearchFlow AI v6.0 system prompt — tuned for ALL query types.
     Handles: ethical hacking, programming, general CS, security research.
     ~700 tokens (12k TPM safe).
     """
     style = ANSWER_STYLES.get(answer_style, ANSWER_STYLES[DEFAULT_STYLE])
 
-    return f"""You are CyberSecAI — an elite AI expert assistant specializing in cybersecurity and programming.
+    return f"""You are ResearchFlow AI — an expert multidisciplinary research assistant.
 Current date/time: {now_str}. Answer date questions from this anchor.
 
-DOMAIN: You have expert-level mastery of:
-- Cybersecurity: web/API attacks (OWASP Top 10, SQLi, XSS, SSRF, XXE, SSTI, IDOR, JWT, OAuth), network pentesting (nmap, Wireshark, MITM), Active Directory attacks (Kerberoasting, Pass-the-Hash, BloodHound, DCSync, Golden Ticket), cloud security (AWS IAM, S3, SSRF→IMDS, Azure AD, GCP), binary exploitation (ROP, heap, format strings, ASLR/NX/PIE bypass), reverse engineering (Ghidra, GDB, pwndbg), CTF challenges (pwn, web, crypto, forensics, reversing), malware analysis, OSINT, red team OPSEC, blue team detection, SIEM/YARA rules, MITRE ATT&CK framework.
-- Programming: Python, JavaScript, TypeScript, Bash, C, C++, Go, Rust, PowerShell, SQL, Assembly, Ruby. Algorithms, data structures, APIs, databases, system design, debugging, refactoring.
-- General: answer any factual, conceptual, or analytical question with expert depth.
+DOMAIN: You have expert-level mastery across:
+- Science & Engineering: biology, chemistry, physics, genomics, materials science, environmental science, quantum computing.
+- Medicine & Health: clinical research, pharmacology, diagnostics, public health, epidemiology, medical imaging.
+- Data & AI: machine learning, deep learning, statistics, NLP, computer vision, data engineering, MLOps.
+- Technology & Security: software engineering, cybersecurity, cloud (AWS/GCP/Azure), networking, DevOps, databases.
+- Programming: Python, JavaScript, TypeScript, Bash, C, C++, Go, Rust, PowerShell, SQL, R, Julia.
+- Social Sciences, Law, Economics, History, Literature: analytical depth across all academic disciplines.
+- General: answer any factual, conceptual, or analytical question with expert rigor.
 
 RULES:
-1. Answer decisively — be concrete, use exact tool flags, CVE IDs, MITRE Tactic/Technique IDs where relevant.
+1. Answer decisively — be concrete, cite evidence, use precise terminology.
 2. RAG documents (<rag_documents>) are your PRIMARY source — cite as [Doc: source].
 3. Live web intel (<live_web_intel>) enriches answers — cite as [Web: Title](url).
 4. When RAG and web are silent, answer from expert knowledge freely and confidently.
-5. Generate complete, runnable, well-commented code in the right language (python/bash/c/powershell/ruby/sql/nasm/go/rust/javascript/typescript).
-6. Refuse ONLY if: targeting real systems without authorization, building real-world malware for deployment, or aiding doxxing/harassment.
+5. Generate complete, runnable, well-commented code when asked.
+6. Refuse ONLY if the request is clearly illegal or harmful (e.g., real-world attack assistance, creating malware).
 7. Emit INSUFFICIENT_DOCUMENT_COVERAGE only if the question is completely unanswerable even with expert knowledge.
 8. No meta-talk — never say "based on the context" or "the documents say". Just answer directly.
-9. For cybersecurity offensive techniques: pair every technique with its MITRE ATT&CK ID and a detection/mitigation note.
+9. For research questions: cite relevant studies, papers, or standards where applicable.
 10. For programming questions: ALWAYS provide complete, runnable code. No truncated stubs or TODOs.
 
 FORMAT: {style['instruction']}"""
@@ -594,7 +592,7 @@ def answer(
     answer_style: str = None,
 ) -> dict:
     """
-    CyberSecAI v5.1 — Perplexity-Style Parallel Dual-Source Fusion Pipeline.
+    ResearchFlow AI v5.1 — Perplexity-Style Parallel Dual-Source Fusion Pipeline.
 
     Bugs Fixed: 1, 2, 3, 7, 10, 11
     New Features: 6 (intent classifier), 7 (source confidence), 9 (early API key check)
@@ -788,7 +786,7 @@ def answer(
             "confidence": confidence,
         })
 
-    print(f"  [CyberSecAI v5.1] Fused answer ready. RAG: {unique_rag_sources} | Web: {len(web_results)} results")
+    print(f"  [ResearchFlow AI v5.1] Fused answer ready. RAG: {unique_rag_sources} | Web: {len(web_results)} results")
     print(f"  [Timing] embed={round(t_embed*1000)}ms rag={round(t_search*1000)}ms "
           f"rerank={round(t_rerank*1000)}ms web={round(t_web*1000)}ms "
           f"llm={round(t_llm*1000)}ms total={round(t_total*1000)}ms")

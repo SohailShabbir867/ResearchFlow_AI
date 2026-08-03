@@ -5,12 +5,18 @@ const ThemeContext = createContext();
 export function ThemeProvider({ children }) {
   // Default to "light" — the new warm brown / beige palette
   const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem("medresearch_theme");
+    // Migrate from old key if present
+    const legacy = localStorage.getItem("medresearch_theme");
+    if (legacy) {
+      localStorage.setItem("researchflow_theme", legacy);
+      localStorage.removeItem("medresearch_theme");
+    }
+    const saved = localStorage.getItem("researchflow_theme");
     return saved ? saved : "light";
   });
 
   useEffect(() => {
-    localStorage.setItem("medresearch_theme", theme);
+    localStorage.setItem("researchflow_theme", theme);
     const root = document.documentElement;
     if (theme === "dark") {
       root.classList.add("dark-mode", "dark");

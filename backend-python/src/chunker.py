@@ -1,5 +1,5 @@
 """
-CyberSecAI — Smart Document Chunking Engine
+ResearchFlow AI — Smart Document Chunking Engine
 Optimized for ethical hacking books, CTF writeups, CVE databases, and tool documentation.
 
 Key improvements over generic chunkers:

@@ -142,7 +142,7 @@ router.get("/verify-email/:token", async (req, res) => {
     sendWelcomeEmail(user).catch(err => console.error("Welcome email error:", err.message));
 
     return res.json({
-      message: "Email verified! Your account is now active. Welcome to MedResearch AI!",
+      message: "Email verified! Your account is now active. Welcome to ResearchFlow AI!",
       email: user.email,
     });
   } catch (err) {

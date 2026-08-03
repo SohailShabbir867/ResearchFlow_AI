@@ -1,4 +1,4 @@
-# 🏥 MedResearch AI — Medical Team Guide
+# 🏥 ResearchFlow AI — Medical Team Guide
 
 > Data Collection & AI Training Manual for Medical Professionals
 
@@ -384,7 +384,7 @@ After the developer indexes a new batch of documents, test the AI:
 
 ### How to Test
 
-1. Open the MedResearch AI chat interface
+1. Open the ResearchFlow AI chat interface
 2. Ask questions related to the documents you just added
 3. Check: Is the answer correct? Does it cite the right source?
 
@@ -536,5 +536,5 @@ For urgent wrong-answer reports: Contact both immediately
 
 ---
 
-*MedResearch AI — Medical Team Guide v1.0*
+*ResearchFlow AI — Medical Team Guide v1.0*
 *For internal use only · Not for patient distribution*

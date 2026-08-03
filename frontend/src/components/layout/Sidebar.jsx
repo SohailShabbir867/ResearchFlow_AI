@@ -122,8 +122,8 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
               <Microscope className="w-4 h-4 text-white" />
             </div>
             <div>
-              <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>CyberSecAI</span>
-              <span className="text-[10px] block font-medium uppercase tracking-widest" style={{ color: "var(--brand-primary)" }}>Ethical Hacking AI</span>
+              <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>ResearchFlow AI</span>
+              <span className="text-[10px] block font-medium uppercase tracking-widest" style={{ color: "var(--brand-primary)" }}>AI Research Assistant</span>
             </div>
           </div>
         )}

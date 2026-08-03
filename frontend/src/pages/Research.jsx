@@ -714,7 +714,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
             {!sidebarCollapsed && (
               <div className="min-w-0">
                 <p className="text-xs font-black uppercase tracking-widest truncate" style={{ color: "var(--text-primary)" }}>
-                  CyberSecAI
+                  ResearchFlow AI
                 </p>
               </div>
             )}
@@ -1079,7 +1079,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
             </div>
             <div>
               <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                CyberSecAI
+                ResearchFlow AI
               </p>
               <div className="flex items-center gap-1.5">
                 <span
@@ -1170,7 +1170,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                 </div>
                 <div>
                   <h2 className="text-xl font-bold mb-1" style={{ color: "var(--text-heading)" }}>
-                    CyberSecAI — Ethical Hacking Expert
+                    ResearchFlow AI — AI Research Assistant
                   </h2>
                   <p className="text-sm" style={{ color: "var(--text-muted)" }}>
                     Ask any question about ethical hacking, penetration testing, CVEs, or tools.
@@ -1535,7 +1535,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                 </div>
                 <div>
                   <h3 className="text-xl font-bold tracking-tight" style={{ color: "var(--text-heading)" }}>
-                    Upgrade to CyberSecAI Pro
+                    Upgrade to ResearchFlow AI Pro
                   </h3>
                   <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                     Unlock Custom RAG Dataset Ingestion & Private Vector Storage

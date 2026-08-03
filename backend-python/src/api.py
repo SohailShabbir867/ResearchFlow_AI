@@ -1,5 +1,5 @@
 """
-CyberSecAI — FastAPI REST Service
+ResearchFlow AI — FastAPI REST Service
 v6.0.0 — AsyncGroq Streaming + Startup Warmup + Keep-Alive
 
 Bug Fixes (v6.0):
@@ -12,7 +12,7 @@ Bug Fixes (v6.0):
 
 Endpoints:
   GET  /health          — Service status and config
-  GET  /documents       — List indexed cybersec documents
+  GET  /documents       — List indexed research documents
   POST /query           — Standard RAG query (full response)
   POST /stream          — Streaming RAG query (SSE token-by-token, AsyncGroq)
   POST /upload          — Upload document (PDF/TXT/DOCX/MD)
@@ -67,9 +67,9 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL   = os.getenv("GROQ_MODEL",   "llama-3.3-70b-versatile")
 
 app = FastAPI(
-    title="CyberSecAI — AI Expert RAG Service",
+    title="ResearchFlow AI — Expert RAG Service",
     description=(
-        "Expert knowledge retrieval for cybersecurity, programming, and general queries. "
+        "Expert knowledge retrieval for scientific, medical, technical, and multidisciplinary research queries. "
         "Powered by BGE-base embeddings, hybrid BM25+vector search, cross-encoder reranking, "
         "and Groq LLM (AsyncGroq). Supports Python, Bash, C/C++, JavaScript, PowerShell, "
         "Ruby, SQL, Assembly, Go, Rust."
@@ -126,7 +126,7 @@ async def on_startup():
             print(f"  [Startup] WARNING: BM25 warmup failed: {e}")
 
     threading.Thread(target=_warmup, daemon=True).start()
-    print("  [Startup] CyberSecAI v6.0 ready.")
+    print("  [Startup] ResearchFlow AI v6.0 ready.")
 
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────────
@@ -166,7 +166,7 @@ class OpenAIChatMessage(BaseModel):
     content: str
 
 class OpenAIChatRequest(BaseModel):
-    model:       Optional[str]               = "cybersec-rag"
+    model:       Optional[str]               = "researchflow-rag"
     messages:    list[OpenAIChatMessage]
     temperature: Optional[float]             = 0.1
     max_tokens:  Optional[int]               = None
@@ -181,21 +181,21 @@ def health():
     info = get_collection_info()
     return {
         "status":        "ok",
-        "service":       "cybersecai-python",
-        "version":       "5.1.0",
+        "service":       "researchflow-python",
+        "version":       "6.0.0",
         "pipeline":      "BGE-base (cached) → Parallel [RAG + Web] → Fused Prompt → Groq LLM",
         "features":      [
             "parallel_rag_web_fusion",
             "semantic_chunking",
             "code_block_preservation",
-            "query_expansion_cybersec_sites",
+            "query_expansion_research_sites",
             "bge_base_embeddings",
             "hybrid_bm25_vector_rrf",
             "cross_encoder_reranking",
             "conversation_memory",
             "multi_language_codegen",
             "answer_styles",
-            "elite_cybersec_system_prompt",
+            "research_system_prompt",
             "query_intent_classifier",
             "source_confidence_scoring",
             "singleton_qdrant_client",
@@ -226,7 +226,7 @@ def list_documents():
 
 @app.post("/query", response_model=QueryResponse)
 def query(request: QueryRequest):
-    """Standard CyberSecAI RAG query with conversation memory and answer style control."""
+    """Standard ResearchFlow AI RAG query with conversation memory and answer style control."""
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
@@ -312,7 +312,7 @@ def openai_chat_completions(request: OpenAIChatRequest):
 @app.post("/stream")
 async def stream_query(request: QueryRequest):
     """
-    Streaming CyberSecAI RAG+Web Fusion query via Server-Sent Events (SSE).
+    Streaming ResearchFlow AI RAG+Web Fusion query via Server-Sent Events (SSE).
 
     v6.0 Critical Fix — AsyncGroq:
       The previous version used sync Groq inside async def generate(), which
@@ -626,7 +626,7 @@ class SettingsUpdate(BaseModel):
 
 @app.get("/settings")
 def get_settings():
-    """Get current active CyberSecAI runtime thresholds."""
+    """Get current active ResearchFlow AI runtime thresholds."""
     return {
         "guardrail": {
             "threshold": rag.RELEVANCE_THRESHOLD,
@@ -664,7 +664,7 @@ def update_settings(update: SettingsUpdate):
 
     return {
         "status":  "ok",
-        "message": "CyberSecAI runtime settings updated",
+        "message": "ResearchFlow AI runtime settings updated",
         "guardrail": {
             "threshold": rag.RELEVANCE_THRESHOLD,
             "minChunks": rag.MIN_RELEVANT_CHUNKS,
@@ -699,4 +699,4 @@ def _handle_groq_error(e: Exception):
     if "model_decommissioned" in error_msg:
         raise HTTPException(status_code=502, detail="Groq model decommissioned. Update GROQ_MODEL in .env")
 
-    raise HTTPException(status_code=500, detail=f"CyberSecAI pipeline error: {error_msg}")
+    raise HTTPException(status_code=500, detail=f"ResearchFlow AI pipeline error: {error_msg}")

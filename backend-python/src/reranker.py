@@ -1,5 +1,5 @@
 """
-CyberSecAI — Cross-Encoder Reranker
+ResearchFlow AI — Cross-Encoder Reranker
 Re-scores candidate chunks against the query for precision filtering.
 Uses ms-marco-MiniLM-L-6-v2 via FastEmbed ONNX (CPU, ~80MB).
 

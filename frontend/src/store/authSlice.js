@@ -20,7 +20,9 @@ export const loginUser = createAsyncThunk(
     try {
       const res = await axios.post(`${API}/login`, { email, password });
       const { token, user } = res.data;
-      localStorage.setItem("medresearch_token", token);
+      localStorage.setItem("researchflow_token", token);
+      // Clean up old key if present
+      localStorage.removeItem("medresearch_token");
       setAxiosAuth(token);
       return { token, user };
     } catch (err) {
@@ -37,6 +39,7 @@ export const logoutUser = createAsyncThunk(
     } catch (_e) {
       // Ignore server errors — always clear client state
     } finally {
+      localStorage.removeItem("researchflow_token");
       localStorage.removeItem("medresearch_token");
       setAxiosAuth(null);
     }
@@ -47,7 +50,13 @@ export const loadCurrentUser = createAsyncThunk(
   "auth/loadCurrentUser",
   async (_, { rejectWithValue }) => {
     try {
-      const token = localStorage.getItem("medresearch_token");
+      // Migrate old token key to new key if present
+      const legacyToken = localStorage.getItem("medresearch_token");
+      if (legacyToken) {
+        localStorage.setItem("researchflow_token", legacyToken);
+        localStorage.removeItem("medresearch_token");
+      }
+      const token = localStorage.getItem("researchflow_token");
       if (!token) {
         return rejectWithValue("No token found.");
       }
@@ -55,6 +64,7 @@ export const loadCurrentUser = createAsyncThunk(
       const res = await axios.get(`${API}/me`);
       return { token, user: res.data };
     } catch (err) {
+      localStorage.removeItem("researchflow_token");
       localStorage.removeItem("medresearch_token");
       setAxiosAuth(null);
       return rejectWithValue(err.response?.data?.error || "Session expired.");

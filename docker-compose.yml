@@ -3,7 +3,7 @@ version: "3.8"
 services:
   qdrant:
     image: qdrant/qdrant
-    container_name: medresearch_qdrant
+    container_name: researchflow_qdrant
     restart: unless-stopped
     ports:
       - "6333:6333"
@@ -13,14 +13,14 @@ services:
 
   mongodb:
     image: mongo:7
-    container_name: medresearch_mongodb
+    container_name: researchflow_mongodb
     restart: unless-stopped
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
     environment:
-      - MONGO_INITDB_DATABASE=medresearch
+      - MONGO_INITDB_DATABASE=researchflow
 
 volumes:
   qdrant_data:

@@ -1,319 +1,186 @@
-<div align="center">
+# 🔬 ResearchFlow AI
 
-# 🛡️ CyberSecAI — Ethical Hacking & Cybersecurity RAG Platform
-
-> **High-Precision Retrieval-Augmented Generation Platform for Ethical Hacking, CTFs, CVE Analysis & Security Research**
-
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
-[![Qdrant](https://img.shields.io/badge/Qdrant-Vector_DB-DC2626?style=for-the-badge&logo=qdrant&logoColor=white)](https://qdrant.tech/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Local_DB-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
-[![Groq](https://img.shields.io/badge/Groq-LLaMA_3.3_70B-F05032?style=for-the-badge)](https://groq.com/)
+**ResearchFlow AI** is an intelligent, multidisciplinary AI research assistant powered by a hybrid RAG (Retrieval-Augmented Generation) pipeline. Upload your documents and ask questions — it retrieves the most relevant passages from your knowledge base, enriches answers with live web intelligence, and synthesizes expert-level responses via Groq's LLM.
 
 ---
 
-[Key Features](#-key-features--upgrades-v40) •
-[System Architecture](#-system-architecture) •
-[Tech Stack](#-tech-stack) •
-[Quick Start](#-quick-start--installation-guide) •
-[Document Indexing](#-document-indexing-workflow) •
-[Multi-Language Code Generation](#-multi-language-code-generation) •
-[API Specs](#-api-specification)
+## ✨ Features
 
-</div>
-
----
-
-## 🚀 Key Features & Upgrades (v4.0)
-
-CyberSecAI is an **ultra-accurate hybrid RAG platform** engineered specifically for ethical hacking books, penetration testing guides, CVE databases, and CTF writeups. Optimized to run smoothly on 8GB RAM machines.
-
-| Feature | Legacy System | Upgraded CyberSecAI v4.0 | Impact |
-| :--- | :--- | :--- | :--- |
-| **Domain Persona** | Medical Research | **Ethical Hacking & Cybersecurity Expert** | 🎯 Specialized for CVEs, penetration testing, exploit analysis, and defense mitigations |
-| **Embedding Model** | Nomic Embed v1.5 | **BAAI/bge-base-en-v1.5 (Local FastEmbed ONNX)** | ⚡ Superior semantic retrieval for technical English & cybersecurity terminology |
-| **Chunking Strategy** | Fixed 400-token splitting | **Semantic Boundaries & Fenced Code Preservation (600/100 tokens)** | 🧠 Preserves full code blocks, section headers, and multi-step attack sequences |
-| **Search Engine** | Basic Hybrid Search | **Acronym-Expanded Hybrid Search (Dense Qdrant + Sparse BM25)** | 🔍 Auto-expands 50+ cybersec acronyms (`SQLi`, `RCE`, `XSS`, `privesc`, `ASLR`, `ROP`, etc.) |
-| **Code Generation** | Basic Snippets | **Multi-Language Exploitation & Tooling** | 💻 Production-ready code in Python, Bash, C/C++, JavaScript, PowerShell, Ruby, SQL, Assembly |
-| **Answer Styles** | Short / Classical / Detailed | **Short / Technical / Detailed / CTF Mode** | 🛠️ Tailored depth ranging from quick payload lookups to CTF hint breakdowns |
-| **Relevance Threshold** | Strict -2.0 Threshold | **Calibrated -3.5 Threshold & 8 Context Chunks** | 🛡️ Prevents false refusals on dense technical jargon while keeping strict anti-hallucination guardrails |
+| Feature | Description |
+|---|---|
+| 🔀 **Hybrid Search** | BM25 keyword + BGE-base-v1.5 vector search fused with RRF |
+| ♻️ **Live Web Fusion** | Parallel DuckDuckGo web search enriches every answer |
+| 🧠 **Cross-Encoder Reranking** | ms-marco-MiniLM-L-6-v2 picks the best chunks |
+| 💬 **Conversation Memory** | Context-aware follow-up questions |
+| 📄 **Multi-format Docs** | Upload PDF, DOCX, TXT, MD |
+| 🎨 **Answer Styles** | short / technical / detailed / code |
+| 🔒 **Auth & RBAC** | JWT auth, email verification, admin role |
+| 🌙 **Dark Mode** | Full light/dark theme support |
 
 ---
 
-## 🗺 System Architecture
+## 🏗️ Architecture
 
-```text
-┌────────────────────────────────────────────────────────────────────────────────┐
-│                           REACT VITE FRONTEND (PORT 5173)                      │
-│      · CyberSec Dashboard Interface             · Collapsible History Drawer   │
-│      · Markdown & Code Block Parser             · Source Citation Badges       │
-└──────────────────────────────────────┬─────────────────────────────────────────┘
-                                       │ REST API Calls
-                                       ▼
-┌────────────────────────────────────────────────────────────────────────────────┐
-│                          NODE.JS EXPRESS SERVER (PORT 5000)                    │
-│      · Chat Session Controller                  · Mongoose Schema Pipeline     │
-│      · Dynamic Conversation Title Generator      · Local MongoDB Persistence   │
-└──────────────────┬─────────────────────────────────────────────────────────────┘
-                   │ /query Proxy Request
-                   ▼
-┌────────────────────────────────────────────────────────────────────────────────┐
-│                          PYTHON FASTAPI RAG ENGINE (PORT 8000)                 │
-│                                                                                │
-│  ┌─────────────────────────┐     ┌───────────────────────┐                     │
-│  │ FastEmbed ONNX BGE-Base │     │ Cybersec BM25 Engine  │                     │
-│  │ (768-dim Embeddings)    │     │ (Acronym Expansion)   │                     │
-│  └───────────┬─────────────┘     └───────────┬───────────┘                     │
-│              │                               │                                 │
-│              └───────────────┬───────────────┘                                 │
-│                              ▼                                                 │
-│              ┌───────────────────────────────┐                                 │
-│              │ Reciprocal Rank Fusion (RRF)  │                                 │
-│              └───────────────┬───────────────┘                                 │
-│                              ▼                                                 │
-│              ┌───────────────────────────────┐                                 │
-│              │ Cross-Encoder Neural Reranker │                                 │
-│              │ (ms-marco-MiniLM-L-6-v2)      │                                 │
-│              └───────────────┬───────────────┘                                 │
-│                              │                                                 │
-│              ┌───────────────┴───────────────┐                                 │
-│              │ Relevance Guardrail Threshold │                                 │
-│              └───────────────┬───────────────┘                                 │
-└──────────────────────────────┼─────────────────────────────────────────────────┘
-                               │
-                ┌──────────────┴──────────────┐
-                │                             │
-                ▼                             ▼
-┌──────────────────────────────┐ ┌──────────────────────────────┐
-│  QDRANT VECTOR DB (DOCKER)   │ │      GROQ CLOUD SERVICE      │
-│  · Collection: `cybersec`    │ │  · llama-3.3-70b-versatile   │
-│  · HNSW Graph Optimization   │ │  · CyberSec System Prompts   │
-└──────────────────────────────┘ └──────────────────────────────┘
+```
+Frontend (React + Redux)
+    │
+    ├── REST (auth, chat history, docs)  →  Node.js Backend (Express + MongoDB)
+    │                                           │
+    └── SSE streaming (AI responses)   →       └── Proxies to Python RAG service
+                                                            │
+                                                            ├── Qdrant (vector DB)
+                                                            ├── BGE-base embedder (ONNX)
+                                                            ├── BM25 index (rank_bm25)
+                                                            ├── Cross-encoder reranker
+                                                            ├── DuckDuckGo web search
+                                                            └── Groq LLM (AsyncGroq)
 ```
 
 ---
 
-## 🛠 Tech Stack
+## 🗂️ Project Structure
 
-```mermaid
-graph TD
-    A[Frontend: React 18 + Redux + Tailwind] -->|REST API| B[API Bridge: Node.js + Express]
-    B -->|Mongoose| C[(Local Database: MongoDB - cybersec)]
-    B -->|HTTP /query| D[RAG Core: Python FastAPI]
-    D -->|Local ONNX| E[Embedder: BAAI/bge-base-en-v1.5]
-    D -->|HNSW Search| F[(Vector Database: Qdrant - cybersec)]
-    D -->|Rank Scoring| G[Reranker: Cross-Encoder MiniLM]
-    D -->|Generation| H[Cloud LLM: Groq LLaMA 3.3 70B]
 ```
-
----
-
-## 💻 Multi-Language Code Generation
-
-CyberSecAI produces customized, production-ready security tooling, payloads, and scripts across multiple programming languages directly derived from your indexed books:
-
-- **Python**: Exploit scripts, port scanners, custom fuzzers, packet manipulators
-- **Bash / Shell**: Reconnaissance scripts, command one-liners, enumeration chains
-- **C / C++**: Memory safety PoCs, buffer overflow demonstrations, shellcode harnesses
-- **JavaScript / Node.js**: DOM/Reflected XSS payloads, CORS/CSRF PoCs, web scraping tools
-- **PowerShell**: Active Directory post-exploitation, Windows security audit automation
-- **Ruby**: Custom Metasploit module structures
-- **SQL**: Injection strings, auth-bypass payloads, database enumeration queries
-- **Assembly (x86 / x64)**: Shellcode examples, register manipulation, instruction inspection
-
----
-
-## 📁 Repository Structure
-
-```text
 medresearch-ai/
-├── 🐍 backend-python/                 # FastAPI Core RAG Service
-│   ├── 📂 data/documents/             # Cybersec document storage (.pdf, .txt, .docx, .md)
-│   ├── 📂 scripts/
-│   │   ├── index_documents.py        # Full re-indexing pipeline (Semantic Chunking)
-│   │   └── add_documents.py          # Incremental new document indexer
-│   ├── 📂 src/
-│   │   ├── api.py                    # FastAPI endpoints & streaming (Port 8000)
-│   │   ├── chunker.py                # Semantic & Code-aware document chunker
-│   │   ├── embedder.py               # Local BGE-base FastEmbed (ONNX) engine
-│   │   ├── hybrid_search.py          # Acronym-Expanded BM25 + Qdrant Vector + RRF
-│   │   ├── reranker.py               # Cross-encoder precision reranker
-│   │   ├── rag_pipeline.py           # CyberSecAI persona, prompts & guardrails
-│   │   └── vector_store.py           # Qdrant client & 'cybersec' collection
-│   └── requirements.txt              # Python packages
-│
-├── 🟢 backend-node/                   # Express API & Chat Manager
-│   ├── 📂 src/
-│   │   ├── models/Chat.js            # Mongoose chat session schema
-│   │   ├── routes/research.js        # Chat history & RAG proxy endpoints
-│   │   └── server.js                 # Node entrypoint (Port 5000)
+├── frontend/                         # React + Vite SPA
+│   ├── src/
+│   │   ├── pages/                    # Research, Login, SignUp, Admin pages
+│   │   ├── components/layout/        # Sidebar, AdminSidebar
+│   │   ├── store/                    # Redux slices (auth, research)
+│   │   └── context/ThemeContext.jsx  # Dark/light mode
+│   └── index.html
+├── backend-node/                     # Express API server
+│   ├── src/
+│   │   ├── server.js                 # Entry point, MongoDB connection
+│   │   ├── routes/                   # auth.js, research.js
+│   │   ├── models/                   # User, Chat, Document, Notification
+│   │   └── utils/email.js            # Email notifications
 │   └── package.json
-│
-└── ⚛️ frontend/                       # React User Interface
-    ├── 📂 src/
-    │   ├── components/ChatBox.jsx     # Markdown & Code-highlighted chat window
-    │   ├── pages/Research.jsx         # CyberSecAI dashboard & sidebar
-    │   └── store/researchSlice.js     # Redux Toolkit state manager
-    └── package.json
+├── backend-python/                   # FastAPI RAG service
+│   ├── src/
+│   │   ├── api.py                    # FastAPI endpoints
+│   │   ├── rag_pipeline.py           # Core RAG logic, system prompts, intent classifier
+│   │   ├── vector_store.py           # Qdrant client (singleton)
+│   │   ├── hybrid_search.py          # BM25 + vector hybrid search
+│   │   ├── embedder.py               # BGE-base-v1.5 (ONNX, cached)
+│   │   ├── reranker.py               # Cross-encoder reranker
+│   │   ├── chunker.py                # Semantic document chunking
+│   │   └── web_search.py             # DuckDuckGo search
+│   ├── scripts/
+│   │   ├── index_documents.py        # Full re-index script
+│   │   └── add_documents.py          # Incremental add documents
+│   └── requirements.txt
+├── docker-compose.yml                # Qdrant + MongoDB services
+└── README.md
 ```
 
 ---
 
-## ⚡ Quick Start & Installation Guide
+## 🚀 Quick Start
 
 ### 1. Prerequisites
-Ensure your local machine has the following software installed:
-*   [Docker Desktop](https://www.docker.com/products/docker-desktop/) (For running local Qdrant)
-*   [MongoDB Community Edition](https://www.mongodb.com/try/download/community) (For session persistence)
-*   [Python 3.10+](https://www.python.org/)
-*   [Node.js 18+](https://nodejs.org/)
 
----
+- Node.js ≥ 18
+- Python ≥ 3.10
+- Docker Desktop (for Qdrant + MongoDB)
 
-### 2. Infrastructure Setup
-Launch Docker Desktop and verify local databases in PowerShell:
+### 2. Start services
 
-```powershell
-# 1. Start Qdrant Docker Container
-docker run -d --name qdrant -p 6333:6333 -v "${PWD}/qdrant_storage:/qdrant/storage" qdrant/qdrant
-
-# 2. Verify local MongoDB connection (Port 27017)
-Test-NetConnection -ComputerName 127.0.0.1 -Port 27017
+```bash
+docker-compose up -d
 ```
 
----
+### 3. Backend Node
 
-### 3. Service Configuration
-
-#### A. Backend Python setup
-```powershell
-cd backend-python
-python -m venv venv
-.\venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-Create `backend-python/.env`:
-```env
-QDRANT_URL=http://localhost:6333
-COLLECTION_NAME=cybersec
-GROQ_API_KEY=your_groq_api_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
-EMBED_MODEL=BAAI/bge-base-en-v1.5
-EMBED_BATCH_SIZE=16
-RERANKER_MODEL=Xenova/ms-marco-MiniLM-L-6-v2
-HYBRID_CANDIDATE_COUNT=30
-RERANKER_TOP_K=8
-RELEVANCE_THRESHOLD=-3.5
-MIN_RELEVANT_CHUNKS=1
-```
-
-#### B. Backend Node setup
-```powershell
-cd ../backend-node
-npm install
-```
-
-Create `backend-node/.env`:
-```env
-PORT=5000
-PYTHON_RAG_URL=http://localhost:8000
-MONGO_URI=mongodb://localhost:27017/cybersec
-JWT_SECRET=cybersec_secret_key
-```
-
-#### C. Frontend setup
-```powershell
-cd ../frontend
-npm install
-```
-
----
-
-## 📚 Document Indexing Workflow
-
-Place your ethical hacking PDFs, TXT, DOCX, or Markdown (.md) books into `backend-python/data/documents/`.
-
-### 🔹 Full Re-Index (Recommended after updates)
-Cleans the `cybersec` collection in Qdrant and rebuilds all vector & BM25 indices with semantic chunking:
-
-```powershell
-cd backend-python
-.\venv\Scripts\python.exe scripts/index_documents.py
-```
-
-### 🔹 Incremental Indexing
-Indexes only newly added document files without wiping existing vector data:
-
-```powershell
-.\venv\Scripts\python.exe scripts/add_documents.py
-```
-
----
-
-## 🚀 Running the Platform
-
-Run all 3 services in separate PowerShell windows:
-
-```powershell
-# Terminal 1 — Python RAG Engine (Port 8000)
-cd backend-python
-.\venv\Scripts\uvicorn src.api:app --reload --port 8000
-
-# Terminal 2 — Node.js Chat Gateway (Port 5000)
+```bash
 cd backend-node
-npm run dev
+npm install
+cp .env.example .env  # Fill in MONGO_URI, GROQ_API_KEY, JWT_SECRET, etc.
+node src/server.js
+```
 
-# Terminal 3 — React Dashboard (Port 5173)
+### 4. Backend Python
+
+```bash
+cd backend-python
+pip install -r requirements.txt
+cp .env.example .env  # Fill in GROQ_API_KEY, QDRANT_URL
+uvicorn src.api:app --reload --port 8000
+```
+
+### 5. Frontend
+
+```bash
 cd frontend
+npm install
 npm run dev
 ```
 
-Open **`http://localhost:5173`** in your browser.
-
 ---
 
-## 📡 API Specification
+## 🔧 Environment Variables
 
-### Python FastAPI (`http://localhost:8000`)
-
-#### `POST /query`
-Standard RAG query endpoint returning generated answer and source document citations.
-
-```json
-// Request
-{
-  "question": "How does a buffer overflow vulnerability occur in C?",
-  "answer_style": "technical",
-  "top_k": 8
-}
-
-// Response
-{
-  "answer": "## Buffer Overflow Vulnerabilities in C\n\nA buffer overflow occurs when...",
-  "sources": [
-    "Gray_Hat_Hacking.pdf"
-  ],
-  "provider": "groq",
-  "model": "llama-3.3-70b-versatile"
-}
+### backend-node/.env
+```env
+MONGO_URI=mongodb://localhost:27017/researchflow
+JWT_SECRET=your_jwt_secret
+FRONTEND_URL=http://localhost:5173
+PYTHON_RAG_URL=http://localhost:8000
+EMAIL_USER=your@gmail.com
+EMAIL_APP_PASSWORD=your_app_password
+EMAIL_FROM=your@gmail.com
 ```
 
-#### `POST /stream`
-Server-Sent Events (SSE) streaming endpoint delivering token-by-token responses with guardrail validation.
+### backend-python/.env
+```env
+GROQ_API_KEY=your_groq_api_key
+GROQ_MODEL=llama-3.3-70b-versatile
+QDRANT_URL=http://localhost:6333
+COLLECTION_NAME=researchflow
+```
 
 ---
 
-## 🛡️ License & Acknowledgments
+## 📚 Indexing Documents
 
-*   **Models**: LLaMA 3.3 70B (Meta / Groq), BGE-Base-EN-v1.5 (BAAI), MS-Marco MiniLM (Xenova).
-*   **Vector Engine**: Qdrant Vector Database.
-*   **License**: MIT License.
+Place PDFs, DOCXs, TXTs, or MD files in `backend-python/data/documents/`, then run:
+
+```bash
+cd backend-python
+python scripts/index_documents.py
+```
+
+To add documents incrementally without re-indexing everything:
+
+```bash
+python scripts/add_documents.py
+```
 
 ---
 
-<div align="center">
-  <sub>Maintained with ❤️ by <b>Sohail Shabbir</b> · CyberSecAI v4.0</sub>
-</div>
+## 📡 API Endpoints (Python RAG)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/health` | Service status & config |
+| GET | `/documents` | List indexed documents |
+| POST | `/query` | Synchronous RAG query |
+| POST | `/stream` | Streaming SSE RAG query |
+| POST | `/upload` | Upload & index a document |
+| DELETE | `/documents/{source}` | Remove a document |
+| GET | `/settings` | Get runtime thresholds |
+| POST | `/settings` | Update runtime thresholds |
+| POST | `/rebuild-index` | Rebuild BM25 keyword index |
+
+---
+
+## 🧑‍💻 Tech Stack
+
+**Frontend**: React 18, Redux Toolkit, Vite, Lucide Icons, Tailwind CSS  
+**Backend Node**: Express 4, Mongoose, Nodemailer, JWT  
+**Backend Python**: FastAPI, Groq (AsyncGroq), Qdrant, rank-bm25, sentence-transformers, cross-encoders  
+**Infrastructure**: Docker, MongoDB 7, Qdrant
+
+---
+
+<sub>Maintained with ❤️ by **Sohail Shabbir** · ResearchFlow AI v1.1</sub>

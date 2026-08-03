@@ -1,6 +1,6 @@
 """
 =============================================================
-  MedResearch AI -- Add New Documents (Incremental Indexer)
+  ResearchFlow AI -- Add New Documents (Incremental Indexer)
 =============================================================
 
 USAGE:
@@ -41,7 +41,7 @@ def main():
     t_total = time.time()
 
     print("=" * 60)
-    print("  MedResearch AI -- Add New Documents")
+    print("  ResearchFlow AI -- Add New Documents")
     print("=" * 60)
     print(f"  Folder: {os.path.abspath(docs_folder)}")
     print()

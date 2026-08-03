@@ -181,7 +181,7 @@ export default function UserProfile() {
             </div>
             {!sidebarCollapsed && (
               <span className="font-bold text-sm tracking-tight truncate" style={{ color: "var(--text-heading)" }}>
-                CyberSecAI
+                ResearchFlow AI
               </span>
             )}
           </div>

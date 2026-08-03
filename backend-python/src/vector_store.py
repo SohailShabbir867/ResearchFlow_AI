@@ -1,13 +1,13 @@
 """
-CyberSecAI — Qdrant Vector Store
-HNSW-indexed vector database optimized for cybersecurity document corpora.
+ResearchFlow AI — Qdrant Vector Store
+HNSW-indexed vector database for research document corpora.
 
 v4.1 — Bug Fixes:
   - Singleton QdrantClient (Bug 9): replaced per-call client construction with
     a module-level instance. Eliminates per-request TCP handshakes and connection
     storms under concurrent load.
-  - Collection renamed to 'cybersec'
-  - Payload indexing on content_type, cves, section fields
+  - Collection renamed to 'researchflow'
+  - Payload indexing on content_type, source fields
   - HNSW tuned for 768-dim BGE-base vectors
 """
 import os
@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 QDRANT_URL      = os.getenv("QDRANT_URL",      "http://localhost:6333")
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "cybersec")
+COLLECTION_NAME = os.getenv("COLLECTION_NAME", "researchflow")
 VECTOR_SIZE     = 768  # BAAI/bge-base-en-v1.5 outputs 768-dim vectors
 
 # ─── Singleton Qdrant client (Bug 9 Fix) ─────────────────────────────────────
@@ -41,7 +41,7 @@ def get_client() -> QdrantClient:
 
 
 def create_collection(recreate: bool = False):
-    """Create Qdrant collection with HNSW config optimized for cybersec corpus."""
+    """Create Qdrant collection with HNSW config optimized for research corpus."""
     client = get_client()
 
     if recreate:

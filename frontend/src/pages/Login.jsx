@@ -74,7 +74,7 @@ export default function Login() {
             <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-[rgba(255,255,255,0.12)] border border-white/10 text-white shadow-md">
               <Sparkles className="w-5 h-5 text-white" strokeWidth={2.2} />
             </div>
-            <span className="font-bold text-lg tracking-tight text-white font-serif">CyberSecAI</span>
+            <span className="font-bold text-lg tracking-tight text-white font-serif">ResearchFlow AI</span>
           </div>
           <div className="relative z-10 my-10 sm:my-12">
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/60 mb-3">Ethical Hacking workspace</p>

@@ -1,5 +1,5 @@
 """
-CyberSecAI — Hybrid Search Engine
+ResearchFlow AI — Hybrid Search Engine
 Combines dense vector search (Qdrant/BGE) with sparse keyword search (BM25).
 Results fused via Reciprocal Rank Fusion (RRF) for maximum recall.
 

@@ -37,7 +37,7 @@ function emailWrapper(title, bodyHtml) {
           <!-- Header -->
           <tr>
             <td style="background:linear-gradient(135deg,#E21B70,#A53860);padding:32px 40px;border-radius:16px 16px 0 0;text-align:center;">
-              <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.15em;color:rgba(255,255,255,0.7);text-transform:uppercase;">MedResearch AI</p>
+              <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.15em;color:rgba(255,255,255,0.7);text-transform:uppercase;">ResearchFlow AI</p>
               <h1 style="margin:8px 0 0;font-size:24px;font-weight:700;color:#ffffff;">${title}</h1>
             </td>
           </tr>
@@ -53,7 +53,7 @@ function emailWrapper(title, bodyHtml) {
           <tr>
             <td style="background:#0A0614;padding:24px 40px;border-radius:0 0 16px 16px;border:1px solid rgba(255,255,255,0.06);border-top:none;text-align:center;">
               <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.3);">
-                MedResearch AI — AI-Powered Medical Research Assistant<br/>
+                ResearchFlow AI — AI-Powered Research Assistant<br/>
                 This email was sent to you because an action was requested on your account.<br/>
                 If you did not request this, please ignore this email.
               </p>
@@ -92,16 +92,16 @@ async function sendVerificationEmail(user, token) {
 
   const body = `
 <p ${P}>Hi <strong style="color:#ffffff;">${user.name}</strong>,</p>
-<p ${P}>Welcome to <strong style="color:#E21B70;">MedResearch AI</strong>! Please verify your email address to activate your account and start your research journey.</p>
+<p ${P}>Welcome to <strong style="color:#E21B70;">ResearchFlow AI</strong>! Please verify your email address to activate your account and start your research journey.</p>
 ${emailButton(url, "✉️  Verify My Email")}
 <p ${SM}>Or copy and paste this link into your browser:</p>
 <p style="margin:0 0 20px;font-size:12px;color:#E21B70;word-break:break-all;">${url}</p>
 <p ${SM}>This link expires in <strong style="color:rgba(255,255,255,0.6);">24 hours</strong>. After that, you'll need to request a new verification email.</p>`;
 
   await transporter.sendMail({
-    from: `"MedResearch AI" <${process.env.EMAIL_FROM}>`,
+    from: `"ResearchFlow AI" <${process.env.EMAIL_FROM}>`,
     to:   user.email,
-    subject: "Verify your MedResearch AI account",
+    subject: "Verify your ResearchFlow AI account",
     html: emailWrapper("Verify Your Email", body),
   });
 }
@@ -112,16 +112,16 @@ async function sendPasswordResetEmail(user, token) {
 
   const body = `
 <p ${P}>Hi <strong style="color:#ffffff;">${user.name}</strong>,</p>
-<p ${P}>We received a request to reset the password for your MedResearch AI account associated with <strong style="color:#E21B70;">${user.email}</strong>.</p>
+<p ${P}>We received a request to reset the password for your ResearchFlow AI account associated with <strong style="color:#E21B70;">${user.email}</strong>.</p>
 ${emailButton(url, "🔑  Reset My Password")}
 <p ${SM}>Or copy and paste this link into your browser:</p>
 <p style="margin:0 0 20px;font-size:12px;color:#E21B70;word-break:break-all;">${url}</p>
 <p ${SM}>This link expires in <strong style="color:rgba(255,255,255,0.6);">1 hour</strong>. If you did not request a password reset, no action is needed — your password will remain unchanged.</p>`;
 
   await transporter.sendMail({
-    from: `"MedResearch AI" <${process.env.EMAIL_FROM}>`,
+    from: `"ResearchFlow AI" <${process.env.EMAIL_FROM}>`,
     to:   user.email,
-    subject: "Reset your MedResearch AI password",
+    subject: "Reset your ResearchFlow AI password",
     html: emailWrapper("Password Reset Request", body),
   });
 }
@@ -130,14 +130,14 @@ ${emailButton(url, "🔑  Reset My Password")}
 async function sendWelcomeEmail(user) {
   const body = `
 <p ${P}>Hi <strong style="color:#ffffff;">${user.name}</strong>,</p>
-<p ${P}>Your email has been verified and your account is now <strong style="color:#10B981;">active</strong>. Welcome to the MedResearch AI research platform!</p>
+<p ${P}>Your email has been verified and your account is now <strong style="color:#10B981;">active</strong>. Welcome to the ResearchFlow AI research platform!</p>
 ${emailButton(`${process.env.FRONTEND_URL}/`, "🔬  Start Researching")}
-<p ${SM}>You can now log in and start asking medical research questions from your indexed document library.</p>`;
+<p ${SM}>You can now log in and start asking research questions from your indexed document library.</p>`;
 
   await transporter.sendMail({
-    from: `"MedResearch AI" <${process.env.EMAIL_FROM}>`,
+    from: `"ResearchFlow AI" <${process.env.EMAIL_FROM}>`,
     to:   user.email,
-    subject: "Welcome to MedResearch AI — Account Activated",
+    subject: "Welcome to ResearchFlow AI — Account Activated",
     html: emailWrapper("Account Activated!", body),
   });
 }
@@ -154,7 +154,7 @@ async function sendAdminNotification(newUser) {
 ${emailButton(`${process.env.FRONTEND_URL}/admin/users`, "👥  Manage Users")}`;
 
   await transporter.sendMail({
-    from: `"MedResearch AI" <${process.env.EMAIL_FROM}>`,
+    from: `"ResearchFlow AI" <${process.env.EMAIL_FROM}>`,
     to:   process.env.EMAIL_FROM,
     subject: `New registration: ${newUser.name} <${newUser.email}>`,
     html: emailWrapper("New User Registration", body),

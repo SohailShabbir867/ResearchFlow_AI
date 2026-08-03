@@ -38,7 +38,7 @@ def main(incremental: bool = False):
     t_total = time.time()
 
     print("="*60)
-    print("  CyberSecAI — Document Indexing Pipeline v4.0")
+    print("  ResearchFlow AI — Document Indexing Pipeline v1.0")
     print("  BGE-base embeddings · Semantic chunking · Cybersec tokenizer")
     print("="*60)
     print(f"  Mode: {'Incremental (skip existing)' if incremental else 'Full re-index'}")
