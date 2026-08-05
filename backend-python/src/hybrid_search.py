@@ -18,7 +18,11 @@ v4.1 — Bug Fixes:
 import os
 import re
 import threading
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):
+        return False
 from rank_bm25 import BM25Okapi
 from src.vector_store import search as vector_search, get_client
 

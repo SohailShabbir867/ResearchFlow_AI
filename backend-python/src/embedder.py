@@ -14,7 +14,11 @@ v4.0 — Cybersec-optimized with LRU cache (256 entries) for instant repeated lo
 import os
 import hashlib
 from collections import OrderedDict
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):
+        return False
 from fastembed import TextEmbedding
 
 load_dotenv()

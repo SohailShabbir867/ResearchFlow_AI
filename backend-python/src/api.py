@@ -36,7 +36,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):
+        return False
 
 from src.rag_pipeline import (
     answer,
@@ -507,10 +511,10 @@ async def stream_query(request: QueryRequest):
             print(f"  [Stream] Web results collected: {len(web_results)}")
 
             # ── Step 6: Guardrails ────────────────────────────────────────────
-            if candidates:
+            if reranked:
                 should_refuse, refuse_reason, passing_chunks = check_guardrails(reranked)
             else:
-                should_refuse  = True
+                should_refuse  = False  # allow web-only fallback
                 refuse_reason  = "No RAG candidates"
                 passing_chunks = []
 
@@ -535,8 +539,18 @@ async def stream_query(request: QueryRequest):
                 sys_c += "\n\nCRITICAL DIRECTIVE: The user is speaking Urdu. You MUST reply completely in native Urdu language (using Urdu script), ensuring high-quality formatting and correct terminology."
 
             # ── Step 8: Stream from Groq via AsyncGroq (v6.0 critical fix) ────
-            
-            # Start fetching related questions concurrently
+
+            # BUG FIX: client MUST be initialised before creating the related_task,
+            # because fetch_related_questions() closes over `client` and the task
+            # starts executing immediately on the event loop — if client is defined
+            # after create_task() it will be undefined when the coroutine runs first.
+            client = _get_async_groq()
+            effective_max_tokens = min(
+                style.get("max_tokens", 2000),
+                getattr(rag, "GLOBAL_MAX_TOKENS", 3000)
+            )
+
+            # Start fetching related questions concurrently (client is now defined)
             async def fetch_related_questions():
                 try:
                     sys_r = "You are an AI research assistant. Based on the user's query, suggest exactly 3 short, relevant follow-up questions they could ask to learn more. Output ONLY a JSON object with a single key 'questions' containing an array of 3 strings."
@@ -559,14 +573,6 @@ async def stream_query(request: QueryRequest):
                     return []
 
             related_task = asyncio.create_task(fetch_related_questions())
-
-            # Using AsyncGroq + async for means the event loop is NEVER blocked.
-            # Each `async for chunk` yields control back to asyncio between tokens.
-            client = _get_async_groq()
-            effective_max_tokens = min(
-                style.get("max_tokens", 2000),
-                getattr(rag, "GLOBAL_MAX_TOKENS", 3000)
-            )
 
             is_council = (request.model == "council")
             target_models = ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"] if is_council else [request.model or GROQ_MODEL]
