@@ -47,7 +47,11 @@ import re
 import time
 import concurrent.futures
 from datetime import datetime
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):
+        return False
 from src.embedder import get_embedding
 from src.hybrid_search import hybrid_search
 from src.reranker import rerank

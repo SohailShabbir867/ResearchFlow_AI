@@ -8,7 +8,11 @@ v4.0 — Cybersec upgrades:
   - Wider reranker window gives LLM broader coverage of techniques
 """
 import os
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):
+        return False
 
 load_dotenv()
 

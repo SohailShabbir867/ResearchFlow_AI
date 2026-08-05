@@ -18,7 +18,11 @@ from qdrant_client.models import (
     HnswConfigDiff, OptimizersConfigDiff,
     PayloadSchemaType
 )
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):
+        return False
 
 load_dotenv()
 
