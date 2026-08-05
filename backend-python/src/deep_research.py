@@ -14,6 +14,59 @@ from src.web_search import perform_web_search
 class SubQueries(BaseModel):
     queries: list[str]
 
+
+def _dedupe_subqueries(sub_queries: list[str], question: str, limit: int = 3) -> list[str]:
+    """Normalize, deduplicate, and cap sub-queries for better coverage and speed."""
+    seen = set()
+    cleaned = []
+    question_norm = re.sub(r"\s+", " ", question.strip().lower())
+
+    for raw in sub_queries:
+        sq = re.sub(r"\s+", " ", str(raw or "")).strip()
+        if not sq:
+            continue
+        key = sq.lower()
+        if key == question_norm or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(sq)
+        if len(cleaned) >= limit:
+            break
+
+    if not cleaned:
+        return [question.strip()]
+
+    if len(cleaned) == 1 and cleaned[0].lower() != question_norm:
+        cleaned.insert(0, question.strip())
+
+    return cleaned[:limit]
+
+
+def _merge_unique_chunks(chunks: list[dict]) -> list[dict]:
+    """Keep the best chunk per (source, id) pair and sort by rerank score."""
+    merged = {}
+    for chunk in chunks:
+        key = (chunk.get("source"), chunk.get("id"))
+        score = chunk.get("rerank_score", -99)
+        current = merged.get(key)
+        if current is None or score > current.get("rerank_score", -99):
+            merged[key] = chunk
+    return sorted(merged.values(), key=lambda c: c.get("rerank_score", -99), reverse=True)
+
+
+def _merge_unique_web_results(results: list[dict]) -> list[dict]:
+    """Deduplicate web results by URL and keep the highest-confidence entry."""
+    merged = {}
+    for result in results:
+        url = result.get("url")
+        if not url:
+            continue
+        current = merged.get(url)
+        confidence = result.get("confidence", 0)
+        if current is None or confidence > current.get("confidence", 0):
+            merged[url] = result
+    return sorted(merged.values(), key=lambda r: r.get("confidence", 0), reverse=True)
+
 async def perform_deep_research(request, history, style_name, intent, intent_info, language, client, yield_event, cache_key, events_to_cache, query_cache):
     """
     Executes the Deep Autonomous Research agentic loop.
@@ -51,9 +104,10 @@ async def perform_deep_research(request, history, style_name, intent, intent_inf
     related_task = asyncio.create_task(fetch_related_questions())
     
     system_prompt = (
-        "You are an expert research assistant. Break down the user's complex query into "
-        "3 distinct, highly targeted search sub-queries to maximize information retrieval "
-        "across both scientific databases and the live web. Output JSON with a 'queries' array of strings."
+        "You are an expert global research assistant. Break down the user's complex query into "
+        "3 distinct, highly targeted sub-queries that maximize retrieval from authoritative sources, "
+        "recent web results, and topic-specific documents. Prefer concrete angles over vague paraphrases. "
+        "Output JSON with a 'queries' array of strings."
     )
     
     # Fallback to simple queries if decomposition fails
@@ -79,6 +133,8 @@ async def perform_deep_research(request, history, style_name, intent, intent_inf
         print(f"  [Deep Research] Query decomposition failed: {e}")
         # Proceed with fallback
 
+    sub_queries = _dedupe_subqueries(sub_queries, request.question, limit=3)
+
     await yield_event(f"data: {json.dumps({'status_text': f'🔬 Investigating {len(sub_queries)} analytical angles...'})}\n\n")
 
     # ── Step 2: Parallel RAG & Web Search for Sub-Queries ─────────────────────
@@ -96,10 +152,10 @@ async def perform_deep_research(request, history, style_name, intent, intent_inf
             q_vec = await loop.run_in_executor(rag._executor, get_embedding, sq, True)
             cands = await loop.run_in_executor(rag._executor, hybrid_search, q_vec, sq)
             if cands:
-                reranked = await loop.run_in_executor(rag._executor, rerank, sq, cands, 5) # top 5 per subquery
+                reranked = await loop.run_in_executor(rag._executor, rerank, sq, cands, 4) # keep the best few per subquery
                 should_refuse, _, passing = rag.check_guardrails(reranked)
                 if not should_refuse:
-                    all_passing_chunks.extend(passing)
+                    all_passing_chunks.extend(passing[:4])
         except Exception as e:
             print(f"  [Deep Research] RAG error for '{sq}': {e}")
             
@@ -117,15 +173,12 @@ async def perform_deep_research(request, history, style_name, intent, intent_inf
     await yield_event(f"data: {json.dumps({'status_text': '⚡ Synthesizing deep research report...'})}\n\n")
 
     # Deduplicate chunks and web results
-    unique_chunks_dict = {c["id"]: c for c in all_passing_chunks}
-    unique_chunks = list(unique_chunks_dict.values())
-    
-    unique_web_urls = set()
-    unique_web = []
-    for w in all_web_results:
-        if w.get("url") not in unique_web_urls:
-            unique_web_urls.add(w.get("url"))
-            unique_web.append(w)
+    unique_chunks = _merge_unique_chunks(all_passing_chunks)
+    unique_web = _merge_unique_web_results(all_web_results)
+
+    # Keep the prompt compact and focused on the strongest evidence.
+    unique_chunks = unique_chunks[:12]
+    unique_web = unique_web[:8]
             
     # ── Step 3: Synthesis ─────────────────────────────────────────────────────
     # Use standard fused prompt but with a HUGE context window
