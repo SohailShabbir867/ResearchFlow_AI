@@ -182,6 +182,20 @@ _COACHING_RE = re.compile(
     re.IGNORECASE,
 )
 
+_OPINION_RE = re.compile(
+    r'(what do you think|what is your opinion|how do you feel|do you think|'
+    r'thoughts on|your take on|tell me about ai|tell me about the ai|'
+    r'is ai good|is ai bad|ai thoughts)',
+    re.IGNORECASE,
+)
+
+_SHOPPING_RE = re.compile(
+    r'(best|top|budget|affordable|cheap|price|prices|pricing|buy|purchase|'
+    r'compare|comparison|recommend|recommendation|worth buying|value for money|'
+    r'which one|which is better|suggest|shopping)',
+    re.IGNORECASE,
+)
+
 _TIME_QUERY_RE = re.compile(
     r'\b(current\s+)?(date|time|date\s+and\s+time|day\s+is\s+it|what\s+day\s+is\s+it|'
     r'what\s+time\s+is\s+it|today(?:\'s)?\s+date|current\s+timestamp|right\s+now)\b',
@@ -252,6 +266,8 @@ INTENT_META = {
     "data":      {"label": "Data / Analytics",         "emoji": "📊",  "style": "technical"},
     "security":  {"label": "Security / Cyber",         "emoji": "🛡",  "style": "technical"},
     "coaching":  {"label": "Interview / Coaching",     "emoji": "🧭",  "style": "conversational"},
+    "opinion":   {"label": "Opinion / Advice",         "emoji": "💬",  "style": "conversational"},
+    "shopping":  {"label": "Shopping / Compare",       "emoji": "🛒",  "style": "conversational"},
     "general":   {"label": "General Research",         "emoji": "🔍",  "style": "conversational"},
     "chat":      {"label": "Conversational",           "emoji": "👋",  "style": "conversational"},
 }
@@ -273,6 +289,10 @@ def classify_query_intent(question: str) -> str:
         return "code"
     if _COACHING_RE.search(question):
         return "coaching"
+    if _OPINION_RE.search(question):
+        return "opinion"
+    if _SHOPPING_RE.search(question):
+        return "shopping"
     if bool(_CHAT_RE.match(question.strip())):
         return "chat"
     if re.search(r'\b(study|trial|experiment|hypothesis|methodology|peer.review|journal|paper|arxiv|pubmed|doi|citation|abstract|results|findings|literature)\b', question, re.IGNORECASE):
@@ -406,6 +426,8 @@ RULES:
 12. For programming questions, always provide complete, runnable code with no truncated stubs or TODOs.
 13. For interview, self-introduction, resume, and career-coaching questions, answer like a practical coach: lead with a direct interpretation, then give a concise structure or template, then provide one polished example answer, and finish with 2-3 tailored tips.
 14. For vague questions like "tell me about yourself", do not over-explain the topic; answer the user's likely intent directly and make the response usable in one pass.
+15. For shopping, product, model, and comparison questions, answer in a decision table first. Use columns such as Item, Price, Key features, Best for, and Verdict. Prefer 3-7 options, keep it scannable, and end with a one-line recommendation by budget or use case.
+16. If prices differ by region or are approximate, say so clearly and keep the currency consistent throughout the answer.
 
 FORMAT: {style['instruction']}"""
 

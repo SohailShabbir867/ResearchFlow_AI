@@ -433,6 +433,8 @@ async def stream_query(request: QueryRequest):
     if detect_time_intent(request.question):
         return StreamingResponse(_stream_local_time_response(request.question), media_type="text/event-stream")
 
+    direct_answer_intents = {"chat", "coaching", "opinion"}
+
     if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
         raise HTTPException(
             status_code=503,
@@ -489,6 +491,46 @@ async def stream_query(request: QueryRequest):
                 style_name = intent_info["style"]
 
             style = ANSWER_STYLES[style_name]
+
+            if intent in direct_answer_intents:
+                print(f"  [Stream] Direct-answer fast path triggered for intent: {intent}")
+                yield await yield_event(f"data: {json.dumps({'status_text': '💬 Drafting direct answer...'})}\n\n")
+
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")
+                current_year = datetime.now().year
+                sys_c = rag._build_system_prompt(style_name, now_str, current_year)
+
+                if language == "ur":
+                    sys_c += "\n\nCRITICAL DIRECTIVE: The user is speaking Urdu. You MUST reply completely in native Urdu language (using Urdu script)."
+
+                usr_c = f"{rag._build_history_xml(history)}<user_query>\n{request.question}\n</user_query>\n\n<response>"
+
+                client = _get_async_groq()
+                groq_stream = await client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=[
+                        {"role": "system", "content": sys_c},
+                        {"role": "user",   "content": usr_c},
+                    ],
+                    temperature=rag.LLM_TEMPERATURE,
+                    max_tokens=style["max_tokens"],
+                    stream=True,
+                )
+
+                direct_token_count = 0
+                async for chunk in groq_stream:
+                    token = chunk.choices[0].delta.content or ""
+                    if token:
+                        direct_token_count += 1
+                        yield await yield_event(f"data: {json.dumps({'token': token})}\n\n")
+
+                if direct_token_count == 0:
+                    fallback_text = "I think AI is most useful when it is applied to real problems, checked carefully, and used to augment human judgment rather than replace it."
+                    yield await yield_event(f"data: {json.dumps({'token': fallback_text})}\n\n")
+
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'rag_source_details': []})}\n\n")
+                _query_cache.put(cache_key, events_to_cache)
+                return
 
             # Emit intent badge right away — frontend shows it immediately
             yield await yield_event(f"data: {json.dumps({'intent': intent, 'intent_info': intent_info, 'language': language})}\n\n")
