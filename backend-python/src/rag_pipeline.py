@@ -153,9 +153,10 @@ ANSWER_STYLES = {
     },
     "conversational": {
         "instruction": (
-            "Respond conversationally and naturally. Keep it concise. "
+            "Respond conversationally, naturally, and usefully. Keep it concise but not vague. "
+            "If the user asks for advice, explanations, or interview help, answer directly with a short structure, a practical example, and a couple of actionable tips. "
             "If the user is just saying hello or making small talk, respond warmly and briefly. "
-            "Do not use headings or structured sections unless absolutely necessary. "
+            "Do not use headings or structured sections unless they improve clarity. "
             "Cite sources only if you are answering a factual question based on the documents or web."
         ),
         "max_tokens": 1024,
@@ -172,6 +173,13 @@ _CODE_KEYWORDS_RE = re.compile(
 _CHAT_RE = re.compile(
     r'^(hello|hi|hey|greetings|how are you|thanks|thank you|good morning|good afternoon|good evening)[\s\!\.\?]*$',
     re.IGNORECASE
+)
+
+_COACHING_RE = re.compile(
+    r'(tell me about yourself|introduce yourself|who are you|why should we hire you|'
+    r'strengths and weaknesses|walk me through your background|how do i answer|'
+    r'interview question|career advice|resume advice|cover letter|personal pitch)',
+    re.IGNORECASE,
 )
 
 _TIME_QUERY_RE = re.compile(
@@ -243,6 +251,7 @@ INTENT_META = {
     "literature":{"label": "Literature / Papers",      "emoji": "📚",  "style": "technical"},
     "data":      {"label": "Data / Analytics",         "emoji": "📊",  "style": "technical"},
     "security":  {"label": "Security / Cyber",         "emoji": "🛡",  "style": "technical"},
+    "coaching":  {"label": "Interview / Coaching",     "emoji": "🧭",  "style": "conversational"},
     "general":   {"label": "General Research",         "emoji": "🔍",  "style": "conversational"},
     "chat":      {"label": "Conversational",           "emoji": "👋",  "style": "conversational"},
 }
@@ -262,6 +271,8 @@ def classify_query_intent(question: str) -> str:
     """
     if detect_programming_intent(question):
         return "code"
+    if _COACHING_RE.search(question):
+        return "coaching"
     if bool(_CHAT_RE.match(question.strip())):
         return "chat"
     if re.search(r'\b(study|trial|experiment|hypothesis|methodology|peer.review|journal|paper|arxiv|pubmed|doi|citation|abstract|results|findings|literature)\b', question, re.IGNORECASE):
@@ -393,6 +404,8 @@ RULES:
 10. No meta-talk — never say "based on the context" or "the documents say". Just answer directly.
 11. For research questions, cite studies, papers, standards, or official sources when available.
 12. For programming questions, always provide complete, runnable code with no truncated stubs or TODOs.
+13. For interview, self-introduction, resume, and career-coaching questions, answer like a practical coach: lead with a direct interpretation, then give a concise structure or template, then provide one polished example answer, and finish with 2-3 tailored tips.
+14. For vague questions like "tell me about yourself", do not over-explain the topic; answer the user's likely intent directly and make the response usable in one pass.
 
 FORMAT: {style['instruction']}"""
 
