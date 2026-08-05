@@ -729,6 +729,24 @@ async def stream_query(request: QueryRequest):
                     if count % 20 == 0:
                         await asyncio.sleep(0)
 
+            if not is_council and tokens_emitted == 0:
+                print("  [Stream] No streamed tokens received, falling back to supported default model")
+                fallback_stream = await client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=[
+                        {"role": "system", "content": sys_c},
+                        {"role": "user",   "content": usr_c},
+                    ],
+                    temperature=rag.LLM_TEMPERATURE,
+                    max_tokens=effective_max_tokens,
+                    stream=True,
+                )
+                async for fallback_chunk in fallback_stream:
+                    fallback_token = fallback_chunk.choices[0].delta.content or ""
+                    if fallback_token:
+                        full_response += fallback_token
+                        yield await yield_event(f"data: {json.dumps({'token': fallback_token})}\n\n")
+
             if is_council and tokens_emitted == 0:
                 print("  [Council] No streamed tokens received, falling back to single-model synthesis")
                 fallback_stream = await client.chat.completions.create(
