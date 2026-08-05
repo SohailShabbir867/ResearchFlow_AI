@@ -71,8 +71,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
     try {
       const result = await dispatch(createChat("New Chat")).unwrap();
       navigate("/");
-      // Small delay to let navigation settle before loading
-      setTimeout(() => dispatch(loadChat(result._id)), 100);
+      dispatch(loadChat(result._id));
     } catch (e) {
       console.error(e);
     } finally {
@@ -176,13 +175,15 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
           <MessageSquare className="w-4 h-4 shrink-0" />
           {!collapsed && <span>Research Chat</span>}
         </button>
-        <button
-          onClick={() => { navigate("/documents"); if (onMobileClose) onMobileClose(); }}
-          className={isActive("/documents") ? "sidebar-item-active w-full" : "sidebar-item w-full"}
-        >
-          <Library className="w-4 h-4 shrink-0" />
-          {!collapsed && <span>Document Library</span>}
-        </button>
+        {user?.role === "admin" && (
+          <button
+            onClick={() => { navigate("/documents"); if (onMobileClose) onMobileClose(); }}
+            className={isActive("/documents") ? "sidebar-item-active w-full" : "sidebar-item w-full"}
+          >
+            <Library className="w-4 h-4 shrink-0" />
+            {!collapsed && <span>Document Library</span>}
+          </button>
+        )}
 
         {/* Admin Panel — only visible to admin users */}
         {user?.role === "admin" && (
@@ -231,9 +232,17 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
                 <div key={group} className="mb-3">
                   <p className="text-[10px] font-semibold uppercase tracking-wider px-3 mb-1" style={{ color: "var(--text-muted)" }}>{group}</p>
                   {chats.map(chat => (
-                    <button
+                    <div
                       key={chat._id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => handleSelectChat(chat._id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleSelectChat(chat._id);
+                        }
+                      }}
                       className={`w-full text-left px-3 py-2 rounded-xl text-sm transition-all duration-150 group relative ${
                         chat._id === currentChatId
                           ? "sidebar-item-active"
@@ -259,7 +268,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
                           : <Trash2 className="w-3 h-3" />
                         }
                       </button>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )

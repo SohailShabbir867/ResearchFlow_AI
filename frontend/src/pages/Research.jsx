@@ -257,6 +257,12 @@ export default function Research() {
   const [model, setModel] = useState('llama-3.3-70b-versatile');
   const [sourcesOpen, setSourcesOpen] = useState({});
 
+  useEffect(() => {
+    if (isAdmin || user?.canUploadDocuments) {
+      setIsPro(true);
+    }
+  }, [isAdmin, user?.canUploadDocuments]);
+
   // Perplexity-style Sources Panel
   const [streamingIntent, setStreamingIntent] = useState(null);    // {intent, intent_info} while streaming
   const [language, setLanguage] = useState("en");                  // language state for urdu support

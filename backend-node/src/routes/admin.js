@@ -66,7 +66,7 @@ router.get("/stats", async (req, res) => {
       const pyHealth = await axios.get(`${PYTHON_URL()}/health`, { timeout: 5000 });
       totalChunks = pyHealth.data?.collection?.points_count || pyHealth.data?.chunks || 0;
       const pyDocs = await axios.get(`${PYTHON_URL()}/documents`, { timeout: 5000 });
-      totalDocs = Array.isArray(pyDocs.data) ? pyDocs.data.length : 0;
+      totalDocs = Array.isArray(pyDocs.data?.documents) ? pyDocs.data.documents.length : 0;
     } catch {
       // Python service may be down — return zeros
     }
