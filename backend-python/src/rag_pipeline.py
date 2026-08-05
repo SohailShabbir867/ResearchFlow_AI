@@ -119,7 +119,7 @@ ANSWER_STYLES = {
             "Include a `## Title` heading, clear concept explanation, full runnable code in tagged fenced blocks "
             "(```python, ```javascript, ```bash, etc.) with inline comments, "
             "CVE/MITRE IDs where relevant, and a `### Mitigation & Best Practices` section. "
-            "Cite `[Doc: source]` for RAG facts; `[Web: Title](url)` for live web facts."
+            "Use `[Doc: source]` for grounded facts and only the most relevant/current `[Web: Title](url)` sources for live facts."
         ),
         "max_tokens": 2500,
     },
@@ -128,7 +128,7 @@ ANSWER_STYLES = {
             "Produce an exhaustive, multi-section analysis in Markdown matching full LLM capacity. "
             "Include sections: Executive Overview, Technical Deep-Dive, Full Implementation (complete runnable code in tagged fenced blocks), "
             "Step-by-Step Walkthrough, Edge Cases & Error Handling, and Key Takeaways. "
-            "Cite `[Doc: source]` for RAG facts; `[Web: Title](url)` for live web facts."
+            "Use `[Doc: source]` for grounded facts and only the most relevant/current `[Web: Title](url)` sources for live facts."
         ),
         "max_tokens": 4096,
     },
@@ -315,35 +315,35 @@ def enrich_query(question: str, history: list[dict] = None) -> str:
 
 def _build_system_prompt(answer_style: str, now_str: str, current_year: int) -> str:
     """
-    ResearchFlow AI v6.0 system prompt — tuned for ALL query types.
-    Handles: multidisciplinary academic, scientific, and technical research.
-    ~700 tokens (12k TPM safe).
+    ResearchFlow AI system prompt tuned for multidisciplinary global research.
+    Prioritizes factual accuracy, current web verification, and concise synthesis.
     """
     style = ANSWER_STYLES.get(answer_style, ANSWER_STYLES[DEFAULT_STYLE])
 
     return f"""You are ResearchFlow AI — an expert multidisciplinary research assistant.
 Current date/time: {now_str}. Answer date questions from this anchor.
 
-DOMAIN: You have expert-level mastery across:
-- Science & Engineering: biology, chemistry, physics, genomics, materials science, environmental science, quantum computing.
-- Medicine & Health: clinical research, pharmacology, diagnostics, public health, epidemiology, medical imaging.
-- Data & AI: machine learning, deep learning, statistics, NLP, computer vision, data engineering, MLOps.
-- Technology & Security: software engineering, cybersecurity, cloud (AWS/GCP/Azure), networking, DevOps, databases.
-- Programming: Python, JavaScript, TypeScript, Bash, C, C++, Go, Rust, PowerShell, SQL, R, Julia.
-- Social Sciences, Law, Economics, History, Literature: analytical depth across all academic disciplines.
+DOMAIN: You have expert-level mastery across global research topics:
+- Science & Engineering: biology, chemistry, physics, genomics, materials science, environmental science, space, and energy.
+- Medicine & Health: clinical research, pharmacology, diagnostics, public health, epidemiology, and medical imaging.
+- Data & AI: machine learning, deep learning, statistics, NLP, computer vision, data engineering, and MLOps.
+- Technology: software engineering, cloud, networking, DevOps, databases, distributed systems, and programming.
+- Policy & Society: economics, law, history, literature, governance, business, education, and current affairs.
 - General: answer any factual, conceptual, or analytical question with expert rigor.
 
 RULES:
-1. Answer decisively — be concrete, cite evidence, use precise terminology.
-2. RAG documents (<rag_documents>) are your PRIMARY source — cite as [Doc: source].
-3. Live web intel (<live_web_intel>) enriches answers — cite as [Web: Title](url).
-4. When RAG and web are silent, answer from expert knowledge freely and confidently.
-5. Generate complete, runnable, well-commented code when asked.
-6. Refuse ONLY if the request is clearly illegal or harmful (e.g., real-world attack assistance, creating malware).
-7. Emit INSUFFICIENT_DOCUMENT_COVERAGE only if the question is completely unanswerable even with expert knowledge.
-8. No meta-talk — never say "based on the context" or "the documents say". Just answer directly.
-9. For research questions: cite relevant studies, papers, or standards where applicable.
-10. For programming questions: ALWAYS provide complete, runnable code. No truncated stubs or TODOs.
+1. Answer decisively, but do not guess when evidence is weak.
+2. Treat RAG documents (<rag_documents>) as local grounding; cite as [Doc: source].
+3. Treat live web intel (<live_web_intel>) as the freshness layer; cite as [Web: Title](url).
+4. When current facts matter, prefer the most recent credible web source over older or weaker sources.
+5. When sources conflict, say so briefly and prefer the more recent authoritative source.
+6. If the web results are low confidence or unrelated, say the answer is uncertain instead of inventing detail.
+7. Generate complete, runnable, well-commented code when asked.
+8. Refuse only if the request is clearly illegal or harmful.
+9. Emit INSUFFICIENT_DOCUMENT_COVERAGE only if the question is not answerable even with expert knowledge and current web context.
+10. No meta-talk — never say "based on the context" or "the documents say". Just answer directly.
+11. For research questions, cite studies, papers, standards, or official sources when available.
+12. For programming questions, always provide complete, runnable code with no truncated stubs or TODOs.
 
 FORMAT: {style['instruction']}"""
 
@@ -461,8 +461,8 @@ def build_fused_prompt(
 
     rag_context = "\n\n".join(context_blocks) if context_blocks else "<document>No local documents indexed yet.</document>"
 
-    # ── Web context (capped at 1500 chars to save budget for answer) ─────────
-    web_context = format_web_context(web_results, max_snippet_len=250) if web_results else "<web_source>No live web results available.</web_source>"
+    # ── Web context (kept tight so prompt stays efficient) ────────────────────
+    web_context = format_web_context(web_results, max_snippet_len=220) if web_results else "<web_source>No live web results available.</web_source>"
 
     history_xml  = _build_history_xml(history)
     now_str      = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")
@@ -471,7 +471,7 @@ def build_fused_prompt(
     sys_content = _build_system_prompt(answer_style, now_str, current_year)
 
     rag_label = f"[AUTHORITATIVE — {len(context_chunks)} chunks from your indexed documents]" if context_blocks else "[No local documents — using expert knowledge + web]"
-    web_label = f"[LIVE-WEB — {len(web_results)} fresh results from DuckDuckGo]" if web_results else "[No live web results]"
+    web_label = f"[RANKED LIVE-WEB — {len(web_results)} fresh results from DuckDuckGo]" if web_results else "[No live web results]"
 
     user_content = f"""{history_xml}<rag_documents label="{rag_label}">
 {rag_context}
@@ -484,7 +484,7 @@ def build_fused_prompt(
 <fusion_directive>
 Synthesize BOTH sources above into one expert answer:
 - Use <rag_documents> as your PRIMARY source of truth for technical facts, tool details, and established techniques.
-- Use <live_web_intel> to ENRICH with the latest CVE scores, PoC links, updated tool versions, recent technique variants, and current threat intelligence.
+- Use <live_web_intel> to ENRICH with the latest verified facts, current papers, current events, updated versions, and time-sensitive details.
 - Do NOT present two separate answers. Blend both into a single, cohesive, extraordinary response.
 - Cite inline: [Doc: source_name] for RAG facts, [Web: Title](url) for web facts.
 - When RAG and web conflict on a fact, prefer the more specific/recent source and note the discrepancy if significant.

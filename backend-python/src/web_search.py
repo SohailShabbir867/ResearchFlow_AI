@@ -18,6 +18,7 @@ import re
 import hashlib
 import time
 import threading
+from datetime import datetime, timezone
 from collections import OrderedDict
 from urllib.parse import urlparse
 
@@ -32,6 +33,14 @@ _web_cache     = OrderedDict()
 _cache_lock    = threading.Lock()   # Protects all _web_cache mutations
 _CACHE_TTL     = 3600       # 1 hour default
 _FRESH_CACHE_TTL = 1800     # 30 min for news/recent queries (fresher results)
+
+_TRUSTED_DOMAINS = {
+    "nih.gov", "ncbi.nlm.nih.gov", "pubmed.ncbi.nlm.nih.gov", "who.int",
+    "cdc.gov", "fda.gov", "nature.com", "science.org", "thelancet.com",
+    "nejm.org", "bmj.com", "jamanetwork.com", "arxiv.org", "nist.gov",
+    "europa.eu", "oecd.org", "worldbank.org", "imf.org", "un.org",
+    "reuters.com", "apnews.com", "bbc.com",
+}
 
 
 def _cache_key(query: str) -> str:
@@ -67,6 +76,104 @@ def _result_confidence(rank: int, total: int) -> int:
     if total <= 1:
         return 90
     return max(30, round(100 - (rank / max(total - 1, 1)) * 60))
+
+
+def _parse_result_time(value):
+    """Best-effort parse of a result timestamp field."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    text = str(value).strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(text)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def _authority_bonus(domain: str) -> int:
+    """Prefer authoritative domains for research accuracy."""
+    if not domain:
+        return 0
+    domain_lower = domain.lower()
+    if domain_lower in _TRUSTED_DOMAINS:
+        return 15
+    if domain_lower.endswith(".gov") or domain_lower.endswith(".edu"):
+        return 12
+    if ".ac." in domain_lower:
+        return 8
+    return 0
+
+
+def _keyword_overlap_bonus(query: str, title: str, snippet: str) -> int:
+    """Reward results that overlap with the user's terms without overfitting."""
+    query_terms = {t for t in re.findall(r"[a-z0-9]+", query.lower()) if len(t) > 3}
+    if not query_terms:
+        return 0
+    haystack = f"{title} {snippet}".lower()
+    overlap = sum(1 for term in query_terms if term in haystack)
+    if overlap >= 5:
+        return 10
+    if overlap >= 3:
+        return 6
+    if overlap >= 1:
+        return 3
+    return 0
+
+
+def _freshness_bonus(published_at, is_news: bool) -> int:
+    """Prefer recent sources when the query asks for current information."""
+    if not published_at:
+        return 0
+    if not isinstance(published_at, datetime):
+        published_at = _parse_result_time(published_at)
+    if not published_at:
+        return 0
+    age_days = max(0, (datetime.now(timezone.utc) - published_at).days)
+    if is_news:
+        if age_days <= 7:
+            return 18
+        if age_days <= 30:
+            return 12
+        if age_days <= 180:
+            return 6
+        return -4
+    if age_days <= 365:
+        return 6
+    return 0
+
+
+def _rank_web_results(query: str, raw_results: list[dict]) -> list[dict]:
+    """Assign an accuracy-first score and return results sorted best-first."""
+    is_news = any(m in query.lower() for m in ["latest", "recent", "news", "today", "update", "current", "2025", "2026"])
+    ranked = []
+    seen_urls = set()
+
+    for idx, res in enumerate(raw_results):
+        title = (res.get("title") or "").strip()
+        snippet = (res.get("snippet") or "").strip()
+        url = (res.get("url") or "").strip()
+        if not title or not snippet or not url:
+            continue
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+
+        domain = res.get("domain") or _extract_domain(url)
+        score = int(res.get("confidence", _result_confidence(idx, max(len(raw_results), 1))))
+        score += _authority_bonus(domain)
+        score += _keyword_overlap_bonus(query, title, snippet)
+        score += _freshness_bonus(res.get("date") or res.get("published"), is_news)
+
+        ranked.append({
+            **res,
+            "domain": domain,
+            "confidence": max(0, min(100, score)),
+        })
+
+    ranked.sort(key=lambda item: (item.get("confidence", 0), item.get("domain", "")), reverse=True)
+    return ranked
 
 
 def build_research_web_query(question: str) -> str:
@@ -135,7 +242,7 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
 
     print(f"  [Web Search] DuckDuckGo: '{refined_query[:80]}'")
 
-    results = []
+    raw_results = []
     last_error = None
 
     # v6.0: Retry loop with exponential backoff
@@ -155,16 +262,17 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
                 url     = r.get("href", r.get("link", "")).strip()
                 if title and snippet:
                     domain = _extract_domain(url)
-                    results.append({
+                    raw_results.append({
                         "title":       title,
                         "snippet":     snippet,
                         "url":         url,
                         "domain":      domain,
                         "favicon_url": _favicon_url(domain),
                         "confidence":  _result_confidence(rank, total),
+                        "date":        r.get("date") or r.get("published"),
                     })
 
-            print(f"  [Web Search OK] {len(results)} results for: '{query[:50]}'")
+            print(f"  [Web Search OK] {len(raw_results)} results for: '{query[:50]}'")
             break   # Success — exit retry loop
 
         except Exception as e:
@@ -179,9 +287,11 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
                     # Non-rate-limit errors are unlikely to succeed on retry
                     break
 
-    if not results:
+    if not raw_results:
         print(f"  [Web Search] All attempts failed — returning empty results")
         return []
+
+    results = _rank_web_results(query, raw_results)[:max_results]
 
     # Thread-safe cache write
     with _cache_lock:
@@ -204,8 +314,11 @@ def format_web_context(web_results: list[dict], max_snippet_len: int = 350) -> s
         if len(snippet) > max_snippet_len:
             snippet = snippet[:max_snippet_len] + "..."
         url     = res.get("url", "")
+        domain  = res.get("domain", "")
+        confidence = res.get("confidence", 0)
+        published = res.get("date") or res.get("published") or ""
         blocks.append(
-            f'<web_source index="{i+1}" title="{title}" url="{url}">\n{snippet}\n</web_source>'
+            f'<web_source index="{i+1}" title="{title}" domain="{domain}" confidence="{confidence}" published="{published}" url="{url}">\n{snippet}\n</web_source>'
         )
 
     return "\n\n".join(blocks)
