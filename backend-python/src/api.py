@@ -46,6 +46,7 @@ except ImportError:
 from src.rag_pipeline import (
     answer,
     build_fused_prompt,
+    build_shopping_prompt,
     build_current_time_response,
     check_guardrails,
     filter_chunks_by_threshold,
@@ -234,6 +235,10 @@ _DEEP_RESEARCH_HINTS = re.compile(
 def _should_use_deep_research(question: str, history: Optional[list[HistoryMessage]] = None, research_mode: str = "quick") -> bool:
     """Promote broad, current, or multi-part questions into the deep-research path."""
     if detect_time_intent(question):
+        return False
+
+    intent = classify_query_intent(question)
+    if intent in {"chat", "coaching", "opinion", "shopping"}:
         return False
 
     if research_mode == "deep":
@@ -534,6 +539,65 @@ async def stream_query(request: QueryRequest):
 
             # Emit intent badge right away — frontend shows it immediately
             yield await yield_event(f"data: {json.dumps({'intent': intent, 'intent_info': intent_info, 'language': language})}\n\n")
+
+            if intent == "shopping":
+                print("  [Stream] Shopping fast-path triggered (web-only comparison)")
+                yield await yield_event(f"data: {json.dumps({'status_text': '🛒 Comparing products...'})}\n\n")
+
+                search_query = enrich_query(request.question, history)
+                loop = asyncio.get_event_loop()
+
+                async def do_web_shopping():
+                    if not rag.WEB_ALWAYS_ON:
+                        return []
+                    try:
+                        return await loop.run_in_executor(rag._executor, perform_web_search, search_query, rag.MAX_WEB_RESULTS)
+                    except Exception as e:
+                        print(f"Web shopping search error: {e}")
+                        return []
+
+                web_results = await do_web_shopping()
+                print(f"  [Stream] Shopping web results collected: {len(web_results)}")
+
+                yield await yield_event(f"data: {json.dumps({'status_text': '⚡ Synthesizing comparison table...'})}\n\n")
+
+                sys_c, usr_c = build_shopping_prompt(
+                    request.question,
+                    web_results,
+                    history=history,
+                    answer_style=style_name,
+                )
+
+                if language == "ur":
+                    sys_c += "\n\nCRITICAL DIRECTIVE: The user is speaking Urdu. You MUST reply completely in native Urdu language (using Urdu script)."
+
+                client = _get_async_groq()
+                groq_stream = await client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=[
+                        {"role": "system", "content": sys_c},
+                        {"role": "user",   "content": usr_c},
+                    ],
+                    temperature=rag.LLM_TEMPERATURE,
+                    max_tokens=style["max_tokens"],
+                    stream=True,
+                )
+
+                shopping_token_count = 0
+                async for chunk in groq_stream:
+                    token = chunk.choices[0].delta.content or ""
+                    if token:
+                        shopping_token_count += 1
+                        yield await yield_event(f"data: {json.dumps({'token': token})}\n\n")
+
+                if shopping_token_count == 0:
+                    yield await yield_event(f"data: {json.dumps({'token': 'I could not verify live product data, so I cannot confidently rank these options.'})}\n\n")
+
+                web_sources = [r["url"] for r in web_results if r.get("url")]
+                web_titles  = [r["title"] for r in web_results if r.get("title")]
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': [], 'is_web_fallback': True, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language})}\n\n")
+                _query_cache.put(cache_key, events_to_cache)
+                return
 
             # ── Fast-path for chat intent ──────────────────────────────────────────────
             if intent == "chat" and style_name == "conversational":

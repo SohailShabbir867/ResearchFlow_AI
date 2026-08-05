@@ -42,6 +42,20 @@ _TRUSTED_DOMAINS = {
     "reuters.com", "apnews.com", "bbc.com",
 }
 
+_AUTHORITATIVE_HINTS = (
+    "official",
+    "research",
+    "study",
+    "report",
+    "guideline",
+    "documentation",
+    "docs",
+    "paper",
+    "publication",
+    "statistics",
+    "data",
+)
+
 
 def _cache_key(query: str) -> str:
     return hashlib.md5(query.strip().lower().encode("utf-8")).hexdigest()
@@ -122,6 +136,38 @@ def _keyword_overlap_bonus(query: str, title: str, snippet: str) -> int:
     return 0
 
 
+def _query_variants(query: str) -> list[str]:
+    """Create a small set of high-signal query variants for better coverage."""
+    q = query.strip()
+    if not q:
+        return []
+
+    variants = [q]
+    lowered = q.lower()
+
+    if any(marker in lowered for marker in _AUTHORITATIVE_HINTS):
+        variants.append(f"{q} official source")
+
+    if any(marker in lowered for marker in ["latest", "recent", "current", "today", "update", "news"]):
+        variants.append(f"{q} latest official updates")
+
+    if any(marker in lowered for marker in ["buy", "purchase", "price", "pricing", "budget", "compare", "comparison"]):
+        variants.append(f"{q} specifications pricing review")
+
+    if len(q.split()) > 8:
+        # Shorter semantic variant often returns cleaner sources.
+        variants.append(" ".join(q.split()[:8]))
+
+    deduped = []
+    seen = set()
+    for variant in variants:
+        normalized = variant.strip().lower()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            deduped.append(variant)
+    return deduped[:3]
+
+
 def _freshness_bonus(published_at, is_news: bool) -> int:
     """Prefer recent sources when the query asks for current information."""
     if not published_at:
@@ -174,6 +220,23 @@ def _rank_web_results(query: str, raw_results: list[dict]) -> list[dict]:
 
     ranked.sort(key=lambda item: (item.get("confidence", 0), item.get("domain", "")), reverse=True)
     return ranked
+
+
+def _merge_ranked_results(query: str, ranked_sets: list[list[dict]], max_results: int) -> list[dict]:
+    """Merge multiple ranked result sets while keeping the highest-confidence copy of each URL."""
+    merged = {}
+    for result_set in ranked_sets:
+        for rank, item in enumerate(result_set):
+            url = item.get("url")
+            if not url:
+                continue
+            current = merged.get(url)
+            if current is None or item.get("confidence", 0) > current.get("confidence", 0):
+                merged[url] = item
+
+    results = list(merged.values())
+    results = _rank_web_results(query, results)
+    return results[:max_results]
 
 
 def build_research_web_query(question: str) -> str:
@@ -240,58 +303,64 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
                 print(f"  [Web Cache Hit] '{query[:40]}' ({len(entry['results'])} results)")
                 return entry["results"]
 
-    print(f"  [Web Search] DuckDuckGo: '{refined_query[:80]}'")
+    query_variants = _query_variants(refined_query)
+    print(f"  [Web Search] DuckDuckGo variants: {len(query_variants)} query(ies)")
 
-    raw_results = []
+    ranked_sets = []
     last_error = None
 
     # v6.0: Retry loop with exponential backoff
-    for attempt in range(3):
-        try:
-            if attempt > 0:
-                wait = 2 ** attempt   # 2s, 4s
-                print(f"  [Web Search] Retry {attempt}/2 after {wait}s (last error: {last_error})")
-                time.sleep(wait)
+    for variant in query_variants:
+        variant_results = []
+        for attempt in range(3):
+            try:
+                if attempt > 0:
+                    wait = 2 ** attempt   # 2s, 4s
+                    print(f"  [Web Search] Retry {attempt}/2 after {wait}s (last error: {last_error})")
+                    time.sleep(wait)
 
-            ddgs = DDGS()   # Fresh instance on each attempt
-            raw = list(ddgs.text(refined_query, max_results=max_results))
-            total = len(raw)
-            for rank, r in enumerate(raw):
-                title   = r.get("title", "").strip()
-                snippet = r.get("body", r.get("snippet", "")).strip()
-                url     = r.get("href", r.get("link", "")).strip()
-                if title and snippet:
-                    domain = _extract_domain(url)
-                    raw_results.append({
-                        "title":       title,
-                        "snippet":     snippet,
-                        "url":         url,
-                        "domain":      domain,
-                        "favicon_url": _favicon_url(domain),
-                        "confidence":  _result_confidence(rank, total),
-                        "date":        r.get("date") or r.get("published"),
-                    })
+                ddgs = DDGS()   # Fresh instance on each attempt
+                raw = list(ddgs.text(variant, max_results=max_results * 2))
+                total = len(raw)
+                for rank, r in enumerate(raw):
+                    title   = (r.get("title") or "").strip()
+                    snippet = (r.get("body", r.get("snippet", "")) or "").strip()
+                    url     = (r.get("href", r.get("link", "")) or "").strip()
+                    if title and snippet and url:
+                        domain = _extract_domain(url)
+                        variant_results.append({
+                            "title":       title,
+                            "snippet":     snippet,
+                            "url":         url,
+                            "domain":      domain,
+                            "favicon_url": _favicon_url(domain),
+                            "confidence":  _result_confidence(rank, total),
+                            "date":        r.get("date") or r.get("published"),
+                        })
 
-            print(f"  [Web Search OK] {len(raw_results)} results for: '{query[:50]}'")
-            break   # Success — exit retry loop
+                print(f"  [Web Search OK] {len(variant_results)} raw results for: '{variant[:60]}'")
+                break   # Success — exit retry loop for this variant
 
-        except Exception as e:
-            last_error = str(e)
-            error_lower = last_error.lower()
-            is_rate_limit = "ratelimit" in error_lower or "rate limit" in error_lower or "429" in last_error
-            if is_rate_limit:
-                print(f"  [Web Search] Rate limited (attempt {attempt+1}/3)")
-            else:
-                print(f"  [Web Search Warning] DuckDuckGo error (attempt {attempt+1}/3): {last_error[:120]}")
-                if attempt == 2:
-                    # Non-rate-limit errors are unlikely to succeed on retry
-                    break
+            except Exception as e:
+                last_error = str(e)
+                error_lower = last_error.lower()
+                is_rate_limit = "ratelimit" in error_lower or "rate limit" in error_lower or "429" in last_error
+                if is_rate_limit:
+                    print(f"  [Web Search] Rate limited (attempt {attempt+1}/3)")
+                else:
+                    print(f"  [Web Search Warning] DuckDuckGo error (attempt {attempt+1}/3): {last_error[:120]}")
+                    if attempt == 2:
+                        # Non-rate-limit errors are unlikely to succeed on retry
+                        break
 
-    if not raw_results:
+        if variant_results:
+            ranked_sets.append(_rank_web_results(variant, variant_results))
+
+    if not ranked_sets:
         print(f"  [Web Search] All attempts failed — returning empty results")
         return []
 
-    results = _rank_web_results(query, raw_results)[:max_results]
+    results = _merge_ranked_results(query, ranked_sets, max_results)
 
     # Thread-safe cache write
     with _cache_lock:
@@ -317,8 +386,12 @@ def format_web_context(web_results: list[dict], max_snippet_len: int = 350) -> s
         domain  = res.get("domain", "")
         confidence = res.get("confidence", 0)
         published = res.get("date") or res.get("published") or ""
+        excerpt  = snippet.replace("\n", " ").strip()
         blocks.append(
-            f'<web_source index="{i+1}" title="{title}" domain="{domain}" confidence="{confidence}" published="{published}" url="{url}">\n{snippet}\n</web_source>'
+            f'<web_source index="{i+1}" title="{title}" domain="{domain}" confidence="{confidence}" published="{published}" url="{url}">\n'
+            f'<summary>{excerpt}</summary>\n'
+            f'<use_when>Use this source when the query needs current facts, product details, or authoritative confirmation.</use_when>\n'
+            f'</web_source>'
         )
 
     return "\n\n".join(blocks)

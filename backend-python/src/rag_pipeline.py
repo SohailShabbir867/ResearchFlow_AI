@@ -546,7 +546,7 @@ def build_fused_prompt(
     rag_context = "\n\n".join(context_blocks) if context_blocks else "<document>No local documents indexed yet.</document>"
 
     # ── Web context (kept tight so prompt stays efficient) ────────────────────
-    web_context = format_web_context(web_results, max_snippet_len=220) if web_results else "<web_source>No live web results available.</web_source>"
+    web_context = format_web_context(web_results, max_snippet_len=320) if web_results else "<web_source>No live web results available.</web_source>"
 
     history_xml  = _build_history_xml(history)
     now_str      = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")
@@ -596,7 +596,7 @@ def build_web_prompt(
     if answer_style not in ANSWER_STYLES:
         answer_style = DEFAULT_STYLE
 
-    web_text    = format_web_context(web_results)
+    web_text    = format_web_context(web_results, max_snippet_len=320)
     history_xml = _build_history_xml(history)
     now_str      = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")
     current_year = datetime.now().year
@@ -609,6 +609,48 @@ def build_web_prompt(
 <fusion_directive>
 Synthesize the live web intel above into a direct expert answer. Cite web sources inline as [Web: Title](url).
 </fusion_directive>
+
+<user_query>
+{question}
+</user_query>
+
+<response>"""
+
+    return sys_content, user_content
+
+
+def build_shopping_prompt(
+    question:     str,
+    web_results:  list[dict],
+    history:      list[dict] = None,
+    answer_style: str = None,
+) -> tuple[str, str]:
+    """
+    Build a shopping/comparison prompt that prioritizes a comparison table and
+    concise buyer guidance.
+    """
+    if answer_style not in ANSWER_STYLES:
+        answer_style = DEFAULT_STYLE
+
+    web_text    = format_web_context(web_results, max_snippet_len=320)
+    history_xml = _build_history_xml(history)
+    now_str     = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")
+    current_year = datetime.now().year
+
+    sys_content = _build_system_prompt(answer_style, now_str, current_year)
+    user_content = f"""{history_xml}<shopping_results>
+{web_text}
+</shopping_results>
+
+<shopping_directive>
+Answer like a buyer's guide, not a generic assistant.
+- Start with a comparison table.
+- Use columns: Item, Price, Key features, Best for, Verdict.
+- Keep prices in one currency and do not guess missing prices.
+- Then add a one-line recommendation by budget or use case.
+- Finish with 2-3 short buying tips.
+- Keep it scannable and avoid long essays.
+</shopping_directive>
 
 <user_query>
 {question}
@@ -726,6 +768,53 @@ def answer(
 
     style   = ANSWER_STYLES[answer_style]
     t_start = time.time()
+
+    # ── Fast-path for shopping/comparison intent ─────────────────────────────
+    if intent == "shopping":
+        print("  [Pipeline] Shopping fast-path triggered (web-only comparison)")
+        search_query = enrich_query(question, history)
+
+        t2 = time.time()
+        web_results = perform_web_search(search_query, MAX_WEB_RESULTS) if WEB_ALWAYS_ON else []
+        t_web = time.time() - t2
+        print(f"  [Web Search] {len(web_results)} results for shopping query (parallel block={round(t_web*1000)}ms total)")
+
+        sys_c, usr_c = build_shopping_prompt(
+            question,
+            web_results,
+            history=history,
+            answer_style=answer_style,
+        )
+
+        t4 = time.time()
+        answer_text = call_groq(sys_c, usr_c, max_tokens=style["max_tokens"])
+        t_llm = time.time() - t4
+
+        web_sources = [r["url"] for r in web_results if r.get("url")]
+        web_titles  = [r["title"] for r in web_results if r.get("title")]
+
+        return {
+            "answer":          answer_text,
+            "sources":         web_titles[:3],
+            "rag_source_details": [],
+            "web_sources":     web_sources,
+            "web_results":     web_results,
+            "is_web_fallback": True,
+            "refused":         False,
+            "intent":          intent,
+            "intent_info":     intent_info,
+            "provider":        "groq",
+            "model":           GROQ_MODEL,
+            "answer_style":    answer_style,
+            "timing": {
+                "embed_ms":      0,
+                "search_ms":     0,
+                "rerank_ms":     0,
+                "web_search_ms": round(t_web * 1000),
+                "llm_ms":        round(t_llm * 1000),
+                "total_ms":      round((time.time() - t_start) * 1000),
+            }
+        }
 
     # ── Fast-path for chat intent ──────────────────────────────────────────────
     if intent == "chat" and answer_style == "conversational":
