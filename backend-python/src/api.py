@@ -46,9 +46,11 @@ except ImportError:
 from src.rag_pipeline import (
     answer,
     build_fused_prompt,
+    build_current_time_response,
     check_guardrails,
     filter_chunks_by_threshold,
     detect_off_document_answer,
+    detect_time_intent,
     enrich_query,
     classify_query_intent,
     source_confidence_score,   # v6.0: module-level import (was wrongly inside generate())
@@ -67,6 +69,17 @@ from src.web_search import perform_web_search
 from src.hybrid_search import hybrid_search
 from src.reranker import rerank
 import src.rag_pipeline as rag
+
+# Council mode should only use supported models. Keep this list short so one
+# failed model does not stall the whole response.
+COUNCIL_MODELS = [
+    os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+    "gemma2-9b-it",
+]
+
+DEPRECATED_MODEL_ALIASES = {
+    "mixtral-8x7b-32768": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+}
 
 load_dotenv()
 
@@ -208,6 +221,53 @@ class OpenAIChatRequest(BaseModel):
     temperature: Optional[float]             = 0.1
     max_tokens:  Optional[int]               = None
     stream:      Optional[bool]              = False
+
+
+_DEEP_RESEARCH_HINTS = re.compile(
+    r"\b(latest|current|recent|breaking|today|this week|this month|compare|comparison|"
+    r"trend|trends|overview|survey|analysis|report|new developments|state of|roadmap|"
+    r"what changed|how has|global|worldwide|across|multi[- ]?part|in depth|deep dive)\b",
+    re.IGNORECASE,
+)
+
+
+def _should_use_deep_research(question: str, history: Optional[list[HistoryMessage]] = None, research_mode: str = "quick") -> bool:
+    """Promote broad, current, or multi-part questions into the deep-research path."""
+    if detect_time_intent(question):
+        return False
+
+    if research_mode == "deep":
+        return True
+
+    q = (question or "").strip()
+    if not q:
+        return False
+
+    words = q.split()
+    if len(words) >= 18:
+        return True
+
+    if _DEEP_RESEARCH_HINTS.search(q):
+        return True
+
+    clauses = len(re.findall(r"[;,]|\band\b|\bor\b|\bversus\b|\bvs\b", q, re.IGNORECASE))
+    if clauses >= 2 and len(words) >= 10:
+        return True
+
+    if history and len(history) >= 3 and len(words) >= 12:
+        return True
+
+    return False
+
+
+def _normalize_requested_model(model_name: Optional[str]) -> str:
+    """Map retired or empty model names to a currently supported model."""
+    if not model_name:
+        return GROQ_MODEL
+    normalized = DEPRECATED_MODEL_ALIASES.get(model_name, model_name)
+    if normalized == "council":
+        return "council"
+    return normalized
 
 
 
@@ -370,6 +430,9 @@ async def stream_query(request: QueryRequest):
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
+    if detect_time_intent(request.question):
+        return StreamingResponse(_stream_local_time_response(request.question), media_type="text/event-stream")
+
     if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
         raise HTTPException(
             status_code=503,
@@ -377,12 +440,19 @@ async def stream_query(request: QueryRequest):
         )
 
     style_name = request.answer_style if request.answer_style in ANSWER_STYLES else None
+    request_model = _normalize_requested_model(request.model)
     history = None
     if request.history:
         history = [{"role": m.role, "text": m.text} for m in request.history]
 
+    use_deep_research = _should_use_deep_research(
+        request.question,
+        history=history,
+        research_mode=request.research_mode or "quick",
+    )
+
     # Generate a cache key
-    cache_key_raw = f"{request.question}_{style_name}_{request.research_mode}_{json.dumps(history)}"
+    cache_key_raw = f"{request.question}_{style_name}_{request_model}_{'deep' if use_deep_research else request.research_mode}_{json.dumps(history)}"
     cache_key = hashlib.md5(cache_key_raw.encode()).hexdigest()
 
     # Check cache for Quick Search mode
@@ -461,7 +531,7 @@ async def stream_query(request: QueryRequest):
                 return
 
             # ── Deep Research Mode ───────────────────────────────────────────────────
-            if request.research_mode == "deep":
+            if use_deep_research:
                 from src.deep_research import perform_deep_research
                 await perform_deep_research(
                     request=request, 
@@ -575,8 +645,8 @@ async def stream_query(request: QueryRequest):
 
             related_task = asyncio.create_task(fetch_related_questions())
 
-            is_council = (request.model == "council")
-            target_models = ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"] if is_council else [request.model or GROQ_MODEL]
+            is_council = (request_model == "council")
+            target_models = COUNCIL_MODELS if is_council else [request_model]
             
             full_response = ""
             
@@ -640,11 +710,13 @@ async def stream_query(request: QueryRequest):
             # Consume from queue
             active_producers = len(target_models)
             count = 0
+            tokens_emitted = 0
             while active_producers > 0:
                 item = await queue.get()
                 if "_done" in item:
                     active_producers -= 1
                 else:
+                    tokens_emitted += 1
                     if not is_council:
                         full_response += item['token']
                         payload = {'token': item['token']}
@@ -656,6 +728,24 @@ async def stream_query(request: QueryRequest):
                     count += 1
                     if count % 20 == 0:
                         await asyncio.sleep(0)
+
+            if is_council and tokens_emitted == 0:
+                print("  [Council] No streamed tokens received, falling back to single-model synthesis")
+                fallback_stream = await client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=[
+                        {"role": "system", "content": sys_c},
+                        {"role": "user",   "content": usr_c},
+                    ],
+                    temperature=rag.LLM_TEMPERATURE,
+                    max_tokens=effective_max_tokens,
+                    stream=True,
+                )
+                async for fallback_chunk in fallback_stream:
+                    fallback_token = fallback_chunk.choices[0].delta.content or ""
+                    if fallback_token:
+                        full_response += fallback_token
+                        yield await yield_event(f"data: {json.dumps({'token': fallback_token})}\n\n")
 
 
             # ── Step 9: Layer 3 — off-document detection ──────────────────────
@@ -730,6 +820,17 @@ async def stream_query(request: QueryRequest):
             yield f"data: {json.dumps({'error': friendly})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+async def _stream_local_time_response(question: str):
+    """Emit a fast SSE response for current date/time queries without hitting RAG or web search."""
+    payload = build_current_time_response(question)
+    yield f"data: {json.dumps({'status_text': '🕒 Answering with local server time...'})}\n\n"
+    yield f"data: {json.dumps({'intent': 'general', 'intent_info': INTENT_META['general'], 'language': 'en'})}\n\n"
+    for line in payload["answer"].splitlines():
+        if line:
+            yield f"data: {json.dumps({'token': line + '\n'})}\n\n"
+    yield f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'rag_source_details': [], 'is_web_fallback': False, 'refused': False, 'intent': 'general', 'intent_info': INTENT_META['general'], 'language': 'en', 'related_questions': []})}\n\n"
 
 
 # ─── Upload ───────────────────────────────────────────────────────────────────

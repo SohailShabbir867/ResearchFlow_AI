@@ -1633,7 +1633,6 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                   }}
                 >
                   <option value="llama-3.3-70b-versatile">Llama 3.3 (70B)</option>
-                  <option value="mixtral-8x7b-32768">Mixtral (8x7B)</option>
                   <option value="gemma2-9b-it">Gemma 2 (9B)</option>
                   <option value="council">Council Mode (Compare)</option>
                 </select>

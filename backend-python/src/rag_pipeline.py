@@ -174,10 +174,59 @@ _CHAT_RE = re.compile(
     re.IGNORECASE
 )
 
+_TIME_QUERY_RE = re.compile(
+    r'\b(current\s+)?(date|time|date\s+and\s+time|day\s+is\s+it|what\s+day\s+is\s+it|'
+    r'what\s+time\s+is\s+it|today(?:\'s)?\s+date|current\s+timestamp|right\s+now)\b',
+    re.IGNORECASE,
+)
+
 
 def detect_programming_intent(question: str) -> bool:
     """Return True if the query is asking for programming, code, or script generation."""
     return bool(_CODE_KEYWORDS_RE.search(question))
+
+
+def detect_time_intent(question: str) -> bool:
+    """Return True if the query is asking for the current date/time or a live timestamp."""
+    q = (question or "").strip().lower()
+    if not q:
+        return False
+    if _TIME_QUERY_RE.search(q):
+        return True
+    time_markers = ["current date and time", "current time", "current date", "today's date", "what day is it", "what time is it"]
+    return any(marker in q for marker in time_markers)
+
+
+def build_current_time_response(question: str) -> dict:
+    """Return a local, non-RAG answer for current date/time questions."""
+    now = datetime.now().astimezone()
+    answer_text = (
+        f"Current local date and time: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}\n\n"
+        f"Full timestamp: {now.isoformat(timespec='seconds')}"
+    )
+    return {
+        "answer": answer_text,
+        "sources": [],
+        "rag_source_details": [],
+        "web_sources": [],
+        "web_results": [],
+        "is_web_fallback": False,
+        "refused": False,
+        "intent": "general",
+        "intent_info": INTENT_META["general"],
+        "provider": "system",
+        "model": "local-time",
+        "answer_style": "conversational",
+        "question": question,
+        "timing": {
+            "embed_ms": 0,
+            "search_ms": 0,
+            "rerank_ms": 0,
+            "web_search_ms": 0,
+            "llm_ms": 0,
+            "total_ms": 0,
+        },
+    }
 
 
 DEFAULT_STYLE     = "technical"
@@ -618,6 +667,10 @@ def answer(
         history:      Previous conversation turns [{role, text}, ...]
         answer_style: "short" | "technical" | "detailed" | "case_study"
     """
+    if detect_time_intent(question):
+        print("  [Intent] time/date query detected → local timestamp fast path")
+        return build_current_time_response(question)
+
     # ── Bug 10 Fix: Validate API key FIRST before any expensive steps ─────────
     if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
         raise Exception("GROQ_API_KEY not set in .env — update backend-python/.env with your Groq key")

@@ -410,7 +410,7 @@ export default function SystemSettings() {
                 >
                   <option value="llama-3.3-70b-versatile">Groq LLaMA 3.3 70B Versatile</option>
                   <option value="llama-3.1-8b-instant">Groq LLaMA 3.1 8B Instant</option>
-                  <option value="mixtral-8x7b-32768">Groq Mixtral 8x7B 32k</option>
+                  <option value="gemma2-9b-it">Groq Gemma 2 9B</option>
                 </select>
               </div>
 
