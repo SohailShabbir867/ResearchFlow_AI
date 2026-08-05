@@ -11,7 +11,7 @@ New: Enriched result metadata
   - favicon_url: constructed Google favicon CDN URL for frontend display
   - confidence: estimated relevance (0–100) based on result position
 
-Uses DuckDuckGo Search (DDGS) to retrieve live web intelligence that is
+Uses DuckDuckGo Search (dags) to retrieve live web intelligence that is
 ALWAYS combined with local RAG results — not just used as a fallback.
 """
 import re

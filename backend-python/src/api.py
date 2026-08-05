@@ -28,6 +28,7 @@ import asyncio
 import hashlib
 import re
 from collections import OrderedDict
+from datetime import datetime
 
 # ── Module-level imports (v6.0: AsyncGroq replaces sync Groq — never blocks event loop) ──
 from groq import AsyncGroq

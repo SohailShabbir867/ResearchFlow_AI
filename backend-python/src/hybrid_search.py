@@ -24,7 +24,7 @@ except ImportError:
     def load_dotenv(*args, **kwargs):
         return False
 from rank_bm25 import BM25Okapi
-from src.vector_store import search as vector_search, get_client
+import src.vector_store as vector_store
 
 load_dotenv()
 
@@ -118,7 +118,7 @@ def _build_bm25_index():
         _bm25_ready.clear()
 
     try:
-        client = get_client()
+        client = vector_store.get_client()
         all_chunks = []
         offset = None
 
@@ -263,8 +263,8 @@ def hybrid_search(query_vector: list[float], query_text: str, top_k: int = None)
     if top_k is None:
         top_k = HYBRID_CANDIDATE_COUNT
 
-    # 1. Vector search
-    vector_results = vector_search(query_vector, top_k=top_k)
+    # 1. Vector search (call through vector_store so callers can monkeypatch at runtime)
+    vector_results = vector_store.search(query_vector, top_k=top_k)
     for r in vector_results:
         r["method"] = "vector"
 
