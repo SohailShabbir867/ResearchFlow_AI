@@ -1634,11 +1634,24 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                 >
                   <option value="llama-3.3-70b-versatile">Llama 3.3 (70B)</option>
                   <option value="gemma2-9b-it">Gemma 2 (9B)</option>
+                  <option value="gemini-mini">Gemini Mini (gemini-mini)</option>
+                  <option value="gemini-1.0">Gemini 1.0</option>
+                  <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
                   <option value="council">Council Mode (Compare)</option>
                 </select>
               </div>
               <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                Groq LLaMA 3.3 70B · Hybrid Search · Live RAG
+                {(() => {
+                  const map = {
+                    'llama-3.3-70b-versatile': 'Groq LLaMA 3.3 70B',
+                    'gemma2-9b-it': 'Groq Gemma 2 (9B)',
+                    'gemini-mini': 'Google Gemini Mini',
+                    'gemini-1.0': 'Google Gemini 1.0',
+                    'gemini-1.5-pro': 'Google Gemini 1.5 Pro',
+                    'council': 'Council Mode',
+                  };
+                  return (map[model] || model) + ' · Hybrid Search · Live RAG';
+                })()}
               </p>
             </div>
           </div>
