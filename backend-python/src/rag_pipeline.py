@@ -65,6 +65,12 @@ GROQ_MODEL      = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 RERANKER_TOP_K  = int(os.getenv("RERANKER_TOP_K", "8"))
 LLM_TEMPERATURE = 0.05   # Low temperature = sharp, reproducible technical answers
 
+# LLM provider selection (supports 'groq' or 'gemini')
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL   = os.getenv("GEMINI_MODEL", "gemini-mini")
+GEMINI_ENDPOINT = os.getenv("GEMINI_ENDPOINT", "https://generative.googleapis.com/v1beta2/models")
+
 # ─── Singleton Groq client (Bug 1 Fix) ────────────────────────────────────────
 # Created once at module load; reused across ALL requests.
 # Only initialized when GROQ_API_KEY is available.
@@ -719,6 +725,78 @@ def call_groq(
     raise Exception("Groq API failed after retries")
 
 
+def call_gemini(
+    system_content: str,
+    user_content:   str,
+    max_tokens:     int = 1024,
+    max_retries:    int = 3,
+) -> str:
+    """
+    Minimal Gemini (Generative) API caller.
+
+    Notes:
+    - This is a thin HTTP wrapper. The exact response shape may vary by
+      Google / Gemini SDK versions. This implementation prefers JSON
+      extraction but falls back to the raw response body.
+    - Do NOT commit real API keys to the repo. Use `backend-python/.env`.
+    """
+    try:
+        import requests
+    except Exception:
+        raise Exception("The 'requests' library is required to call Gemini. Install with: pip install requests")
+
+    if not GEMINI_API_KEY:
+        raise Exception("GEMINI_API_KEY not set. Configure backend-python/.env or set LLM_PROVIDER to 'groq'.")
+
+    combined_prompt = system_content + "\n\n" + user_content
+    url = f"{GEMINI_ENDPOINT}/{GEMINI_MODEL}:generate"
+    headers = {
+        "Authorization": f"Bearer {GEMINI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "prompt": combined_prompt,
+        "temperature": float(LLM_TEMPERATURE),
+        "max_output_tokens": int(max_tokens),
+    }
+
+    for attempt in range(max_retries):
+        resp = requests.post(url, headers=headers, json=payload, timeout=30)
+        if resp.status_code == 200:
+            try:
+                data = resp.json()
+                # Common response extraction heuristics
+                if isinstance(data, dict):
+                    if "candidates" in data and data["candidates"]:
+                        return data["candidates"][0].get("content", "").strip()
+                    if "output" in data and isinstance(data["output"], dict):
+                        maybe = data["output"].get("text") or data["output"].get("content")
+                        if maybe:
+                            return maybe.strip()
+                return resp.text.strip()
+            except Exception:
+                return resp.text.strip()
+        else:
+            if resp.status_code in (429, 503) and attempt < max_retries - 1:
+                wait = (attempt + 1) * 2
+                print(f"  [Gemini] rate limited, retrying in {wait}s...")
+                time.sleep(wait)
+                continue
+            raise Exception(f"Gemini API error {resp.status_code}: {resp.text}")
+
+
+def call_llm(
+    system_content: str,
+    user_content:   str,
+    max_tokens:     int = 1024,
+):
+    """Dispatch to the selected LLM provider based on `LLM_PROVIDER` env var."""
+    if LLM_PROVIDER == "gemini":
+        return call_gemini(system_content, user_content, max_tokens=max_tokens)
+    # default to Groq
+    return call_groq(system_content, user_content, max_tokens=max_tokens)
+
+
 def detect_off_document_answer(text: str) -> bool:
     """Layer 3: Detect if the LLM flagged insufficient coverage."""
     return "INSUFFICIENT_DOCUMENT_COVERAGE" in text.upper()
@@ -749,8 +827,18 @@ def answer(
         return build_current_time_response(question)
 
     # ── Bug 10 Fix: Validate API key FIRST before any expensive steps ─────────
-    if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
-        raise Exception("GROQ_API_KEY not set in .env — update backend-python/.env with your Groq key")
+    # Allow selecting provider via LLM_PROVIDER (groq | gemini). Require
+    # the corresponding API key for the selected provider. If no provider
+    # set, require at least one configured key.
+    if LLM_PROVIDER == "groq":
+        if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
+            raise Exception("GROQ_API_KEY not set in .env — update backend-python/.env with your Groq key or set LLM_PROVIDER to 'gemini'")
+    elif LLM_PROVIDER == "gemini":
+        if not GEMINI_API_KEY:
+            raise Exception("GEMINI_API_KEY not set in .env — update backend-python/.env with your Gemini key or set LLM_PROVIDER to 'groq'")
+    else:
+        if not (GROQ_API_KEY or GEMINI_API_KEY):
+            raise Exception("No LLM API key configured. Set GROQ_API_KEY or GEMINI_API_KEY in backend-python/.env")
 
     if top_k is None:
         top_k = RERANKER_TOP_K
@@ -787,7 +875,7 @@ def answer(
         )
 
         t4 = time.time()
-        answer_text = call_groq(sys_c, usr_c, max_tokens=style["max_tokens"])
+        answer_text = call_llm(sys_c, usr_c, max_tokens=style["max_tokens"])
         t_llm = time.time() - t4
 
         web_sources = [r["url"] for r in web_results if r.get("url")]
@@ -824,7 +912,7 @@ def answer(
         sys_c = _build_system_prompt(answer_style, now_str, current_year)
         usr_c = f"{_build_history_xml(history)}<user_query>\n{question}\n</user_query>\n\n<response>"
         t4 = time.time()
-        answer_text = call_groq(sys_c, usr_c, max_tokens=style["max_tokens"])
+        answer_text = call_llm(sys_c, usr_c, max_tokens=style["max_tokens"])
         t_llm = time.time() - t4
         return {
             "answer":             answer_text,
@@ -894,7 +982,7 @@ def answer(
                 question, [], web_results, history=history, answer_style=answer_style
             )
             t4          = time.time()
-            answer_text = call_groq(sys_c, usr_c, max_tokens=style["max_tokens"])
+            answer_text = call_llm(sys_c, usr_c, max_tokens=style["max_tokens"])
             t_llm       = time.time() - t4
 
             web_sources = [r["url"]   for r in web_results if r.get("url")]
@@ -953,7 +1041,7 @@ def answer(
     )
 
     # ── Step 7: Call Groq (system+user split) ────────────────────────────────
-    answer_text = call_groq(sys_c, usr_c, max_tokens=style["max_tokens"])
+    answer_text = call_llm(sys_c, usr_c, max_tokens=style["max_tokens"])
     t_llm       = time.time() - t4
 
     # ── Step 8: Layer 3 — off-document detection ──────────────────────────────
@@ -966,7 +1054,7 @@ def answer(
             question, [], web_results, history=history, answer_style=answer_style
         )
         t4b         = time.time()
-        answer_text = call_groq(sys_c2, usr_c2, max_tokens=style["max_tokens"])
+        answer_text = call_llm(sys_c2, usr_c2, max_tokens=style["max_tokens"])
         t_llm       = time.time() - t4b
 
         web_sources = [r["url"]   for r in web_results if r.get("url")]

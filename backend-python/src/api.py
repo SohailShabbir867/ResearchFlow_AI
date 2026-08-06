@@ -1068,6 +1068,12 @@ def get_settings():
             "threshold": rag.RELEVANCE_THRESHOLD,
             "minChunks": rag.MIN_RELEVANT_CHUNKS,
         },
+        "llm": {
+            "provider": getattr(rag, "LLM_PROVIDER", "groq"),
+            "model": getattr(rag, "GROQ_MODEL", "llama-3.3-70b-versatile"),
+            "geminiModel": getattr(rag, "GEMINI_MODEL", "gemini-mini"),
+            "maxTokens": getattr(rag, "GLOBAL_MAX_TOKENS", 4000),
+        },
         "max_tokens":    getattr(rag, "GLOBAL_MAX_TOKENS", 4000),
         "answer_styles": list(ANSWER_STYLES.keys()),
         "default_style": DEFAULT_STYLE,
@@ -1097,6 +1103,27 @@ def update_settings(update: SettingsUpdate):
         rag.GLOBAL_MAX_TOKENS = int(new_max)
         rag.ANSWER_STYLES["detailed"]["max_tokens"] = int(new_max)
         print(f"  [Runtime] GLOBAL_MAX_TOKENS = {rag.GLOBAL_MAX_TOKENS}")
+
+    # Update LLM provider/model runtime hints if provided
+    if update.llm and isinstance(update.llm, dict):
+        if "provider" in update.llm:
+            try:
+                rag.LLM_PROVIDER = str(update.llm["provider"]).lower()
+                print(f"  [Runtime] LLM_PROVIDER = {rag.LLM_PROVIDER}")
+            except Exception:
+                pass
+        if "geminiModel" in update.llm:
+            try:
+                rag.GEMINI_MODEL = str(update.llm["geminiModel"])
+                print(f"  [Runtime] GEMINI_MODEL = {rag.GEMINI_MODEL}")
+            except Exception:
+                pass
+        if "model" in update.llm:
+            try:
+                rag.GROQ_MODEL = str(update.llm["model"])
+                print(f"  [Runtime] GROQ_MODEL = {rag.GROQ_MODEL}")
+            except Exception:
+                pass
 
     return {
         "status":  "ok",

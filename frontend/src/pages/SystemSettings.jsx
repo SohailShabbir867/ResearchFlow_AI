@@ -44,6 +44,8 @@ export default function SystemSettings() {
 
   // LLM Configuration State
   const [selectedModel, setSelectedModel] = useState("llama-3.3-70b-versatile");
+  const [llmProvider, setLlmProvider] = useState("groq");
+  const [geminiModel, setGeminiModel] = useState("gemini-mini");
   const [maxTokens, setMaxTokens] = useState(2048);
   const [temperature, setTemperature] = useState(0.2);
 
@@ -70,7 +72,9 @@ export default function SystemSettings() {
           if (data.rateLimiting.maxUploadsPerDay !== undefined) setMaxUploadsPerDay(data.rateLimiting.maxUploadsPerDay);
         }
         if (data.llm) {
+          if (data.llm.provider !== undefined) setLlmProvider(data.llm.provider);
           if (data.llm.model !== undefined) setSelectedModel(data.llm.model);
+          if (data.llm.geminiModel !== undefined) setGeminiModel(data.llm.geminiModel);
           if (data.llm.maxTokens !== undefined) setMaxTokens(data.llm.maxTokens);
           if (data.llm.temperature !== undefined) setTemperature(data.llm.temperature);
         }
@@ -90,7 +94,13 @@ export default function SystemSettings() {
       await axios.post("/api/admin/settings", {
         guardrail: { threshold, minChunks, maxChunks, defaultChunks },
         rateLimiting: { maxQueriesPerHour, maxUploadsPerDay },
-        llm: { model: selectedModel, maxTokens, temperature },
+        llm: {
+          provider: llmProvider,
+          model: selectedModel,
+          geminiModel: geminiModel,
+          maxTokens,
+          temperature,
+        },
       });
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
@@ -392,25 +402,22 @@ export default function SystemSettings() {
                   LLM Configuration
                 </h2>
                 <p className="text-xs text-gray-400">
-                  Select Groq model weights, response lengths, and generation temperature
-                </p>
+                    Select LLM provider, model, response lengths, and generation temperature
+                  </p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
-              {/* Groq Model Dropdown */}
+              {/* Provider Selector */}
               <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-                  Groq Model
-                </label>
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5">LLM Provider</label>
                 <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
+                  value={llmProvider}
+                  onChange={(e) => setLlmProvider(e.target.value)}
                   className="w-full h-11 px-4 text-sm text-white bg-[#1A1230] border border-white/10 rounded-xl outline-none focus:border-[#E21B70] transition-all cursor-pointer"
                 >
-                  <option value="llama-3.3-70b-versatile">Groq LLaMA 3.3 70B Versatile</option>
-                  <option value="llama-3.1-8b-instant">Groq LLaMA 3.1 8B Instant</option>
-                  <option value="gemma2-9b-it">Groq Gemma 2 9B</option>
+                  <option value="groq">Groq</option>
+                  <option value="gemini">Gemini (Google)</option>
                 </select>
               </div>
 
@@ -426,6 +433,40 @@ export default function SystemSettings() {
                   className="w-full h-11 px-4 text-sm text-white bg-white/5 border border-white/10 rounded-xl outline-none focus:border-[#E21B70] transition-all"
                 />
               </div>
+            </div>
+
+            {/* Model selection row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
+              {llmProvider === "groq" ? (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">Groq Model</label>
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="w-full h-11 px-4 text-sm text-white bg-[#1A1230] border border-white/10 rounded-xl outline-none focus:border-[#E21B70] transition-all cursor-pointer"
+                  >
+                    <option value="llama-3.3-70b-versatile">Groq LLaMA 3.3 70B Versatile</option>
+                    <option value="llama-3.1-8b-instant">Groq LLaMA 3.1 8B Instant</option>
+                    <option value="gemma2-9b-it">Groq Gemma 2 9B</option>
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">Gemini Model</label>
+                  <select
+                    value={geminiModel}
+                    onChange={(e) => setGeminiModel(e.target.value)}
+                    className="w-full h-11 px-4 text-sm text-white bg-[#1A1230] border border-white/10 rounded-xl outline-none focus:border-[#E21B70] transition-all cursor-pointer"
+                  >
+                    <option value="gemini-mini">gemini-mini (free tier)</option>
+                    <option value="gemini-1.0">gemini-1.0</option>
+                    <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Temperature Placeholder column (keeps layout) */}
+              <div />
             </div>
 
             {/* Temperature Slider */}

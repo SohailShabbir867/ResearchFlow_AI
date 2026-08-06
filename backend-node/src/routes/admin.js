@@ -424,7 +424,7 @@ router.get("/settings", async (req, res) => {
     const defaults = {
       guardrail:    { threshold: -2.0, minChunks: 2 },
       rateLimiting: { maxQueriesPerHour: 100, maxUploadsPerDay: 20 },
-      llm:          { model: "llama-3.3-70b-versatile", maxTokens: 1024, temperature: 0.2 },
+      llm:          { provider: "groq", model: "llama-3.3-70b-versatile", geminiModel: "gemini-mini", maxTokens: 1024, temperature: 0.2 },
     };
     const result = saved ? saved.data : defaults;
 

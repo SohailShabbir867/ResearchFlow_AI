@@ -30,6 +30,10 @@ Key files:
 - backend-node/src/models/             — Mongoose models (Chat, QueryLog, User)
 - frontend/src/pages/Research.jsx      — main chat UI, streams SSE
 
+Note: The RAG backend can switch LLM providers via the `LLM_PROVIDER` env var
+(`groq` or `gemini`). Configure keys in `backend-python/.env` (see
+`backend-python/.env.example`) and never commit real API keys to git.
+
 Constraints:
 - Do NOT break the existing streaming UX or the 3-layer guardrails.
 - Match existing code style (the repo uses inline CSS vars + Tailwind utilities).
