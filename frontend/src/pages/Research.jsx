@@ -1632,11 +1632,18 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                     borderColor: "var(--border-color)",
                   }}
                 >
-                  <option value="llama-3.3-70b-versatile">⚡ LLaMA 3.3 (70B) — Best</option>
-                  <option value="llama-3.1-8b-instant">🚀 LLaMA 3.1 (8B) — Fastest</option>
-                  <option value="gemma2-9b-it">🌟 Gemma 2 (9B) — Google</option>
-                  <option value="llama-3.1-70b-versatile">🔬 LLaMA 3.1 (70B) — Research</option>
-                  <option value="council">🏛️ Council Mode — Multi-Model</option>
+                  <optgroup label="⚡ Groq Models (Fastest)">
+                    <option value="llama-3.3-70b-versatile">⚡ LLaMA 3.3 (70B) — Best</option>
+                    <option value="llama-3.1-8b-instant">🚀 LLaMA 3.1 (8B) — Fastest</option>
+                    <option value="gemma2-9b-it">🌟 Gemma 2 (9B) — Google</option>
+                    <option value="llama-3.1-70b-versatile">🔬 LLaMA 3.1 (70B) — Research</option>
+                    <option value="council">🏛️ Council Mode — Multi-Model</option>
+                  </optgroup>
+                  <optgroup label="🤖 Gemini Models (Google AI)">
+                    <option value="gemini-2.0-flash">🔵 Gemini 2.0 Flash — Free Tier</option>
+                    <option value="gemini-1.5-flash">🔵 Gemini 1.5 Flash — Free Tier</option>
+                    <option value="gemini-1.5-pro">🔵 Gemini 1.5 Pro — Free (50/day)</option>
+                  </optgroup>
                 </select>
               </div>
               <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
@@ -1647,6 +1654,9 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                     'gemma2-9b-it': 'Google Gemma 2 9B via Groq · Efficient',
                     'llama-3.1-70b-versatile': 'Groq LLaMA 3.1 70B · Deep research',
                     'council': 'Council Mode · LLaMA + Gemma2 in parallel',
+                    'gemini-2.0-flash': 'Google Gemini 2.0 Flash · Free 1500/day',
+                    'gemini-1.5-flash': 'Google Gemini 1.5 Flash · Free 1500/day',
+                    'gemini-1.5-pro': 'Google Gemini 1.5 Pro · Free 50/day',
                   };
                   return (map[model] || model) + ' · Hybrid RAG + Live Web';
                 })()}

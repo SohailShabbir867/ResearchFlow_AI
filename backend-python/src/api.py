@@ -72,7 +72,7 @@ from src.reranker import rerank
 import src.rag_pipeline as rag
 
 # ── Supported Groq models (validated allowlist — prevents silent fallbacks) ──
-# Any model NOT in this set will be remapped to GROQ_MODEL with a warning.
+# Gemini models are handled separately via the Gemini API client.
 SUPPORTED_GROQ_MODELS = {
     "llama-3.3-70b-versatile",
     "llama-3.1-70b-versatile",
@@ -84,34 +84,39 @@ SUPPORTED_GROQ_MODELS = {
     "council",    # special multi-model mode
 }
 
+# Gemini models available on the FREE tier of Google AI Studio
+# Get a free key at: https://aistudio.google.com/app/apikey
+SUPPORTED_GEMINI_MODELS = {
+    "gemini-2.0-flash",           # Best free-tier model (2026)
+    "gemini-1.5-flash",           # Fast, generous free limits
+    "gemini-1.5-flash-8b",        # Smallest, fastest free model
+    "gemini-1.5-pro",             # Most capable (50 req/day free)
+    "gemini-2.0-flash-lite",      # Ultra-fast, lightweight
+}
+
 # Council mode runs these two models in parallel and interleaves their tokens.
-# Both are confirmed active Groq models as of 2026.
 COUNCIL_MODELS = [
     os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
     "gemma2-9b-it",
 ]
 
-# ── Deprecated / alias map ────────────────────────────────────────────────────
-# Maps retired Groq models AND incorrect Gemini names to a live Groq equivalent.
-# This surfaces a clear console warning so developers know a redirect happened.
+# ── Deprecated / alias map (Groq-only) ────────────────────────────────────────────
 DEPRECATED_MODEL_ALIASES = {
-    # Retired Groq models
-    "mixtral-8x7b-32768":      os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-    "llama2-70b-4096":         os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-    # Gemini names — these do NOT exist on Groq; map to the best Groq equivalent.
-    # If you add real Gemini integration later, remove these aliases.
-    "gemini-mini":             "gemma2-9b-it",   # Google family → Gemma2 via Groq
-    "gemini-1.0":              "gemma2-9b-it",
-    "gemini-1.5-pro":          "llama-3.3-70b-versatile",
-    "gemini-1.5-flash":        "llama-3.1-8b-instant",
-    "gemini-2.0-flash":        "llama-3.3-70b-versatile",
+    "mixtral-8x7b-32768":  os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+    "llama2-70b-4096":     os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+    # Old/wrong Gemini names from before real integration was added
+    "gemini-mini":         "gemini-2.0-flash",   # redirect old alias to real model
+    "gemini-1.0":          "gemini-1.5-flash",
+    "gemini-1.0-pro":      "gemini-1.5-pro",
 }
 
 load_dotenv()
 
-DOCS_FOLDER  = os.path.join(os.path.dirname(__file__), "../data/documents")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL   = os.getenv("GROQ_MODEL",   "llama-3.3-70b-versatile")
+DOCS_FOLDER   = os.path.join(os.path.dirname(__file__), "../data/documents")
+GROQ_API_KEY  = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL    = os.getenv("GROQ_MODEL",   "llama-3.3-70b-versatile")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
 app = FastAPI(
     title="ResearchFlow AI — Expert RAG Service",
@@ -145,9 +150,7 @@ class QueryCache:
 # Store full SSE text for repeat queries (TTFT < 50ms)
 _query_cache = QueryCache(capacity=100)
 
-# ─── AsyncGroq singleton (v6.0) — one async client reused across all requests ──
-# AsyncGroq is non-blocking: awaiting it yields control to asyncio event loop
-# between token chunks, allowing FastAPI to serve other requests concurrently.
+# ─── AsyncGroq singleton ─────────────────────────────────────────────────────
 _async_groq: AsyncGroq = None
 
 def _get_async_groq() -> AsyncGroq:
@@ -157,6 +160,46 @@ def _get_async_groq() -> AsyncGroq:
         _async_groq = AsyncGroq(api_key=GROQ_API_KEY)
         print("  [AsyncGroq] Singleton initialized.")
     return _async_groq
+
+
+# ─── Gemini async client (google-generativeai) ────────────────────────────────
+# Uses the official Google Generative AI Python SDK.
+# Free tier: https://aistudio.google.com/app/apikey
+#   gemini-2.0-flash  — 15 RPM, 1M TPM, 1500 RPD  (best free option)
+#   gemini-1.5-flash  — 15 RPM, 1M TPM, 1500 RPD
+#   gemini-1.5-pro    — 2  RPM,  32K TPM,  50 RPD
+_gemini_client = None
+_gemini_available = False
+
+def _get_gemini_client():
+    """Lazy-load and return the Gemini GenerativeModel client."""
+    global _gemini_client, _gemini_available
+    if _gemini_client is not None:
+        return _gemini_client
+    if not GEMINI_API_KEY:
+        raise RuntimeError(
+            "GEMINI_API_KEY is not set. "
+            "Get a free key at https://aistudio.google.com/app/apikey "
+            "and add GEMINI_API_KEY=your_key to backend-python/.env"
+        )
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+        _gemini_client = genai
+        _gemini_available = True
+        print("  [Gemini] Client initialized.")
+        return _gemini_client
+    except ImportError:
+        raise RuntimeError(
+            "google-generativeai package not installed. "
+            "Run: pip install google-generativeai"
+        )
+
+
+def _is_gemini_model(model_name: str) -> bool:
+    """Return True if model_name should be routed to Gemini API."""
+    return model_name in SUPPORTED_GEMINI_MODELS
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -170,15 +213,19 @@ app.add_middleware(
 @app.on_event("startup")
 async def on_startup():
     """
-    v6.0: Warm up expensive components at server start so the first user
-    request doesn't suffer a 2-5 second cold-start delay.
+    v7.0: Warm up expensive components at server start. Logs Gemini status.
     """
     import threading
     if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
-        print("  [Startup] WARNING: GROQ_API_KEY not set -- streaming will fail.")
+        print("  [Startup] WARNING: GROQ_API_KEY not set -- Groq streaming will fail.")
     else:
-        _get_async_groq()   # pre-init AsyncGroq singleton
+        _get_async_groq()
         print("  [Startup] OK: AsyncGroq singleton ready.")
+
+    if GEMINI_API_KEY and GEMINI_API_KEY not in ("your_gemini_api_key_here", ""):
+        print(f"  [Startup] OK: GEMINI_API_KEY detected — Gemini models enabled ({GEMINI_DEFAULT_MODEL}).")
+    else:
+        print("  [Startup] INFO: No GEMINI_API_KEY set. Gemini models will return an error until key is added to .env.")
 
     def _warmup():
         try:
@@ -194,7 +241,7 @@ async def on_startup():
             print(f"  [Startup] WARNING: BM25 warmup failed: {e}")
 
     threading.Thread(target=_warmup, daemon=True).start()
-    print("  [Startup] ResearchFlow AI v6.0 ready.")
+    print("  [Startup] NexusAI v7.0 ready.")
 
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────────
@@ -293,14 +340,14 @@ def _should_use_deep_research(question: str, history: Optional[list[HistoryMessa
 def _normalize_requested_model(model_name: str | None) -> str:
     """
     Map retired, unknown, or incorrectly-named model strings to a currently
-    supported Groq model.  Logs a warning whenever a redirect occurs so
-    developers can spot the mismatch in server logs.
+    supported model. Routes gemini-* to Gemini API, groq models to Groq.
 
     Priority:
-      1. 'council' passthrough — handled separately in stream_query
-      2. Deprecated / alias map (includes gemini-* redirects)
-      3. SUPPORTED_GROQ_MODELS allowlist
-      4. Fallback to GROQ_MODEL with a warning
+      1. 'council' passthrough
+      2. Deprecated / alias redirect (may redirect gemini-mini -> gemini-2.0-flash)
+      3. Gemini model passthrough (real models go directly to Gemini API)
+      4. SUPPORTED_GROQ_MODELS allowlist
+      5. Fallback to GROQ_MODEL with a warning
     """
     if not model_name:
         return GROQ_MODEL
@@ -313,12 +360,18 @@ def _normalize_requested_model(model_name: str | None) -> str:
     if model_name in DEPRECATED_MODEL_ALIASES:
         remapped = DEPRECATED_MODEL_ALIASES[model_name]
         print(f"  [Model] '{model_name}' remapped to '{remapped}' (alias/deprecated)")
-        return remapped
+        return remapped  # may result in a Gemini model after redirect
 
-    # 3. Allowlist check — reject unknown models gracefully
+    # 3. Gemini model — pass through directly to Gemini API handler
+    if model_name in SUPPORTED_GEMINI_MODELS:
+        if not GEMINI_API_KEY:
+            print(f"  [Model] WARNING: '{model_name}' is a Gemini model but GEMINI_API_KEY is not set.")
+        return model_name  # handled by _is_gemini_model() check in stream_query
+
+    # 4. Groq allowlist check
     if model_name not in SUPPORTED_GROQ_MODELS:
-        print(f"  [Model] WARNING: '{model_name}' not in SUPPORTED_GROQ_MODELS — "
-              f"falling back to '{GROQ_MODEL}'. Add it to SUPPORTED_GROQ_MODELS if valid.")
+        print(f"  [Model] WARNING: '{model_name}' not in SUPPORTED_GROQ_MODELS or SUPPORTED_GEMINI_MODELS — "
+              f"falling back to '{GROQ_MODEL}'.")
         return GROQ_MODEL
 
     return model_name
@@ -764,17 +817,83 @@ async def stream_query(request: QueryRequest):
             if language == "ur":
                 sys_c += "\n\nCRITICAL DIRECTIVE: The user is speaking Urdu. You MUST reply completely in native Urdu language (using Urdu script), ensuring high-quality formatting and correct terminology."
 
-            # ── Step 8: Stream from Groq via AsyncGroq (v6.0 critical fix) ────
+            # ── Step 8: Route to Gemini or Groq based on model selection ─────
 
-            # BUG FIX: client MUST be initialised before creating the related_task,
-            # because fetch_related_questions() closes over `client` and the task
-            # starts executing immediately on the event loop — if client is defined
-            # after create_task() it will be undefined when the coroutine runs first.
-            client = _get_async_groq()
+            # Always use Groq for related questions (fast, cheap, 3 short Qs)
+            _groq_client_for_related = _get_async_groq()
             effective_max_tokens = min(
                 style.get("max_tokens", 2000),
                 getattr(rag, "GLOBAL_MAX_TOKENS", 3000)
             )
+
+            # ─── GEMINI ROUTE ────────────────────────────────────────────────
+            if _is_gemini_model(request_model):
+                yield await yield_event(f"data: {json.dumps({'status_text': f'🤖 Streaming from Gemini ({request_model})...'})}\\n\\n")
+                async def fetch_related_questions_gemini():
+                    try:
+                        sys_r = "You are an AI research assistant. Based on the user's query, suggest exactly 3 short, relevant follow-up questions. Output ONLY a JSON object with a single key 'questions' containing an array of 3 strings."
+                        resp = await _groq_client_for_related.chat.completions.create(
+                            model=rag.GROQ_MODEL,
+                            messages=[{"role": "system", "content": sys_r}, {"role": "user", "content": request.question}],
+                            temperature=0.3, max_tokens=200, response_format={"type": "json_object"}
+                        )
+                        return json.loads(resp.choices[0].message.content).get("questions", [])[:3]
+                    except Exception:
+                        return []
+                related_task = asyncio.create_task(fetch_related_questions_gemini())
+                try:
+                    import google.generativeai as genai
+                    genai.configure(api_key=GEMINI_API_KEY)
+                    gem_model = genai.GenerativeModel(
+                        model_name=request_model,
+                        system_instruction=sys_c,
+                    )
+                    gemini_stream = await gem_model.generate_content_async(
+                        usr_c,
+                        generation_config=genai.types.GenerationConfig(
+                            max_output_tokens=effective_max_tokens,
+                            temperature=rag.LLM_TEMPERATURE,
+                        ),
+                        stream=True,
+                    )
+                    full_response = ""
+                    async for chunk in gemini_stream:
+                        token = getattr(chunk, "text", "") or ""
+                        if token:
+                            full_response += token
+                            yield await yield_event(f"data: {json.dumps({'token': token})}\\n\\n")
+                            await asyncio.sleep(0)
+
+                    related_questions = await related_task
+                    rag_sources  = list({c["source"] for c in passing_chunks})
+                    web_src_urls = [r["url"] for r in web_results if r.get("url")]
+                    rag_source_details = []
+                    for src in rag_sources:
+                        src_chunks = [c for c in passing_chunks if c["source"] == src]
+                        top_score  = max((c.get("rerank_score", -99) for c in src_chunks), default=-99)
+                        rag_source_details.append({"source": src, "chunks": len(src_chunks), "confidence": source_confidence_score(top_score)})
+                    yield await yield_event(f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_src_urls, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'related_questions': related_questions})}\\n\\n")
+                    if request.research_mode == "quick":
+                        _query_cache.put(cache_key, events_to_cache)
+                    return
+                except ImportError:
+                    yield f"data: {json.dumps({'error': '🔧 google-generativeai package missing. Run: pip install google-generativeai'})}\\n\\n"
+                    return
+                except Exception as gemini_err:
+                    err_str = str(gemini_err)
+                    print(f"  [Gemini Error] {err_str}")
+                    if "API_KEY" in err_str or "not set" in err_str or "invalid" in err_str.lower():
+                        yield f"data: {json.dumps({'error': '🔑 Gemini API key missing or invalid. Add GEMINI_API_KEY to backend-python/.env — free key at https://aistudio.google.com/app/apikey'})}\\n\\n"
+                    elif "quota" in err_str.lower() or "429" in err_str:
+                        yield f"data: {json.dumps({'error': '⏳ Gemini free-tier rate limit reached. Wait 1 minute or switch to a Groq model.'})}\\n\\n"
+                    else:
+                        yield f"data: {json.dumps({'error': f'Gemini error: {err_str[:200]}'})}\\n\\n"
+                    return
+
+            # ─── GROQ ROUTE ──────────────────────────────────────────────────
+            # BUG FIX: client MUST be initialised before creating the related_task
+            client = _groq_client_for_related
+
 
             # Start fetching related questions concurrently (client is now defined)
             async def fetch_related_questions():
