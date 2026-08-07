@@ -1632,25 +1632,23 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                     borderColor: "var(--border-color)",
                   }}
                 >
-                  <option value="llama-3.3-70b-versatile">Llama 3.3 (70B)</option>
-                  <option value="gemma2-9b-it">Gemma 2 (9B)</option>
-                  <option value="gemini-mini">Gemini Mini (gemini-mini)</option>
-                  <option value="gemini-1.0">Gemini 1.0</option>
-                  <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                  <option value="council">Council Mode (Compare)</option>
+                  <option value="llama-3.3-70b-versatile">⚡ LLaMA 3.3 (70B) — Best</option>
+                  <option value="llama-3.1-8b-instant">🚀 LLaMA 3.1 (8B) — Fastest</option>
+                  <option value="gemma2-9b-it">🌟 Gemma 2 (9B) — Google</option>
+                  <option value="llama-3.1-70b-versatile">🔬 LLaMA 3.1 (70B) — Research</option>
+                  <option value="council">🏛️ Council Mode — Multi-Model</option>
                 </select>
               </div>
               <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
                 {(() => {
                   const map = {
-                    'llama-3.3-70b-versatile': 'Groq LLaMA 3.3 70B',
-                    'gemma2-9b-it': 'Groq Gemma 2 (9B)',
-                    'gemini-mini': 'Google Gemini Mini',
-                    'gemini-1.0': 'Google Gemini 1.0',
-                    'gemini-1.5-pro': 'Google Gemini 1.5 Pro',
-                    'council': 'Council Mode',
+                    'llama-3.3-70b-versatile': 'Groq LLaMA 3.3 70B · Best overall quality',
+                    'llama-3.1-8b-instant': 'Groq LLaMA 3.1 8B · Fastest responses',
+                    'gemma2-9b-it': 'Google Gemma 2 9B via Groq · Efficient',
+                    'llama-3.1-70b-versatile': 'Groq LLaMA 3.1 70B · Deep research',
+                    'council': 'Council Mode · LLaMA + Gemma2 in parallel',
                   };
-                  return (map[model] || model) + ' · Hybrid Search · Live RAG';
+                  return (map[model] || model) + ' · Hybrid RAG + Live Web';
                 })()}
               </p>
             </div>

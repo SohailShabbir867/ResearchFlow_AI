@@ -71,15 +71,40 @@ from src.hybrid_search import hybrid_search
 from src.reranker import rerank
 import src.rag_pipeline as rag
 
-# Council mode should only use supported models. Keep this list short so one
-# failed model does not stall the whole response.
+# ── Supported Groq models (validated allowlist — prevents silent fallbacks) ──
+# Any model NOT in this set will be remapped to GROQ_MODEL with a warning.
+SUPPORTED_GROQ_MODELS = {
+    "llama-3.3-70b-versatile",
+    "llama-3.1-70b-versatile",
+    "llama-3.1-8b-instant",
+    "llama3-70b-8192",
+    "llama3-8b-8192",
+    "gemma2-9b-it",
+    "gemma-7b-it",
+    "council",    # special multi-model mode
+}
+
+# Council mode runs these two models in parallel and interleaves their tokens.
+# Both are confirmed active Groq models as of 2026.
 COUNCIL_MODELS = [
     os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
     "gemma2-9b-it",
 ]
 
+# ── Deprecated / alias map ────────────────────────────────────────────────────
+# Maps retired Groq models AND incorrect Gemini names to a live Groq equivalent.
+# This surfaces a clear console warning so developers know a redirect happened.
 DEPRECATED_MODEL_ALIASES = {
-    "mixtral-8x7b-32768": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+    # Retired Groq models
+    "mixtral-8x7b-32768":      os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+    "llama2-70b-4096":         os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+    # Gemini names — these do NOT exist on Groq; map to the best Groq equivalent.
+    # If you add real Gemini integration later, remove these aliases.
+    "gemini-mini":             "gemma2-9b-it",   # Google family → Gemma2 via Groq
+    "gemini-1.0":              "gemma2-9b-it",
+    "gemini-1.5-pro":          "llama-3.3-70b-versatile",
+    "gemini-1.5-flash":        "llama-3.1-8b-instant",
+    "gemini-2.0-flash":        "llama-3.3-70b-versatile",
 }
 
 load_dotenv()
@@ -265,14 +290,38 @@ def _should_use_deep_research(question: str, history: Optional[list[HistoryMessa
     return False
 
 
-def _normalize_requested_model(model_name: Optional[str]) -> str:
-    """Map retired or empty model names to a currently supported model."""
+def _normalize_requested_model(model_name: str | None) -> str:
+    """
+    Map retired, unknown, or incorrectly-named model strings to a currently
+    supported Groq model.  Logs a warning whenever a redirect occurs so
+    developers can spot the mismatch in server logs.
+
+    Priority:
+      1. 'council' passthrough — handled separately in stream_query
+      2. Deprecated / alias map (includes gemini-* redirects)
+      3. SUPPORTED_GROQ_MODELS allowlist
+      4. Fallback to GROQ_MODEL with a warning
+    """
     if not model_name:
         return GROQ_MODEL
-    normalized = DEPRECATED_MODEL_ALIASES.get(model_name, model_name)
-    if normalized == "council":
+
+    # 1. Passthrough council
+    if model_name == "council":
         return "council"
-    return normalized
+
+    # 2. Deprecated / alias redirect
+    if model_name in DEPRECATED_MODEL_ALIASES:
+        remapped = DEPRECATED_MODEL_ALIASES[model_name]
+        print(f"  [Model] '{model_name}' remapped to '{remapped}' (alias/deprecated)")
+        return remapped
+
+    # 3. Allowlist check — reject unknown models gracefully
+    if model_name not in SUPPORTED_GROQ_MODELS:
+        print(f"  [Model] WARNING: '{model_name}' not in SUPPORTED_GROQ_MODELS — "
+              f"falling back to '{GROQ_MODEL}'. Add it to SUPPORTED_GROQ_MODELS if valid.")
+        return GROQ_MODEL
+
+    return model_name
 
 
 
@@ -806,7 +855,12 @@ async def stream_query(request: QueryRequest):
                         if token:
                             await queue.put({'model': mod_name, 'token': token})
                 except Exception as e:
-                    print(f"  [Stream Error for {mod_name}]: {e}")
+                    err_str = str(e)
+                    print(f"  [Stream Error for {mod_name}]: {err_str}")
+                    # Emit a visible SSE error token so the user sees the failure
+                    # instead of silently getting a different model's output.
+                    if is_council:
+                        await queue.put({'model': mod_name, 'token': f'\n\n> ⚠️ Model `{mod_name}` error: {err_str[:120]}\n'})
                 finally:
                     await queue.put({"_done": mod_name})
 
