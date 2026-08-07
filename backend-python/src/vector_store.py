@@ -36,17 +36,27 @@ _qdrant_client: QdrantClient = None
 
 
 def get_client() -> QdrantClient:
-    """Return the module-level singleton QdrantClient, creating it if needed."""
+    """Return the module-level singleton QdrantClient, creating it if needed.
+    Returns None silently if Qdrant is not running (RAG will fall back to web-only).
+    """
     global _qdrant_client
     if _qdrant_client is None:
-        _qdrant_client = QdrantClient(url=QDRANT_URL)
-        print(f"  [Qdrant] Singleton client initialized → {QDRANT_URL}")
+        try:
+            _qdrant_client = QdrantClient(
+                url=QDRANT_URL,
+                check_compatibility=False,  # suppress version mismatch warning
+            )
+            print(f"  [Qdrant] Singleton client initialized → {QDRANT_URL}")
+        except Exception as e:
+            print(f"  [Qdrant] WARNING: Cannot connect to {QDRANT_URL} — RAG disabled, web-only mode active. ({e})")
+            return None
     return _qdrant_client
 
 
 def create_collection(recreate: bool = False):
     """Create Qdrant collection with HNSW config optimized for research corpus."""
     client = get_client()
+    if client is None: return
 
     if recreate:
         try:

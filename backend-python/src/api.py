@@ -844,7 +844,11 @@ async def stream_query(request: QueryRequest):
                 try:
                     from google import genai as google_genai
                     from google.genai import types as genai_types
-                    gem_client = google_genai.Client(api_key=GEMINI_API_KEY)
+                    # Use API v1 (stable) — v1beta returns 404 for gemini-1.5/2.0 models
+                    gem_client = google_genai.Client(
+                        api_key=GEMINI_API_KEY,
+                        http_options={"api_version": "v1"},
+                    )
                     full_response = ""
                     # Combined system + user prompt (new SDK uses single `contents` field)
                     combined_prompt = f"{sys_c}\n\n---\n\n{usr_c}"

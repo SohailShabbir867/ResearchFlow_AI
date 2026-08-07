@@ -119,6 +119,9 @@ def _build_bm25_index():
 
     try:
         client = vector_store.get_client()
+        if client is None:
+            print("  [BM25] Skipped — Qdrant not running (web-only mode active)")
+            return
         all_chunks = []
         offset = None
 
