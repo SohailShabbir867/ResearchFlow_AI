@@ -443,11 +443,28 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
 
   const handleSend = async (queryText) => {
     const question = (queryText || input).trim();
-    if (!question) return;
+    if (!question || isTyping) return;
 
     let chatId = activeChatId;
     if (!chatId) {
-      chatId = "c_" + Date.now();
+      // Create the database chat before opening the SSE connection. Previously
+      // a temporary id was swapped while the first response was arriving,
+      // which could orphan the first assistant message until a page reload.
+      try {
+        const token = localStorage.getItem("researchflow_token");
+        const chatResponse = await axios.post(
+          "/api/research/chats",
+          { title: question.substring(0, 45) || "New Chat" },
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+        );
+        chatId = chatResponse.data?._id;
+        if (!chatId) throw new Error("Chat service did not return an id.");
+      } catch (err) {
+        console.error("Failed to create chat:", err.message);
+        setIsTyping(false);
+        return;
+      }
+
       setChats((prev) => ({
         ...prev,
         today: [

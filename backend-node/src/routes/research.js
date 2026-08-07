@@ -277,9 +277,14 @@ router.post("/chats/:id/stream", async (req, res) => {
 
   // Set SSE headers
   res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
+
+  // Force the SSE connection through browser and reverse-proxy buffers before
+  // the Python service starts producing tokens.
+  res.write(": connected\n\n");
 
   // Emit real chatId whenever current chat._id does not match requested param id
   if (chat._id.toString() !== id) {
