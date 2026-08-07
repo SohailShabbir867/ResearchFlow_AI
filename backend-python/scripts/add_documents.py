@@ -13,7 +13,7 @@ USAGE:
     New files are detected and added WITHOUT touching existing data.
 
 FULL RE-INDEX (wipe everything and start fresh):
-    venv\Scripts\python scripts/index_documents.py
+    venv\\Scripts\\python scripts/index_documents.py
 =============================================================
 """
 import sys
