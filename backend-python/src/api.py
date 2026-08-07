@@ -828,7 +828,7 @@ async def stream_query(request: QueryRequest):
 
             # ─── GEMINI ROUTE ────────────────────────────────────────────────
             if _is_gemini_model(request_model):
-                yield await yield_event(f"data: {json.dumps({'status_text': f'🤖 Streaming from Gemini ({request_model})...'})}\\n\\n")
+                yield await yield_event(f"data: {json.dumps({'status_text': f'🤖 Streaming from Gemini ({request_model})...'})}\n\n")
                 async def fetch_related_questions_gemini():
                     try:
                         sys_r = "You are an AI research assistant. Based on the user's query, suggest exactly 3 short, relevant follow-up questions. Output ONLY a JSON object with a single key 'questions' containing an array of 3 strings."
@@ -842,26 +842,24 @@ async def stream_query(request: QueryRequest):
                         return []
                 related_task = asyncio.create_task(fetch_related_questions_gemini())
                 try:
-                    import google.generativeai as genai
-                    genai.configure(api_key=GEMINI_API_KEY)
-                    gem_model = genai.GenerativeModel(
-                        model_name=request_model,
-                        system_instruction=sys_c,
-                    )
-                    gemini_stream = await gem_model.generate_content_async(
-                        usr_c,
-                        generation_config=genai.types.GenerationConfig(
+                    from google import genai as google_genai
+                    from google.genai import types as genai_types
+                    gem_client = google_genai.Client(api_key=GEMINI_API_KEY)
+                    full_response = ""
+                    # Combined system + user prompt (new SDK uses single `contents` field)
+                    combined_prompt = f"{sys_c}\n\n---\n\n{usr_c}"
+                    async for chunk in await gem_client.aio.models.generate_content_stream(
+                        model=request_model,
+                        contents=combined_prompt,
+                        config=genai_types.GenerateContentConfig(
                             max_output_tokens=effective_max_tokens,
                             temperature=rag.LLM_TEMPERATURE,
                         ),
-                        stream=True,
-                    )
-                    full_response = ""
-                    async for chunk in gemini_stream:
-                        token = getattr(chunk, "text", "") or ""
+                    ):
+                        token = (chunk.text or "") if hasattr(chunk, "text") else ""
                         if token:
                             full_response += token
-                            yield await yield_event(f"data: {json.dumps({'token': token})}\\n\\n")
+                            yield await yield_event(f"data: {json.dumps({'token': token})}\n\n")
                             await asyncio.sleep(0)
 
                     related_questions = await related_task
@@ -872,22 +870,22 @@ async def stream_query(request: QueryRequest):
                         src_chunks = [c for c in passing_chunks if c["source"] == src]
                         top_score  = max((c.get("rerank_score", -99) for c in src_chunks), default=-99)
                         rag_source_details.append({"source": src, "chunks": len(src_chunks), "confidence": source_confidence_score(top_score)})
-                    yield await yield_event(f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_src_urls, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'related_questions': related_questions})}\\n\\n")
+                    yield await yield_event(f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_src_urls, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'related_questions': related_questions})}\n\n")
                     if request.research_mode == "quick":
                         _query_cache.put(cache_key, events_to_cache)
                     return
                 except ImportError:
-                    yield f"data: {json.dumps({'error': '🔧 google-generativeai package missing. Run: pip install google-generativeai'})}\\n\\n"
+                    yield f"data: {json.dumps({'error': '🔧 google-genai package missing. Run: pip install google-genai'})}\n\n"
                     return
                 except Exception as gemini_err:
                     err_str = str(gemini_err)
                     print(f"  [Gemini Error] {err_str}")
-                    if "API_KEY" in err_str or "not set" in err_str or "invalid" in err_str.lower():
-                        yield f"data: {json.dumps({'error': '🔑 Gemini API key missing or invalid. Add GEMINI_API_KEY to backend-python/.env — free key at https://aistudio.google.com/app/apikey'})}\\n\\n"
-                    elif "quota" in err_str.lower() or "429" in err_str:
-                        yield f"data: {json.dumps({'error': '⏳ Gemini free-tier rate limit reached. Wait 1 minute or switch to a Groq model.'})}\\n\\n"
+                    if "API_KEY" in err_str or "API key" in err_str or "UNAUTHENTICATED" in err_str or "invalid" in err_str.lower():
+                        yield f"data: {json.dumps({'error': '🔑 Gemini API key missing or invalid. Add GEMINI_API_KEY=your_key to backend-python/.env — free key at https://aistudio.google.com/app/apikey'})}\n\n"
+                    elif "quota" in err_str.lower() or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                        yield f"data: {json.dumps({'error': '⏳ Gemini free-tier rate limit reached. Wait 1 minute or switch to a Groq model.'})}\n\n"
                     else:
-                        yield f"data: {json.dumps({'error': f'Gemini error: {err_str[:200]}'})}\\n\\n"
+                        yield f"data: {json.dumps({'error': f'Gemini error: {err_str[:200]}'})}\n\n"
                     return
 
             # ─── GROQ ROUTE ──────────────────────────────────────────────────
