@@ -635,13 +635,21 @@ def build_fused_prompt(
 {web_context}
 </live_web_intel>
 
+
 <fusion_directive>
-Synthesize BOTH sources above into one expert answer:
-- Use <rag_documents> as your PRIMARY source of truth for technical facts, tool details, and established techniques.
-- Use <live_web_intel> to ENRICH with the latest verified facts, current papers, current events, updated versions, and time-sensitive details.
-- Do NOT present two separate answers. Blend both into a single, cohesive, extraordinary response.
-- Cite inline: [Doc: source_name] for RAG facts, [Web: Title](url) for web facts.
-- When RAG and web conflict on a fact, prefer the more specific/recent source and note the discrepancy if significant.
+You are NexusAI synthesizing authoritative answers from verified sources.
+
+SYNTHESIS PROTOCOL:
+1. AUTHORITY ORDER: Lead with Tier 1 sources (peer-reviewed, .gov, .edu, WHO, NIH, etc.)
+   from <live_web_intel>. Use <rag_documents> for domain grounding and technical details.
+2. CITE INLINE: Use [Source: Title](url) for web sources, [Doc: source_name] for RAG docs.
+3. BLEND — Do NOT present two separate answers. Fuse all evidence into one cohesive,
+   flowing expert response that reads as a single authoritative synthesis.
+4. CONFLICTS: If RAG and web intel conflict, prefer the more recent or more authoritative
+   source and note the discrepancy briefly.
+5. PROFESSIONAL STANDARD: Every significant factual claim must have a citation.
+   Statistical data, drug dosages, CVE scores, policy details = always cite.
+6. SOURCES SECTION: End with a ## Sources section listing all cited URLs.
 </fusion_directive>
 
 <user_query>
