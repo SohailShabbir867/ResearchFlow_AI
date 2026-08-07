@@ -28,6 +28,7 @@ import asyncio
 import hashlib
 import re
 from collections import OrderedDict
+import threading
 from datetime import datetime
 
 # ── Module-level imports (v6.0: AsyncGroq replaces sync Groq — never blocks event loop) ──
@@ -134,18 +135,21 @@ class QueryCache:
     def __init__(self, capacity=100):
         self.cache = OrderedDict()
         self.capacity = capacity
+        self._lock = threading.Lock()
     
     def get(self, key):
-        if key not in self.cache:
-            return None
-        self.cache.move_to_end(key)
-        return self.cache[key]
+        with self._lock:
+            if key not in self.cache:
+                return None
+            self.cache.move_to_end(key)
+            return list(self.cache[key])
         
     def put(self, key, value):
-        self.cache[key] = value
-        self.cache.move_to_end(key)
-        if len(self.cache) > self.capacity:
-            self.cache.popitem(last=False)
+        with self._lock:
+            self.cache[key] = list(value)
+            self.cache.move_to_end(key)
+            if len(self.cache) > self.capacity:
+                self.cache.popitem(last=False)
 
 # Store full SSE text for repeat queries (TTFT < 50ms)
 _query_cache = QueryCache(capacity=100)
@@ -251,8 +255,8 @@ class HistoryMessage(BaseModel):
     text: str
 
 class QueryRequest(BaseModel):
-    question:     str
-    top_k:        int           = 8
+    question:     str = Field(..., min_length=1, max_length=8_000)
+    top_k:        int = Field(default=8, ge=1, le=20)
     history:      Optional[list[HistoryMessage]] = Field(
         default=None,
         description="Previous conversation turns for context-aware follow-ups"
@@ -262,7 +266,7 @@ class QueryRequest(BaseModel):
         description="short | technical | detailed | case_study | conversational"
     )
     max_tokens:   Optional[int] = Field(
-        default=None,
+        default=None, ge=64, le=4_096,
         description="Override max LLM generation tokens"
     )
     research_mode: Optional[str] = Field(
@@ -270,7 +274,7 @@ class QueryRequest(BaseModel):
         description="quick | deep"
     )
     model: Optional[str] = Field(
-        default="llama-3.3-70b-versatile",
+        default=None,
         description="Model identifier or 'council'"
     )
 
@@ -349,8 +353,9 @@ def _normalize_requested_model(model_name: str | None) -> str:
       4. SUPPORTED_GROQ_MODELS allowlist
       5. Fallback to GROQ_MODEL with a warning
     """
+    default_model = rag.GROQ_MODEL
     if not model_name:
-        return GROQ_MODEL
+        return default_model
 
     # 1. Passthrough council
     if model_name == "council":
@@ -371,8 +376,8 @@ def _normalize_requested_model(model_name: str | None) -> str:
     # 4. Groq allowlist check
     if model_name not in SUPPORTED_GROQ_MODELS:
         print(f"  [Model] WARNING: '{model_name}' not in SUPPORTED_GROQ_MODELS or SUPPORTED_GEMINI_MODELS — "
-              f"falling back to '{GROQ_MODEL}'.")
-        return GROQ_MODEL
+              f"falling back to '{default_model}'.")
+        return default_model
 
     return model_name
 
@@ -542,14 +547,18 @@ async def stream_query(request: QueryRequest):
 
     direct_answer_intents = {"chat", "coaching", "opinion"}
 
-    if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
+    request_model = _normalize_requested_model(request.model)
+    using_gemini = _is_gemini_model(request_model)
+    if not using_gemini and (not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here"):
         raise HTTPException(
             status_code=503,
             detail="GROQ_API_KEY not configured in backend-python/.env"
         )
 
+    if using_gemini and not GEMINI_API_KEY:
+        raise HTTPException(status_code=503, detail="GEMINI_API_KEY not configured in backend-python/.env")
+
     style_name = request.answer_style if request.answer_style in ANSWER_STYLES else None
-    request_model = _normalize_requested_model(request.model)
     history = None
     if request.history:
         history = [{"role": m.role, "text": m.text} for m in request.history]
@@ -573,7 +582,7 @@ async def stream_query(request: QueryRequest):
                 for event in cached_events:
                     yield event
                     # Tiny sleep to let frontend render text smoothly instead of instantaneously pasting it all
-                    await asyncio.sleep(0.005)
+                    await asyncio.sleep(0)
             return StreamingResponse(replay_cache(), media_type="text/event-stream")
 
     async def generate():
@@ -599,7 +608,7 @@ async def stream_query(request: QueryRequest):
 
             style = ANSWER_STYLES[style_name]
 
-            if intent in direct_answer_intents:
+            if intent in direct_answer_intents and not using_gemini:
                 print(f"  [Stream] Direct-answer fast path triggered for intent: {intent}")
                 yield await yield_event(f"data: {json.dumps({'status_text': '💬 Drafting direct answer...'})}\n\n")
 
@@ -614,7 +623,7 @@ async def stream_query(request: QueryRequest):
 
                 client = _get_async_groq()
                 groq_stream = await client.chat.completions.create(
-                    model=GROQ_MODEL,
+                    model=request_model,
                     messages=[
                         {"role": "system", "content": sys_c},
                         {"role": "user",   "content": usr_c},
@@ -642,7 +651,7 @@ async def stream_query(request: QueryRequest):
             # Emit intent badge right away — frontend shows it immediately
             yield await yield_event(f"data: {json.dumps({'intent': intent, 'intent_info': intent_info, 'language': language})}\n\n")
 
-            if intent == "shopping":
+            if intent == "shopping" and not using_gemini:
                 print("  [Stream] Shopping fast-path triggered (web-only comparison)")
                 yield await yield_event(f"data: {json.dumps({'status_text': '🛒 Comparing products...'})}\n\n")
 
@@ -675,7 +684,7 @@ async def stream_query(request: QueryRequest):
 
                 client = _get_async_groq()
                 groq_stream = await client.chat.completions.create(
-                    model=GROQ_MODEL,
+                    model=request_model,
                     messages=[
                         {"role": "system", "content": sys_c},
                         {"role": "user",   "content": usr_c},
@@ -702,7 +711,7 @@ async def stream_query(request: QueryRequest):
                 return
 
             # ── Fast-path for chat intent ──────────────────────────────────────────────
-            if intent == "chat" and style_name == "conversational":
+            if intent == "chat" and style_name == "conversational" and not using_gemini:
                 print("  [Stream] Chat fast-path triggered (bypassing search)")
                 yield await yield_event(f"data: {json.dumps({'status_text': '⚡ Chatting...'})}\n\n")
                 
@@ -717,7 +726,7 @@ async def stream_query(request: QueryRequest):
                 
                 client = _get_async_groq()
                 groq_stream = await client.chat.completions.create(
-                    model=GROQ_MODEL,
+                    model=request_model,
                     messages=[
                         {"role": "system", "content": sys_c},
                         {"role": "user",   "content": usr_c},
@@ -739,7 +748,7 @@ async def stream_query(request: QueryRequest):
                 return
 
             # ── Deep Research Mode ───────────────────────────────────────────────────
-            if use_deep_research:
+            if use_deep_research and not using_gemini:
                 from src.deep_research import perform_deep_research
                 await perform_deep_research(
                     request=request, 
@@ -820,8 +829,9 @@ async def stream_query(request: QueryRequest):
             # ── Step 8: Route to Gemini or Groq based on model selection ─────
 
             # Always use Groq for related questions (fast, cheap, 3 short Qs)
-            _groq_client_for_related = _get_async_groq()
+            _groq_client_for_related = _get_async_groq() if GROQ_API_KEY else None
             effective_max_tokens = min(
+                request.max_tokens or style.get("max_tokens", 2000),
                 style.get("max_tokens", 2000),
                 getattr(rag, "GLOBAL_MAX_TOKENS", 3000)
             )
@@ -830,6 +840,8 @@ async def stream_query(request: QueryRequest):
             if _is_gemini_model(request_model):
                 yield await yield_event(f"data: {json.dumps({'status_text': f'🤖 Streaming from Gemini ({request_model})...'})}\n\n")
                 async def fetch_related_questions_gemini():
+                    if _groq_client_for_related is None:
+                        return []
                     try:
                         sys_r = "You are an AI research assistant. Based on the user's query, suggest exactly 3 short, relevant follow-up questions. Output ONLY a JSON object with a single key 'questions' containing an array of 3 strings."
                         resp = await _groq_client_for_related.chat.completions.create(
@@ -1013,7 +1025,7 @@ async def stream_query(request: QueryRequest):
             if not is_council and tokens_emitted == 0:
                 print("  [Stream] No streamed tokens received, falling back to supported default model")
                 fallback_stream = await client.chat.completions.create(
-                    model=GROQ_MODEL,
+                    model=rag.GROQ_MODEL,
                     messages=[
                         {"role": "system", "content": sys_c},
                         {"role": "user",   "content": usr_c},
@@ -1031,7 +1043,7 @@ async def stream_query(request: QueryRequest):
             if is_council and tokens_emitted == 0:
                 print("  [Council] No streamed tokens received, falling back to single-model synthesis")
                 fallback_stream = await client.chat.completions.create(
-                    model=GROQ_MODEL,
+                    model=rag.GROQ_MODEL,
                     messages=[
                         {"role": "system", "content": sys_c},
                         {"role": "user",   "content": usr_c},
@@ -1061,7 +1073,7 @@ async def stream_query(request: QueryRequest):
                 if language == "ur":
                     sys_c2 += "\n\nCRITICAL DIRECTIVE: The user is speaking Urdu. You MUST reply completely in native Urdu language (using Urdu script)."
                 groq_stream2 = await client.chat.completions.create(
-                    model=GROQ_MODEL,
+                    model=rag.GROQ_MODEL,
                     messages=[
                         {"role": "system", "content": sys_c2},
                         {"role": "user",   "content": usr_c2},

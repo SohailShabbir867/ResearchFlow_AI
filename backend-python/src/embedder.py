@@ -13,6 +13,7 @@ v4.0 — Cybersec-optimized with LRU cache (256 entries) for instant repeated lo
 """
 import os
 import hashlib
+import threading
 from collections import OrderedDict
 try:
     from dotenv import load_dotenv
@@ -36,15 +37,18 @@ _model = None
 # ─── LRU Query Embedding Cache ───────────────────────────────────────────────
 _CACHE_MAX   = 256
 _query_cache = OrderedDict()
+_cache_lock = threading.Lock()
+_model_lock = threading.Lock()
 
 
 def _get_model() -> TextEmbedding:
     global _model
     if _model is None:
-        print(f"Loading embedding model: {EMBED_MODEL}")
-        print(f"  (First run: ~440MB download — cached afterwards)")
-        _model = TextEmbedding(model_name=EMBED_MODEL)
-        print("Embedding model loaded successfully.")
+        with _model_lock:
+            if _model is None:
+                print(f"Loading embedding model: {EMBED_MODEL}")
+                _model = TextEmbedding(model_name=EMBED_MODEL)
+                print("Embedding model loaded successfully.")
     return _model
 
 
@@ -74,18 +78,20 @@ def get_embedding(text: str, is_query: bool = True) -> list[float]:
     # Check LRU cache for queries
     if is_query:
         key = _cache_key(prefixed)
-        if key in _query_cache:
-            _query_cache.move_to_end(key)
-            return _query_cache[key]
+        with _cache_lock:
+            if key in _query_cache:
+                _query_cache.move_to_end(key)
+                return _query_cache[key]
 
     model = _get_model()
     embeddings = list(model.embed([prefixed]))
     result = embeddings[0].tolist()
 
     if is_query:
-        _query_cache[key] = result
-        if len(_query_cache) > _CACHE_MAX:
-            _query_cache.popitem(last=False)
+        with _cache_lock:
+            _query_cache[key] = result
+            if len(_query_cache) > _CACHE_MAX:
+                _query_cache.popitem(last=False)
 
     return result
 

@@ -18,6 +18,7 @@ import re
 import hashlib
 import time
 import threading
+import os
 from datetime import datetime, timezone
 from collections import OrderedDict
 from urllib.parse import urlparse
@@ -33,6 +34,7 @@ _web_cache     = OrderedDict()
 _cache_lock    = threading.Lock()   # Protects all _web_cache mutations
 _CACHE_TTL     = 3600       # 1 hour default
 _FRESH_CACHE_TTL = 1800     # 30 min for news/recent queries (fresher results)
+_MAX_RETRIES = max(0, int(os.getenv("WEB_SEARCH_RETRIES", "1")))
 
 _TRUSTED_DOMAINS = {
     "nih.gov", "ncbi.nlm.nih.gov", "pubmed.ncbi.nlm.nih.gov", "who.int",
@@ -312,11 +314,11 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
     # v6.0: Retry loop with exponential backoff
     for variant in query_variants:
         variant_results = []
-        for attempt in range(3):
+        for attempt in range(_MAX_RETRIES + 1):
             try:
                 if attempt > 0:
-                    wait = 2 ** attempt   # 2s, 4s
-                    print(f"  [Web Search] Retry {attempt}/2 after {wait}s (last error: {last_error})")
+                    wait = 2 ** (attempt - 1)
+                    print(f"  [Web Search] Retry {attempt}/{_MAX_RETRIES} after {wait}s (last error: {last_error})")
                     time.sleep(wait)
 
                 ddgs = DDGS()   # Fresh instance on each attempt
@@ -346,10 +348,10 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
                 error_lower = last_error.lower()
                 is_rate_limit = "ratelimit" in error_lower or "rate limit" in error_lower or "429" in last_error
                 if is_rate_limit:
-                    print(f"  [Web Search] Rate limited (attempt {attempt+1}/3)")
+                    print(f"  [Web Search] Rate limited (attempt {attempt+1}/{_MAX_RETRIES + 1})")
                 else:
-                    print(f"  [Web Search Warning] DuckDuckGo error (attempt {attempt+1}/3): {last_error[:120]}")
-                    if attempt == 2:
+                    print(f"  [Web Search Warning] DuckDuckGo error (attempt {attempt+1}/{_MAX_RETRIES + 1}): {last_error[:120]}")
+                    if attempt == _MAX_RETRIES:
                         # Non-rate-limit errors are unlikely to succeed on retry
                         break
 
