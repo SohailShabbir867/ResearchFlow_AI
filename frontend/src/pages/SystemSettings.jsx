@@ -439,29 +439,35 @@ export default function SystemSettings() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
               {llmProvider === "groq" ? (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">Groq Model</label>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">Groq Model (Default)</label>
                   <select
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
                     className="w-full h-11 px-4 text-sm text-white bg-[#1A1230] border border-white/10 rounded-xl outline-none focus:border-[#E21B70] transition-all cursor-pointer"
                   >
-                    <option value="llama-3.3-70b-versatile">Groq LLaMA 3.3 70B Versatile</option>
-                    <option value="llama-3.1-8b-instant">Groq LLaMA 3.1 8B Instant</option>
-                    <option value="gemma2-9b-it">Groq Gemma 2 9B</option>
+                    <option value="llama-3.3-70b-versatile">⚡ LLaMA 3.3 70B — Best Quality (Default)</option>
+                    <option value="llama-3.1-70b-versatile">🔬 LLaMA 3.1 70B — Deep Research</option>
+                    <option value="llama-3.1-8b-instant">🚀 LLaMA 3.1 8B Instant — Fastest</option>
+                    <option value="gemma2-9b-it">🌟 Gemma 2 9B — Google / Efficient</option>
                   </select>
                 </div>
               ) : (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">Gemini Model</label>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                    Groq-Hosted Google Models
+                    <span className="ml-2 text-amber-400 text-[10px] font-normal">(Gemini API coming soon)</span>
+                  </label>
                   <select
                     value={geminiModel}
                     onChange={(e) => setGeminiModel(e.target.value)}
                     className="w-full h-11 px-4 text-sm text-white bg-[#1A1230] border border-white/10 rounded-xl outline-none focus:border-[#E21B70] transition-all cursor-pointer"
                   >
-                    <option value="gemini-mini">gemini-mini (free tier)</option>
-                    <option value="gemini-1.0">gemini-1.0</option>
-                    <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                    <option value="gemma2-9b-it">Gemma 2 9B (via Groq) — Active</option>
+                    <option value="gemma-7b-it">Gemma 7B (via Groq) — Active</option>
                   </select>
+                  <p className="text-[10px] text-amber-400/70 mt-1">
+                    Native Gemini API integration requires a GEMINI_API_KEY in .env
+                  </p>
                 </div>
               )}
 
