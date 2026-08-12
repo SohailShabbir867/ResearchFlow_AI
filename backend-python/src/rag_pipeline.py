@@ -1082,23 +1082,37 @@ def answer(
                 }
             }
 
-        return {
-            "answer":          REFUSAL_MSG,
-            "sources":         [],
-            "web_sources":     [],
-            "web_results":     [],
-            "is_web_fallback": False,
-            "refused":         True,
-            "refuse_reason":   refuse_reason,
-            "intent":          intent,
-            "intent_info":     intent_info,
-            "timing": {
-                "embed_ms":  round(t_embed * 1000),
-                "search_ms": round(t_search * 1000),
-                "rerank_ms": round(t_rerank * 1000),
-                "total_ms":  round((time.time() - t_start) * 1000),
+        else:
+            print("  [Fusion] RAG insufficient & no web results — fallback to general LLM expert knowledge")
+            sys_c, usr_c = build_fused_prompt(
+                question, [], [], history=history, answer_style=answer_style
+            )
+            t4          = time.time()
+            answer_text = call_llm(sys_c, usr_c, max_tokens=style["max_tokens"])
+            t_llm       = time.time() - t4
+
+            return {
+                "answer":          answer_text,
+                "sources":         [],
+                "web_sources":     [],
+                "web_results":     [],
+                "is_web_fallback": True,
+                "refused":         False,
+                "refuse_reason":   "",
+                "intent":          intent,
+                "intent_info":     intent_info,
+                "provider":        "groq",
+                "model":           GROQ_MODEL,
+                "answer_style":    answer_style,
+                "timing": {
+                    "embed_ms":      round(t_embed * 1000),
+                    "search_ms":     round(t_search * 1000),
+                    "rerank_ms":     round(t_rerank * 1000),
+                    "web_search_ms": round(t_web * 1000),
+                    "llm_ms":        round(t_llm * 1000),
+                    "total_ms":      round((time.time() - t_start) * 1000),
+                }
             }
-        }
 
     print(f"  [Pipeline] {len(passing_chunks)} RAG chunks + {len(web_results)} web results → Fused LLM (style={answer_style})")
 

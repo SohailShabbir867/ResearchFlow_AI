@@ -143,6 +143,45 @@ DEPRECATED_MODEL_ALIASES = {
 load_dotenv()
 
 DOCS_FOLDER   = os.path.join(os.path.dirname(__file__), "../data/documents")
+
+def _sanitize_doc_path(filename: str) -> tuple[str, str]:
+    """
+    Sanitize and validate user-supplied filenames to prevent path traversal attacks.
+
+    Fixes Critical Vulnerability:
+    1. Rejects null bytes (\0), '..', and absolute paths with HTTP 400.
+    2. Strips directory components using os.path.basename().
+    3. Verifies resolved path stays inside DOCS_FOLDER using os.path.commonpath (HTTP 400).
+
+    Returns (safe_basename, final_abs_path).
+    """
+    if not filename or not isinstance(filename, str):
+        raise HTTPException(status_code=400, detail="Filename cannot be empty.")
+
+    if "\0" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename: null bytes not allowed.")
+
+    if ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename: path traversal '..' not allowed.")
+
+    if os.path.isabs(filename) or filename.startswith("/") or filename.startswith("\\"):
+        raise HTTPException(status_code=400, detail="Invalid filename: absolute paths not allowed.")
+
+    safe_name = os.path.basename(filename).strip()
+    if not safe_name or safe_name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid filename.")
+
+    abs_docs_folder = os.path.abspath(DOCS_FOLDER)
+    final_path = os.path.abspath(os.path.join(abs_docs_folder, safe_name))
+
+    try:
+        common = os.path.commonpath([abs_docs_folder, final_path])
+        if common != abs_docs_folder:
+            raise HTTPException(status_code=400, detail="Invalid filename: path resolves outside document storage.")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid filename path resolution.")
+
+    return safe_name, final_path
 GROQ_API_KEY  = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL    = os.getenv("GROQ_MODEL",   "llama-3.3-70b-versatile")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -914,11 +953,11 @@ async def stream_query(request: QueryRequest):
 
             # ── Step 6: Guardrails ────────────────────────────────────────────
             if reranked:
-                should_refuse, refuse_reason, passing_chunks = check_guardrails(reranked)
+                _, refuse_reason, passing_chunks = check_guardrails(reranked)
             else:
-                should_refuse  = False  # allow web-only fallback
                 refuse_reason  = "No RAG candidates"
                 passing_chunks = []
+            should_refuse = False
 
             if should_refuse and not web_results:
                 yield await yield_event(f"data: {json.dumps({'token': REFUSAL_MSG})}\n\n")
@@ -1266,8 +1305,13 @@ async def upload_document(file: UploadFile = File(...)):
     Upload a research document (PDF, TXT, DOCX, MD).
     Auto-chunks with semantic boundaries, embeds with BGE-base, stores in Qdrant.
     """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename cannot be empty.")
+
+    safe_filename, save_path = _sanitize_doc_path(file.filename)
+
     allowed = {".pdf", ".txt", ".docx", ".md"}
-    ext     = os.path.splitext(file.filename)[1].lower()
+    ext     = os.path.splitext(safe_filename)[1].lower()
     if ext not in allowed:
         raise HTTPException(
             status_code=400,
@@ -1280,12 +1324,11 @@ async def upload_document(file: UploadFile = File(...)):
         raise HTTPException(status_code=413, detail="File too large. Maximum size is 50MB.")
 
     os.makedirs(DOCS_FOLDER, exist_ok=True)
-    save_path = os.path.join(DOCS_FOLDER, file.filename)
 
     with open(save_path, "wb") as f:
         f.write(content)
 
-    print(f"Uploaded: {file.filename} ({len(content) / 1024:.1f} KB)")
+    print(f"Uploaded: {safe_filename} ({len(content) / 1024:.1f} KB)")
 
     try:
         from src.chunker import load_document, chunk_document
@@ -1300,7 +1343,7 @@ async def upload_document(file: UploadFile = File(...)):
                 detail="No text could be extracted from the file. Is it a scanned PDF?"
             )
 
-        chunks   = chunk_document(pages, source_name=file.filename)
+        chunks   = chunk_document(pages, source_name=safe_filename)
         embedded = embed_chunks(chunks)
         store_chunks(embedded, recreate=False)   # Incremental — don't wipe existing
         rebuild_bm25_index()
@@ -1309,7 +1352,7 @@ async def upload_document(file: UploadFile = File(...)):
         cve_chunks  = sum(1 for c in chunks if c["metadata"].get("cves"))
 
         return {
-            "message":        f"Successfully indexed '{file.filename}'",
+            "message":        f"Successfully indexed '{safe_filename}'",
             "chunks_created": len(chunks),
             "code_chunks":    code_chunks,
             "cve_chunks":     cve_chunks,
@@ -1330,10 +1373,11 @@ def delete_document(source: str):
     """Delete a research document and all its vector chunks from Qdrant."""
     from src.vector_store import delete_document_by_source
 
-    print(f"Deleting document: '{source}'...")
-    deleted_from_qdrant = delete_document_by_source(source)
+    safe_source, file_path = _sanitize_doc_path(source)
 
-    file_path = os.path.join(DOCS_FOLDER, source)
+    print(f"Deleting document: '{safe_source}'...")
+    deleted_from_qdrant = delete_document_by_source(safe_source)
+
     if os.path.exists(file_path):
         try:
             os.remove(file_path)
@@ -1345,7 +1389,7 @@ def delete_document(source: str):
 
     return {
         "status":               "ok",
-        "message":              f"Successfully deleted document '{source}'",
+        "message":              f"Successfully deleted document '{safe_source}'",
         "deleted_from_qdrant":  deleted_from_qdrant,
     }
 
