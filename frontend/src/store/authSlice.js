@@ -3,6 +3,9 @@ import axios from "axios";
 
 const API = "/api/auth";
 
+// Ensure cross-origin / same-origin requests carry httpOnly auth cookies
+axios.defaults.withCredentials = true;
+
 // ─── Helper: set auth header ──────────────────────────────────────────────────
 function setAxiosAuth(token) {
   if (token) {
@@ -20,10 +23,10 @@ export const loginUser = createAsyncThunk(
     try {
       const res = await axios.post(`${API}/login`, { email, password });
       const { token, user } = res.data;
-      localStorage.setItem("researchflow_token", token);
-      // Clean up old key if present
+      // Clean up legacy localStorage tokens
+      localStorage.removeItem("researchflow_token");
       localStorage.removeItem("medresearch_token");
-      setAxiosAuth(token);
+      if (token) setAxiosAuth(token);
       return { token, user };
     } catch (err) {
       return rejectWithValue(err.response?.data?.error || "Login failed. Please try again.");
@@ -50,22 +53,16 @@ export const loadCurrentUser = createAsyncThunk(
   "auth/loadCurrentUser",
   async (_, { rejectWithValue }) => {
     try {
-      // Migrate old token key to new key if present
-      const legacyToken = localStorage.getItem("medresearch_token");
+      // Check legacy token if present
+      const legacyToken = localStorage.getItem("researchflow_token") || localStorage.getItem("medresearch_token");
       if (legacyToken) {
-        localStorage.setItem("researchflow_token", legacyToken);
-        localStorage.removeItem("medresearch_token");
+        setAxiosAuth(legacyToken);
       }
-      const token = localStorage.getItem("researchflow_token");
-      if (!token) {
-        return rejectWithValue("No token found.");
-      }
-      setAxiosAuth(token);
       const res = await axios.get(`${API}/me`);
-      return { token, user: res.data };
+      return { user: res.data };
     } catch (err) {
       localStorage.removeItem("researchflow_token");
-      localStorage.removeItem("researchflow_token");
+      localStorage.removeItem("medresearch_token");
       setAxiosAuth(null);
       return rejectWithValue(err.response?.data?.error || "Session expired.");
     }

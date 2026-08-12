@@ -48,7 +48,7 @@ function PrivateRoute({ children }) {
     );
   }
 
-  if (!token || !user) {
+  if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
@@ -56,7 +56,7 @@ function PrivateRoute({ children }) {
 }
 
 function AdminRoute({ children }) {
-  const { user, token, initializing } = useSelector(s => s.auth);
+  const { user, initializing } = useSelector(s => s.auth);
   const location = useLocation();
 
   if (initializing) {
@@ -67,7 +67,7 @@ function AdminRoute({ children }) {
     );
   }
 
-  if (!token || !user) {
+  if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
@@ -79,10 +79,10 @@ function AdminRoute({ children }) {
 }
 
 function PublicRoute({ children }) {
-  const { user, token, initializing } = useSelector(s => s.auth);
+  const { user, initializing } = useSelector(s => s.auth);
 
   if (initializing) return null;
-  if (token && user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to="/" replace />;
   return children;
 }
 

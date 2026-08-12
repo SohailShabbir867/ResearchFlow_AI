@@ -5,6 +5,8 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const rateLimit = require("express-rate-limit");
 
+const cookieParser = require("cookie-parser");
+
 const authRoutes = require("./routes/auth");
 const researchRoutes = require("./routes/research");
 const adminRoutes = require("./routes/admin");
@@ -57,7 +59,8 @@ app.use(cors({
   credentials: true,
 }));
 
-// ─── Body Parsing ─────────────────────────────────────────────────────────────
+// ─── Body Parsing & Cookie Parsing ────────────────────────────────────────────
+app.use(cookieParser());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 

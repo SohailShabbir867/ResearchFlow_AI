@@ -32,9 +32,19 @@ const emailLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// ─── Helper: sign JWT ─────────────────────────────────────────────────────────
+// ─── Helper: sign JWT & set httpOnly cookie ──────────────────────────────────
 function signToken(userId, expiresIn = "24h") {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn });
+}
+
+function setTokenCookie(res, token) {
+  const isProduction = process.env.NODE_ENV === "production";
+  res.cookie("token", token, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: "lax",
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+  });
 }
 
 // ─── POST /api/auth/signup ────────────────────────────────────────────────────
@@ -327,6 +337,7 @@ router.post("/login", authLimiter, async (req, res) => {
     await user.save();
 
     const token = signToken(user._id);
+    setTokenCookie(res, token);
 
     return res.json({ token, user: user.toPublic() });
   } catch (err) {
@@ -471,6 +482,12 @@ router.delete("/account", authMiddleware, async (req, res) => {
 
 // ─── POST /api/auth/logout ────────────────────────────────────────────────────
 router.post("/logout", authMiddleware, (req, res) => {
+  const isProduction = process.env.NODE_ENV === "production";
+  res.clearCookie("token", {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: "lax",
+  });
   return res.json({ message: "Logged out successfully." });
 });
 
