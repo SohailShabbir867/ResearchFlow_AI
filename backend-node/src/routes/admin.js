@@ -10,6 +10,7 @@ const authMiddleware = require("../middleware/auth");
 const { requireRole } = require("../middleware/role");
 const { escapeRegex } = require("../utils/escapeRegex");
 const { isValidEmail, isValidPassword } = require("../utils/validation");
+const { isValidDocumentBuffer } = require("../utils/fileValidation");
 
 const router = express.Router();
 
@@ -290,6 +291,13 @@ router.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No file provided." });
+    }
+
+    // Verify magic bytes (file signature) match claimed document type
+    if (!isValidDocumentBuffer(req.file.buffer, req.file.originalname)) {
+      return res.status(400).json({
+        error: "Invalid file contents. File signature (magic bytes) does not match a valid .pdf, .docx, or .txt document.",
+      });
     }
 
     const form = new FormData();
