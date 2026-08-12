@@ -397,3 +397,12 @@ def format_web_context(web_results: list[dict], max_snippet_len: int = 350) -> s
         )
 
     return "\n\n".join(blocks)
+
+
+def needs_freshness(query: str) -> bool:
+    """Detect if query requires fresh/live web intelligence."""
+    if not query:
+        return False
+    q_lower = query.lower()
+    return any(m in q_lower for m in ["latest", "recent", "news", "today", "update", "current", "2025", "2026", "price", "stock", "weather", "breaking"])
+

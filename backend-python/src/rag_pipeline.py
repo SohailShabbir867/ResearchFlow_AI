@@ -55,7 +55,7 @@ except ImportError:
 from src.embedder import get_embedding
 from src.hybrid_search import hybrid_search
 from src.reranker import rerank
-from src.web_search import perform_web_search, format_web_context
+from src.web_search import perform_web_search, format_web_context, needs_freshness
 
 load_dotenv()
 
@@ -87,9 +87,10 @@ def _get_groq_client():
 
 
 # ─── Web Search Config ────────────────────────────────────────────────────────
-WEB_ALWAYS_ON       = os.getenv("WEB_ALWAYS_ON", "true").lower() == "true"
-ENABLE_WEB_FALLBACK = os.getenv("ENABLE_WEB_FALLBACK", "true").lower() == "true"
-MAX_WEB_RESULTS     = int(os.getenv("MAX_WEB_RESULTS", "8"))   # 8 sources → Perplexity-grade citation diversity
+WEB_ALWAYS_ON           = os.getenv("WEB_ALWAYS_ON", "false").lower() == "true"
+ENABLE_WEB_FALLBACK     = os.getenv("ENABLE_WEB_FALLBACK", "true").lower() == "true"
+MAX_WEB_RESULTS         = int(os.getenv("MAX_WEB_RESULTS", "8"))   # 8 sources → Perplexity-grade citation diversity
+WEB_SUPPLEMENT_THRESHOLD = float(os.getenv("WEB_SUPPLEMENT_THRESHOLD", "1.0"))
 
 # ─── Guardrail thresholds ───────────
 RELEVANCE_THRESHOLD = float(os.getenv("RELEVANCE_THRESHOLD", "-3.5"))
@@ -1049,42 +1050,55 @@ def answer(
             }
         }
 
-    # ── Step 1: Enrich query ──────────────────────────────────────────────────
+    # ── Step 1: Enrich query & evaluate web search intent ─────────────────────
     search_query = enrich_query(question, history)
+    query_needs_web = WEB_ALWAYS_ON or needs_freshness(search_query) or intent in ("shopping", "news")
 
-    # ── Step 2: Embed query (BGE-base, cached) ────────────────────────────────
     t1 = time.time()
-    query_vector = get_embedding(search_query, is_query=True)
+
+    # ── Step 2: PARALLEL — Embedding + Web Search (Task 15 Optimization) ──────
+    # Submit embedding and web search to thread pool concurrently if web is needed up-front
+    embed_future = _executor.submit(get_embedding, search_query, True)
+    web_future   = _executor.submit(perform_web_search, search_query, MAX_WEB_RESULTS) if query_needs_web else None
+
+    query_vector = embed_future.result()
     t_embed = time.time() - t1
 
-    # ── Step 3: PARALLEL — RAG search + Web search ────────────────────────────
-    # Both futures are submitted simultaneously; timing is measured correctly.
+    # ── Step 3: Hybrid RAG Search ─────────────────────────────────────────────
     t2 = time.time()
-    rag_future = _executor.submit(hybrid_search, query_vector, search_query)
-    web_future = _executor.submit(
-        perform_web_search, search_query, MAX_WEB_RESULTS
-    ) if WEB_ALWAYS_ON else None
-
-    # ── Step 4: Rerank RAG candidates ────────────────────────────────────────
-    candidates = rag_future.result()
+    candidates = hybrid_search(query_vector, search_query)
     t_search   = time.time() - t2
 
+    # ── Step 4: Rerank RAG candidates ────────────────────────────────────────
     t3 = time.time()
     reranked = rerank(question, candidates, top_k=top_k) if candidates else []
     t_rerank = time.time() - t3
 
-    # ── Collect web results (usually already done while reranking) ────────────
-    web_results = web_future.result() if web_future else []
-    t_web       = time.time() - t2  # Bug 2 Fix: total parallel time, not wait time
-    print(f"  [Web Search] {len(web_results)} results (parallel block={round(t_web*1000)}ms total)")
+    top_score = reranked[0]["score"] if reranked else -999.0
 
-    # ── Step 5: Guardrails (Bug 11 Fix: reuse passing_chunks from check) ─────
+    # ── Step 5: Guardrail Evaluation & Smart Web Supplement (Task 14 Optimization) ────
     if candidates:
         should_refuse, refuse_reason, passing_chunks = check_guardrails(reranked)
     else:
         should_refuse  = True
         refuse_reason  = "No RAG candidates returned"
         passing_chunks = []
+
+    if web_future:
+        web_results = web_future.result()
+        t_web       = time.time() - t1
+        print(f"  [Web Search] {len(web_results)} results (parallel block={round(t_web*1000)}ms total)")
+    else:
+        # Supplemental search only if RAG is weak or guardrail blocked
+        if should_refuse or top_score < WEB_SUPPLEMENT_THRESHOLD:
+            print(f"  [Web Search] Supplemental web search triggered (top rerank score {round(top_score, 2)} < threshold {WEB_SUPPLEMENT_THRESHOLD} or RAG insufficient)")
+            t_web_start = time.time()
+            web_results = perform_web_search(search_query, MAX_WEB_RESULTS)
+            t_web       = time.time() - t_web_start
+        else:
+            print(f"  [Web Search] Skipped! High RAG score {round(top_score, 2)} >= {WEB_SUPPLEMENT_THRESHOLD}")
+            web_results = []
+            t_web       = 0.0
 
     if should_refuse:
         print(f"  [Guardrail] RAG blocked: {refuse_reason}")

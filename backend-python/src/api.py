@@ -68,7 +68,7 @@ from src.rag_pipeline import (
 from src.vector_store import get_collection_info, get_indexed_sources
 from src.hybrid_search import rebuild_bm25_index, _build_bm25_index
 from src.embedder import get_embedding, warmup as warmup_embedder
-from src.web_search import perform_web_search
+from src.web_search import perform_web_search, needs_freshness
 from src.hybrid_search import hybrid_search
 from src.reranker import rerank
 import src.rag_pipeline as rag
@@ -811,11 +811,12 @@ async def stream_query(request: QueryRequest):
 
             # ── Step 1: Enrich query ──────────────────────────────────────────
             search_query = enrich_query(request.question, history)
+            query_needs_web = rag.WEB_ALWAYS_ON or needs_freshness(search_query) or intent in ("shopping", "news")
 
             yield ": keep-alive\n\n"
             loop = asyncio.get_event_loop()
 
-            # ── Step 2 & 3 & 4: Parallel RAG & Web Search ─────────────────────
+            # ── Step 2 & 3: Parallel RAG & Smart Web Search ───────────────────
             async def do_rag():
                 try:
                     q_vec = await loop.run_in_executor(rag._executor, get_embedding, search_query, True)
@@ -828,14 +829,25 @@ async def stream_query(request: QueryRequest):
                     return []
 
             async def do_web():
-                if not rag.WEB_ALWAYS_ON: return []
                 try:
                     return await loop.run_in_executor(rag._executor, perform_web_search, search_query, rag.MAX_WEB_RESULTS)
                 except Exception as e:
                     print(f"Web search error: {e}")
                     return []
 
-            reranked, web_results = await asyncio.gather(do_rag(), do_web())
+            if query_needs_web:
+                reranked, web_results = await asyncio.gather(do_rag(), do_web())
+            else:
+                reranked = await do_rag()
+                top_score = reranked[0]["score"] if reranked else -999.0
+                should_refuse_rag = not reranked or (top_score < rag.RELEVANCE_THRESHOLD)
+                
+                if should_refuse_rag or top_score < rag.WEB_SUPPLEMENT_THRESHOLD:
+                    print(f"  [Stream] Supplemental web search triggered (top score {round(top_score, 2)} < threshold {rag.WEB_SUPPLEMENT_THRESHOLD})")
+                    web_results = await do_web()
+                else:
+                    print(f"  [Stream] Web search skipped! RAG top score {round(top_score, 2)} >= {rag.WEB_SUPPLEMENT_THRESHOLD}")
+                    web_results = []
 
             yield await yield_event(f"data: {json.dumps({'status_text': '🌐 Enriching with live web intel...'})}\n\n")
             print(f"  [Stream] Web results collected: {len(web_results)}")
