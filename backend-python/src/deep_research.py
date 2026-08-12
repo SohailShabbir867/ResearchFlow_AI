@@ -67,13 +67,13 @@ def _merge_unique_web_results(results: list[dict]) -> list[dict]:
             merged[url] = result
     return sorted(merged.values(), key=lambda r: r.get("confidence", 0), reverse=True)
 
-async def perform_deep_research(request, history, style_name, intent, intent_info, language, client, yield_event, cache_key, events_to_cache, query_cache):
+async def perform_deep_research(request, history, style_name, intent, intent_info, language, model_name, stream_llm_tokens_fn, yield_event, cache_key, events_to_cache, query_cache):
     """
     Executes the Deep Autonomous Research agentic loop.
-    1. Decompose query into 3-4 sub-queries using LLM + structured output.
+    1. Decompose query into 3-4 sub-queries using selected LLM.
     2. Concurrently run web search & RAG for each sub-query.
     3. Aggregate all results.
-    4. Synthesize final answer.
+    4. Synthesize final answer using the user-selected model.
     """
     
     # ── Step 1: Decompose Query ───────────────────────────────────────────────
@@ -81,26 +81,25 @@ async def perform_deep_research(request, history, style_name, intent, intent_inf
 
     DECOMPOSITION_TIMEOUT = 20
     RELATED_QUESTIONS_TIMEOUT = 15
-    SYNTHESIS_START_TIMEOUT = 30
-    STREAM_CHUNK_TIMEOUT = 30
 
-    # Start fetching related questions concurrently
+    # Start fetching related questions concurrently using the selected model
     async def fetch_related_questions():
         try:
             sys_r = "You are an AI research assistant. Based on the user's complex query, suggest exactly 3 short, relevant follow-up questions they could ask to learn more. Output ONLY a JSON object with a single key 'questions' containing an array of 3 strings."
             if language == "ur":
                 sys_r += " The user's query is in Urdu, so the follow-up questions MUST be in Urdu."
-            resp = await asyncio.wait_for(client.chat.completions.create(
-                model=rag.GROQ_MODEL,
-                messages=[
-                    {"role": "system", "content": sys_r},
-                    {"role": "user", "content": request.question},
-                ],
-                temperature=0.3,
+            
+            raw_text = ""
+            async for token in stream_llm_tokens_fn(
+                model_name=model_name,
+                sys_content=sys_r,
+                user_content=request.question,
                 max_tokens=200,
-                response_format={"type": "json_object"}
-            ), timeout=RELATED_QUESTIONS_TIMEOUT)
-            parsed = json.loads(resp.choices[0].message.content)
+                language=language,
+            ):
+                raw_text += token
+
+            parsed = json.loads(raw_text.strip())
             return parsed.get("questions", [])[:3]
         except Exception as e:
             print(f"  [Deep Research] Related Questions Error: {e}")
@@ -119,19 +118,17 @@ async def perform_deep_research(request, history, style_name, intent, intent_inf
     sub_queries = [request.question, f"Recent developments in {request.question}"]
     
     try:
-        decomposition_response = await asyncio.wait_for(client.chat.completions.create(
-            model=rag.GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": request.question},
-            ],
-            temperature=0.1,
+        raw_decomp_json = ""
+        async for token in stream_llm_tokens_fn(
+            model_name=model_name,
+            sys_content=system_prompt,
+            user_content=request.question,
             max_tokens=200,
-            response_format={"type": "json_object"}
-        ), timeout=DECOMPOSITION_TIMEOUT)
+            language="en",
+        ):
+            raw_decomp_json += token
         
-        raw_json = decomposition_response.choices[0].message.content
-        parsed = json.loads(raw_json)
+        parsed = json.loads(raw_decomp_json.strip())
         if "queries" in parsed and isinstance(parsed["queries"], list):
             sub_queries = parsed["queries"][:3]
     except Exception as e:
@@ -208,28 +205,14 @@ async def perform_deep_research(request, history, style_name, intent, intent_inf
     )
 
     try:
-        groq_stream = await asyncio.wait_for(client.chat.completions.create(
-            model=rag.GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": sys_c},
-                {"role": "user",   "content": usr_c},
-            ],
-            temperature=rag.LLM_TEMPERATURE,
-            max_tokens=effective_max_tokens,
-            stream=True,
-        ), timeout=SYNTHESIS_START_TIMEOUT)
-
         token_count = 0
-        while True:
-            try:
-                chunk = await asyncio.wait_for(groq_stream.__anext__(), timeout=STREAM_CHUNK_TIMEOUT)
-            except StopAsyncIteration:
-                break
-            except asyncio.TimeoutError:
-                print("  [Deep Research] Stream stalled; falling back to single-shot synthesis")
-                break
-
-            token = chunk.choices[0].delta.content or ""
+        async for token in stream_llm_tokens_fn(
+            model_name=model_name,
+            sys_content=sys_c,
+            user_content=usr_c,
+            max_tokens=effective_max_tokens,
+            language=language,
+        ):
             if token:
                 token_count += 1
                 await yield_event(f"data: {json.dumps({'token': token})}\n\n")
@@ -237,20 +220,12 @@ async def perform_deep_research(request, history, style_name, intent, intent_inf
                     await asyncio.sleep(0)
 
         if token_count == 0:
-            print("  [Deep Research] No streamed tokens received; using fallback completion")
-            fallback_answer = await asyncio.to_thread(rag.call_groq, sys_c, usr_c, effective_max_tokens)
-            if fallback_answer:
-                await yield_event(f"data: {json.dumps({'token': fallback_answer})}\n\n")
+            await yield_event(f"data: {json.dumps({'token': 'No response generated from the selected model.'})}\n\n")
 
     except Exception as e:
         print(f"  [Deep Research] Synthesis error: {e}")
-        try:
-            fallback_answer = await asyncio.to_thread(rag.call_groq, sys_c, usr_c, effective_max_tokens)
-            if fallback_answer:
-                await yield_event(f"data: {json.dumps({'token': fallback_answer})}\n\n")
-        except Exception as fallback_err:
-            await yield_event(f"data: {json.dumps({'error': f'Deep Research Synthesis failed: {str(fallback_err)}'})}\n\n")
-            return
+        await yield_event(f"data: {json.dumps({'error': f'Deep Research Synthesis failed: {str(e)}'})}\n\n")
+        return
 
     # ── Step 4: Final Metadata ────────────────────────────────────────────────
     rag_sources = list({c["source"] for c in unique_chunks})
@@ -268,7 +243,7 @@ async def perform_deep_research(request, history, style_name, intent, intent_inf
         })
 
     related_questions = await related_task
-    await yield_event(f"data: {json.dumps({'done': True, 'sources': rag_sources + web_titles, 'web_sources': web_sources, 'web_results': unique_web, 'rag_source_details': rag_source_details, 'is_web_fallback': False, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'related_questions': related_questions})}\n\n")
+    await yield_event(f"data: {json.dumps({'done': True, 'sources': rag_sources + web_titles, 'web_sources': web_sources, 'web_results': unique_web, 'rag_source_details': rag_source_details, 'is_web_fallback': False, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'related_questions': related_questions, 'model': model_name})}\n\n")
     
     # Save to cache
     query_cache.put(cache_key, events_to_cache)

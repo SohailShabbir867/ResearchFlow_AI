@@ -33,6 +33,10 @@ from datetime import datetime
 from typing import Optional, AsyncIterator
 
 from groq import AsyncGroq
+try:
+    from openai import AsyncOpenAI as _AsyncOpenAI
+except ImportError:
+    _AsyncOpenAI = None  # DeepSeek integration requires: pip install openai
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Header, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -93,6 +97,14 @@ SUPPORTED_GEMINI_MODELS = {
     "gemini-2.0-flash-lite",
 }
 
+# DeepSeek (OpenAI-compatible endpoint) models allowlist
+SUPPORTED_DEEPSEEK_MODELS = {
+    "deepseek-v4-flash",       # DeepSeek Flash v4 — fast & lightweight
+    "deepseek-v4-pro",         # DeepSeek Pro — advanced reasoning & deep research
+    "deepseek-chat",           # auto-remapped to deepseek-v4-flash
+    "deepseek-reasoner",       # auto-remapped to deepseek-v4-pro
+}
+
 COUNCIL_MODELS = [
     os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
     "gemma2-9b-it",
@@ -104,6 +116,8 @@ DEPRECATED_MODEL_ALIASES = {
     "gemini-mini":         "gemini-2.0-flash",
     "gemini-1.0":          "gemini-1.5-flash",
     "gemini-1.0-pro":      "gemini-1.5-pro",
+    "deepseek-chat":       "deepseek-v4-flash",
+    "deepseek-reasoner":   "deepseek-v4-pro",
 }
 
 load_dotenv()
@@ -114,6 +128,8 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
 
 def _sanitize_doc_path(filename: str) -> tuple[str, str]:
@@ -276,6 +292,36 @@ def _get_async_groq() -> AsyncGroq:
     return _async_groq
 
 
+# ─── DeepSeek async client (openai-compatible) ────────────────────────────────
+_async_deepseek = None
+
+def _get_async_deepseek():
+    """Lazy singleton for the AsyncOpenAI client pointed at DeepSeek's endpoint."""
+    global _async_deepseek
+    if _async_deepseek is not None:
+        return _async_deepseek
+    if _AsyncOpenAI is None:
+        raise HTTPException(
+            status_code=500,
+            detail="openai package missing. Run: pip install openai"
+        )
+    if not DEEPSEEK_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="DEEPSEEK_API_KEY not configured in backend-python/.env"
+        )
+    _async_deepseek = _AsyncOpenAI(
+        api_key=DEEPSEEK_API_KEY,
+        base_url=DEEPSEEK_BASE_URL,
+    )
+    print(f"  [DeepSeek] Singleton initialized (base_url={DEEPSEEK_BASE_URL}).")
+    return _async_deepseek
+
+
+def _is_deepseek_model(model_name: str) -> bool:
+    return model_name in SUPPORTED_DEEPSEEK_MODELS
+
+
 async def stream_llm_tokens(
     model_name: str,
     sys_content: str,
@@ -284,12 +330,40 @@ async def stream_llm_tokens(
     language: str = "en",
 ) -> AsyncIterator[str]:
     """
-    Unified async generator streaming text tokens across Groq, Gemini, or future providers.
+    Unified async generator streaming text tokens across Groq, Gemini, DeepSeek, or future providers.
     """
     if language == "ur":
         sys_content += "\n\nCRITICAL DIRECTIVE: The user is speaking Urdu. You MUST reply completely in native Urdu language (using Urdu script)."
 
-    if _is_gemini_model(model_name):
+    if _is_deepseek_model(model_name):
+        if not DEEPSEEK_API_KEY:
+            raise HTTPException(status_code=503, detail="DEEPSEEK_API_KEY not configured in backend-python/.env")
+        ds_client = _get_async_deepseek()
+        try:
+            ds_stream = await ds_client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": sys_content},
+                    {"role": "user",   "content": user_content},
+                ],
+                temperature=rag.LLM_TEMPERATURE,
+                max_tokens=max_tokens,
+                stream=True,
+            )
+            async for chunk in ds_stream:
+                token = (chunk.choices[0].delta.content or "") if chunk.choices else ""
+                if token:
+                    yield token
+        except Exception as e:
+            err_str = str(e)
+            if "401" in err_str or "Unauthorized" in err_str or "invalid" in err_str.lower():
+                raise HTTPException(status_code=401, detail="Invalid DEEPSEEK_API_KEY.")
+            elif "429" in err_str or "quota" in err_str.lower() or "rate" in err_str.lower():
+                raise HTTPException(status_code=429, detail="DeepSeek rate limit / quota exceeded.")
+            else:
+                raise HTTPException(status_code=500, detail=f"DeepSeek API error: {err_str}")
+
+    elif _is_gemini_model(model_name):
         if not GEMINI_API_KEY:
             raise HTTPException(status_code=503, detail="GEMINI_API_KEY not configured in backend-python/.env")
         try:
@@ -462,14 +536,16 @@ def _should_use_deep_research(question: str, history: Optional[list[HistoryMessa
 def _normalize_requested_model(model_name: str | None) -> str:
     """
     Map retired, unknown, or incorrectly-named model strings to a currently
-    supported model. Routes gemini-* to Gemini API, groq models to Groq.
+    supported model. Routes gemini-* to Gemini API, deepseek-* to DeepSeek
+    API, groq models to Groq.
 
     Priority:
       1. 'council' passthrough
       2. Deprecated / alias redirect (may redirect gemini-mini -> gemini-2.0-flash)
       3. Gemini model passthrough (real models go directly to Gemini API)
-      4. SUPPORTED_GROQ_MODELS allowlist
-      5. Fallback to GROQ_MODEL with a warning
+      4. DeepSeek model passthrough (real models go directly to DeepSeek API)
+      5. SUPPORTED_GROQ_MODELS allowlist
+      6. Fallback to GROQ_MODEL with a warning
     """
     default_model = rag.GROQ_MODEL
     if not model_name:
@@ -491,9 +567,15 @@ def _normalize_requested_model(model_name: str | None) -> str:
             print(f"  [Model] WARNING: '{model_name}' is a Gemini model but GEMINI_API_KEY is not set.")
         return model_name  # handled by _is_gemini_model() check in stream_query
 
-    # 4. Groq allowlist check
+    # 4. DeepSeek model — pass through directly to DeepSeek API handler
+    if model_name in SUPPORTED_DEEPSEEK_MODELS:
+        if not DEEPSEEK_API_KEY:
+            print(f"  [Model] WARNING: '{model_name}' is a DeepSeek model but DEEPSEEK_API_KEY is not set.")
+        return model_name  # handled by _is_deepseek_model() check in stream_query
+
+    # 5. Groq allowlist check
     if model_name not in SUPPORTED_GROQ_MODELS:
-        print(f"  [Model] WARNING: '{model_name}' not in SUPPORTED_GROQ_MODELS or SUPPORTED_GEMINI_MODELS — "
+        print(f"  [Model] WARNING: '{model_name}' not in SUPPORTED_GROQ_MODELS, SUPPORTED_GEMINI_MODELS, or SUPPORTED_DEEPSEEK_MODELS — "
               f"falling back to '{default_model}'.")
         return default_model
 
@@ -678,8 +760,9 @@ async def stream_query(request: QueryRequest):
     direct_answer_intents = {"chat", "coaching", "opinion"}
 
     request_model = _normalize_requested_model(request.model)
-    using_gemini = _is_gemini_model(request_model)
-    if not using_gemini and (not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here"):
+    using_gemini   = _is_gemini_model(request_model)
+    using_deepseek = _is_deepseek_model(request_model)
+    if not using_gemini and not using_deepseek and (not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here"):
         raise HTTPException(
             status_code=503,
             detail="GROQ_API_KEY not configured in backend-python/.env"
@@ -687,6 +770,10 @@ async def stream_query(request: QueryRequest):
 
     if using_gemini and not GEMINI_API_KEY:
         raise HTTPException(status_code=503, detail="GEMINI_API_KEY not configured in backend-python/.env")
+
+    if using_deepseek and not DEEPSEEK_API_KEY:
+        raise HTTPException(status_code=503, detail="DEEPSEEK_API_KEY not configured in backend-python/.env")
+
 
     style_name = request.answer_style if request.answer_style in ANSWER_STYLES else None
     history = None
@@ -738,8 +825,8 @@ async def stream_query(request: QueryRequest):
 
             style = ANSWER_STYLES[style_name]
 
-            if intent in direct_answer_intents and not using_gemini:
-                print(f"  [Stream] Direct-answer fast path triggered for intent: {intent}")
+            if intent in direct_answer_intents:
+                print(f"  [Stream] Direct-answer fast path triggered for intent: {intent} (using {request_model})")
                 yield await yield_event(f"data: {json.dumps({'status_text': '💬 Drafting direct answer...'})}\n\n")
 
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")
@@ -751,21 +838,8 @@ async def stream_query(request: QueryRequest):
 
                 usr_c = f"{rag._build_history_xml(history)}<user_query>\n{request.question}\n</user_query>\n\n<response>"
 
-                client = _get_async_groq()
-                groq_stream = await client.chat.completions.create(
-                    model=request_model,
-                    messages=[
-                        {"role": "system", "content": sys_c},
-                        {"role": "user",   "content": usr_c},
-                    ],
-                    temperature=rag.LLM_TEMPERATURE,
-                    max_tokens=style["max_tokens"],
-                    stream=True,
-                )
-
                 direct_token_count = 0
-                async for chunk in groq_stream:
-                    token = chunk.choices[0].delta.content or ""
+                async for token in stream_llm_tokens(request_model, sys_c, usr_c, style["max_tokens"], language):
                     if token:
                         direct_token_count += 1
                         yield await yield_event(f"data: {json.dumps({'token': token})}\n\n")
@@ -774,15 +848,15 @@ async def stream_query(request: QueryRequest):
                     fallback_text = "I think AI is most useful when it is applied to real problems, checked carefully, and used to augment human judgment rather than replace it."
                     yield await yield_event(f"data: {json.dumps({'token': fallback_text})}\n\n")
 
-                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'rag_source_details': [], 'provider': 'gemini' if using_gemini else 'groq', 'model': request_model})}\n\n")
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'rag_source_details': [], 'provider': 'gemini' if using_gemini else ('deepseek' if using_deepseek else 'groq'), 'model': request_model})}\n\n")
                 _query_cache.put(cache_key, events_to_cache)
                 return
 
             # Emit intent badge right away — frontend shows it immediately
             yield await yield_event(f"data: {json.dumps({'intent': intent, 'intent_info': intent_info, 'language': language})}\n\n")
 
-            if intent == "shopping" and not using_gemini:
-                print("  [Stream] Shopping fast-path triggered (web-only comparison)")
+            if intent == "shopping":
+                print(f"  [Stream] Shopping fast-path triggered (web-only comparison using {request_model})")
                 yield await yield_event(f"data: {json.dumps({'status_text': '🛒 Comparing products...'})}\n\n")
 
                 search_query = enrich_query(request.question, history)
@@ -812,21 +886,8 @@ async def stream_query(request: QueryRequest):
                 if language == "ur":
                     sys_c += "\n\nCRITICAL DIRECTIVE: The user is speaking Urdu. You MUST reply completely in native Urdu language (using Urdu script)."
 
-                client = _get_async_groq()
-                groq_stream = await client.chat.completions.create(
-                    model=request_model,
-                    messages=[
-                        {"role": "system", "content": sys_c},
-                        {"role": "user",   "content": usr_c},
-                    ],
-                    temperature=rag.LLM_TEMPERATURE,
-                    max_tokens=style["max_tokens"],
-                    stream=True,
-                )
-
                 shopping_token_count = 0
-                async for chunk in groq_stream:
-                    token = chunk.choices[0].delta.content or ""
+                async for token in stream_llm_tokens(request_model, sys_c, usr_c, style["max_tokens"], language):
                     if token:
                         shopping_token_count += 1
                         yield await yield_event(f"data: {json.dumps({'token': token})}\n\n")
@@ -836,13 +897,13 @@ async def stream_query(request: QueryRequest):
 
                 web_sources = [r["url"] for r in web_results if r.get("url")]
                 web_titles  = [r["title"] for r in web_results if r.get("title")]
-                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': [], 'is_web_fallback': True, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'provider': 'gemini' if using_gemini else 'groq', 'model': request_model})}\n\n")
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': [], 'is_web_fallback': True, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'provider': 'gemini' if using_gemini else ('deepseek' if using_deepseek else 'groq'), 'model': request_model})}\n\n")
                 _query_cache.put(cache_key, events_to_cache)
                 return
 
             # ── Fast-path for chat intent ──────────────────────────────────────────────
-            if intent == "chat" and style_name == "conversational" and not using_gemini:
-                print("  [Stream] Chat fast-path triggered (bypassing search)")
+            if intent == "chat" and style_name == "conversational":
+                print(f"  [Stream] Chat fast-path triggered (bypassing search, using {request_model})")
                 yield await yield_event(f"data: {json.dumps({'status_text': '⚡ Chatting...'})}\n\n")
                 
                 now_str      = datetime.now().strftime("%Y-%m-%d %H:%M:%S (%A)")
@@ -854,31 +915,18 @@ async def stream_query(request: QueryRequest):
                 
                 usr_c = f"{rag._build_history_xml(history)}<user_query>\n{request.question}\n</user_query>\n\n<response>"
                 
-                client = _get_async_groq()
-                groq_stream = await client.chat.completions.create(
-                    model=request_model,
-                    messages=[
-                        {"role": "system", "content": sys_c},
-                        {"role": "user",   "content": usr_c},
-                    ],
-                    temperature=rag.LLM_TEMPERATURE,
-                    max_tokens=style["max_tokens"],
-                    stream=True,
-                )
-                
-                async for chunk in groq_stream:
-                    token = chunk.choices[0].delta.content or ""
+                async for token in stream_llm_tokens(request_model, sys_c, usr_c, style["max_tokens"], language):
                     if token:
                         yield await yield_event(f"data: {json.dumps({'token': token})}\n\n")
                         
-                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'rag_source_details': [], 'provider': 'gemini' if using_gemini else 'groq', 'model': request_model})}\n\n")
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'rag_source_details': [], 'provider': 'gemini' if using_gemini else ('deepseek' if using_deepseek else 'groq'), 'model': request_model})}\n\n")
                 
                 # Save to cache
                 _query_cache.put(cache_key, events_to_cache)
                 return
 
             # ── Deep Research Mode ───────────────────────────────────────────────────
-            if use_deep_research and not using_gemini:
+            if use_deep_research:
                 from src.deep_research import perform_deep_research
                 await perform_deep_research(
                     request=request, 
@@ -887,7 +935,8 @@ async def stream_query(request: QueryRequest):
                     intent=intent, 
                     intent_info=intent_info, 
                     language=language,
-                    client=_get_async_groq(), 
+                    model_name=request_model,
+                    stream_llm_tokens_fn=stream_llm_tokens,
                     yield_event=yield_event, 
                     cache_key=cache_key, 
                     events_to_cache=events_to_cache, 
@@ -950,7 +999,7 @@ async def stream_query(request: QueryRequest):
 
             if should_refuse and not web_results:
                 yield await yield_event(f"data: {json.dumps({'token': REFUSAL_MSG})}\n\n")
-                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': True, 'intent': intent, 'provider': 'gemini' if using_gemini else 'groq', 'model': request_model})}\n\n")
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': True, 'intent': intent, 'provider': 'gemini' if using_gemini else ('deepseek' if using_deepseek else 'groq'), 'model': request_model})}\n\n")
                 _query_cache.put(cache_key, events_to_cache)
                 return
 
@@ -1044,6 +1093,82 @@ async def stream_query(request: QueryRequest):
                         yield f"data: {json.dumps({'error': '⏳ Gemini free-tier rate limit reached. Wait 1 minute or switch to a Groq model.'})}\n\n"
                     else:
                         yield f"data: {json.dumps({'error': f'Gemini error: {err_str[:200]}'})}\n\n"
+                    return
+
+            # ─── DEEPSEEK ROUTE ───────────────────────────────────────────────
+            if using_deepseek:
+                yield await yield_event(f"data: {json.dumps({'status_text': f'🔮 Streaming from DeepSeek ({request_model})...'})}\n\n")
+
+                async def fetch_related_questions_deepseek():
+                    try:
+                        ds_client_rel = _get_async_deepseek()
+                        sys_r = "You are an AI research assistant. Based on the user's query, suggest exactly 3 short, relevant follow-up questions. Output ONLY a JSON object with a single key 'questions' containing an array of 3 strings."
+                        if language == "ur":
+                            sys_r += " The user's query is in Urdu, so the follow-up questions MUST be in Urdu."
+                        resp = await ds_client_rel.chat.completions.create(
+                            model=request_model if request_model in ("deepseek-v4-flash", "deepseek-v4-pro") else "deepseek-v4-flash",
+                            messages=[{"role": "system", "content": sys_r}, {"role": "user", "content": request.question}],
+                            temperature=0.3, max_tokens=200, response_format={"type": "json_object"}
+                        )
+                        return json.loads(resp.choices[0].message.content).get("questions", [])[:3]
+                    except Exception:
+                        if _groq_client_for_related:
+                            try:
+                                sys_r = "You are an AI research assistant. Based on the user's query, suggest exactly 3 short, relevant follow-up questions. Output ONLY a JSON object with a single key 'questions' containing an array of 3 strings."
+                                resp = await _groq_client_for_related.chat.completions.create(
+                                    model=rag.GROQ_MODEL,
+                                    messages=[{"role": "system", "content": sys_r}, {"role": "user", "content": request.question}],
+                                    temperature=0.3, max_tokens=200, response_format={"type": "json_object"}
+                                )
+                                return json.loads(resp.choices[0].message.content).get("questions", [])[:3]
+                            except Exception:
+                                pass
+                        return []
+
+                related_task_ds = asyncio.create_task(fetch_related_questions_deepseek())
+
+                try:
+                    ds_client = _get_async_deepseek()
+                    ds_stream = await ds_client.chat.completions.create(
+                        model=request_model,
+                        messages=[
+                            {"role": "system", "content": sys_c},
+                            {"role": "user",   "content": usr_c},
+                        ],
+                        temperature=rag.LLM_TEMPERATURE,
+                        max_tokens=effective_max_tokens,
+                        stream=True,
+                    )
+                    async for chunk in ds_stream:
+                        token = (chunk.choices[0].delta.content or "") if chunk.choices else ""
+                        if token:
+                            yield await yield_event(f"data: {json.dumps({'token': token})}\n\n")
+                            await asyncio.sleep(0)
+
+                    related_questions_ds = await related_task_ds
+                    rag_sources  = list({c["source"] for c in passing_chunks})
+                    web_src_urls = [r["url"] for r in web_results if r.get("url")]
+                    rag_source_details = []
+                    for src in rag_sources:
+                        src_chunks = [c for c in passing_chunks if c["source"] == src]
+                        top_score  = max((c.get("rerank_score", -99) for c in src_chunks), default=-99)
+                        rag_source_details.append({"source": src, "chunks": len(src_chunks), "confidence": source_confidence_score(top_score)})
+                    yield await yield_event(f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_src_urls, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'related_questions': related_questions_ds, 'provider': 'deepseek', 'model': request_model})}\n\n")
+                    if request.research_mode == "quick":
+                        _query_cache.put(cache_key, events_to_cache)
+                    return
+                except ImportError:
+                    yield f"data: {json.dumps({'error': '🔧 openai package missing. Run: pip install openai'})}\n\n"
+                    return
+                except Exception as ds_err:
+                    err_str = str(ds_err)
+                    print(f"  [DeepSeek Error] {err_str}")
+                    if "401" in err_str or "Unauthorized" in err_str or "invalid" in err_str.lower():
+                        yield f"data: {json.dumps({'error': '🔑 DeepSeek API key missing or invalid. Add DEEPSEEK_API_KEY=your_key to backend-python/.env — get key at https://platform.deepseek.com/api_keys'})}\n\n"
+                    elif "429" in err_str or "quota" in err_str.lower() or "rate" in err_str.lower():
+                        yield f"data: {json.dumps({'error': '⏳ DeepSeek rate limit reached. Wait a moment or switch to a Groq model.'})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'error': f'DeepSeek error: {err_str[:200]}'})}\n\n"
                     return
 
             # ─── GROQ ROUTE ──────────────────────────────────────────────────
@@ -1214,24 +1339,13 @@ async def stream_query(request: QueryRequest):
                 
                 if language == "ur":
                     sys_c2 += "\n\nCRITICAL DIRECTIVE: The user is speaking Urdu. You MUST reply completely in native Urdu language (using Urdu script)."
-                groq_stream2 = await client.chat.completions.create(
-                    model=rag.GROQ_MODEL,
-                    messages=[
-                        {"role": "system", "content": sys_c2},
-                        {"role": "user",   "content": usr_c2},
-                    ],
-                    temperature=rag.LLM_TEMPERATURE,
-                    max_tokens=effective_max_tokens,
-                    stream=True,
-                )
-                async for chunk2 in groq_stream2:
-                    token2 = chunk2.choices[0].delta.content or ""
+                async for token2 in stream_llm_tokens(request_model, sys_c2, usr_c2, effective_max_tokens, language):
                     if token2:
                         yield await yield_event(f"data: {json.dumps({'token': token2})}\n\n")
 
                 web_sources = [r["url"]   for r in web_results if r.get("url")]
                 web_titles  = [r["title"] for r in web_results if r.get("title")]
-                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': [], 'is_web_fallback': True, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'provider': 'gemini' if using_gemini else 'groq', 'model': request_model})}\n\n")
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': [], 'is_web_fallback': True, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'provider': 'gemini' if using_gemini else ('deepseek' if using_deepseek else 'groq'), 'model': request_model})}\n\n")
                 _query_cache.put(cache_key, events_to_cache)
                 return
 
@@ -1251,7 +1365,7 @@ async def stream_query(request: QueryRequest):
                 })
 
             related_questions = await related_task
-            yield await yield_event(f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'related_questions': related_questions, 'provider': 'gemini' if using_gemini else 'groq', 'model': request_model})}\n\n")
+            yield await yield_event(f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'related_questions': related_questions, 'provider': 'gemini' if using_gemini else ('deepseek' if using_deepseek else 'groq'), 'model': request_model})}\n\n")
 
             # Cache the successful response
             if request.research_mode == "quick":
