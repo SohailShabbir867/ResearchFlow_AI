@@ -13,6 +13,8 @@ v4.0 — Optimized with LRU cache (256 entries) for instant repeated lookups.
 import os
 import hashlib
 import threading
+from collections import OrderedDict
+try:
     from dotenv import load_dotenv
 except ImportError:
     def load_dotenv(*args, **kwargs):
@@ -20,8 +22,6 @@ except ImportError:
 from fastembed import TextEmbedding
 
 load_dotenv()
-
-# BAAI/bge-m3: 1024-dim, multilingual (Urdu support)
 EMBED_MODEL      = os.getenv("EMBED_MODEL", "BAAI/bge-m3")
 EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "16"))  # Safe for 8GB RAM
 

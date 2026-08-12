@@ -26,47 +26,19 @@ import json
 import time
 import asyncio
 import hashlib
-"""
-ResearchFlow AI — FastAPI REST Service
-v6.0.0 — AsyncGroq Streaming + Startup Warmup + Keep-Alive
-
-Bug Fixes (v6.0):
-  AsyncGroq   — Replaced sync Groq client with AsyncGroq inside async generate().
-                The sync Groq client was blocking the FastAPI event loop on every
-                streaming request, causing the frontend to receive no tokens.
-  Keep-Alive  — SSE keep-alive comment frames prevent proxy/nginx timeout on slow LLM.
-  Warmup      — Embedder + BM25 index warm up at startup → no cold-start delay.
-  Import Bug  — source_confidence_score import moved from inside generate() to module-level.
-
-Endpoints:
-  GET  /health          — Service status and config
-  GET  /documents       — List indexed research documents
-  POST /query           — Standard RAG query (full response)
-  POST /stream          — Streaming RAG query (SSE token-by-token, AsyncGroq)
-  POST /upload          — Upload document (PDF/TXT/DOCX/MD)
-  DELETE /documents/:s  — Delete document and its vectors
-  GET  /settings        — Get active guardrail config
-  POST /settings        — Update runtime settings
-  POST /rebuild-index   — Rebuild BM25 keyword index
-"""
-import os
-import json
-import time
-import asyncio
-import hashlib
 import re
 from collections import OrderedDict
 import threading
 from datetime import datetime
+from typing import Optional
 
-# ── Module-level imports (v6.0: AsyncGroq replaces sync Groq — never blocks event loop) ──
 from groq import AsyncGroq
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Header, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
-from typing import Optional
+
 try:
     from dotenv import load_dotenv
 except ImportError:
@@ -84,7 +56,7 @@ from src.rag_pipeline import (
     detect_time_intent,
     enrich_query,
     classify_query_intent,
-    source_confidence_score,   # v6.0: module-level import (was wrongly inside generate())
+    source_confidence_score,
     INTENT_META,
     REFUSAL_MSG,
     RELEVANCE_THRESHOLD,
@@ -102,7 +74,6 @@ from src.reranker import rerank
 import src.rag_pipeline as rag
 
 # ── Supported Groq models (validated allowlist — prevents silent fallbacks) ──
-# Gemini models are handled separately via the Gemini API client.
 SUPPORTED_GROQ_MODELS = {
     "llama-3.3-70b-versatile",
     "llama-3.1-70b-versatile",
@@ -111,49 +82,43 @@ SUPPORTED_GROQ_MODELS = {
     "llama3-8b-8192",
     "gemma2-9b-it",
     "gemma-7b-it",
-    "council",    # special multi-model mode
+    "council",
 }
 
-# Gemini models available on the FREE tier of Google AI Studio
-# Get a free key at: https://aistudio.google.com/app/apikey
 SUPPORTED_GEMINI_MODELS = {
-    "gemini-2.0-flash",           # Best free-tier model (2026)
-    "gemini-1.5-flash",           # Fast, generous free limits
-    "gemini-1.5-flash-8b",        # Smallest, fastest free model
-    "gemini-1.5-pro",             # Most capable (50 req/day free)
-    "gemini-2.0-flash-lite",      # Ultra-fast, lightweight
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-pro",
+    "gemini-2.0-flash-lite",
 }
 
-# Council mode runs these two models in parallel and interleaves their tokens.
 COUNCIL_MODELS = [
     os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
     "gemma2-9b-it",
 ]
 
-# ── Deprecated / alias map (Groq-only) ────────────────────────────────────────────
 DEPRECATED_MODEL_ALIASES = {
     "mixtral-8x7b-32768":  os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
     "llama2-70b-4096":     os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-    # Old/wrong Gemini names from before real integration was added
-    "gemini-mini":         "gemini-2.0-flash",   # redirect old alias to real model
+    "gemini-mini":         "gemini-2.0-flash",
     "gemini-1.0":          "gemini-1.5-flash",
     "gemini-1.0-pro":      "gemini-1.5-pro",
 }
 
 load_dotenv()
 
-DOCS_FOLDER   = os.path.join(os.path.dirname(__file__), "../data/documents")
+DOCS_FOLDER = os.path.join(os.path.dirname(__file__), "../data/documents")
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
 
 def _sanitize_doc_path(filename: str) -> tuple[str, str]:
     """
     Sanitize and validate user-supplied filenames to prevent path traversal attacks.
-
-    Fixes Critical Vulnerability:
-    1. Rejects null bytes (\0), '..', and absolute paths with HTTP 400.
-    2. Strips directory components using os.path.basename().
-    3. Verifies resolved path stays inside DOCS_FOLDER using os.path.commonpath (HTTP 400).
-
-    Returns (safe_basename, final_abs_path).
     """
     if not filename or not isinstance(filename, str):
         raise HTTPException(status_code=400, detail="Filename cannot be empty.")
@@ -182,16 +147,10 @@ def _sanitize_doc_path(filename: str) -> tuple[str, str]:
         raise HTTPException(status_code=400, detail="Invalid filename path resolution.")
 
     return safe_name, final_path
-GROQ_API_KEY  = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL    = os.getenv("GROQ_MODEL",   "llama-3.3-70b-versatile")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
-INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
 
 def verify_internal_key(x_internal_key: Optional[str] = Header(None, alias="X-Internal-Key")):
     """
     FastAPI security dependency for service-to-service internal authentication.
-    Requires header 'X-Internal-Key' to match INTERNAL_API_KEY configured in env.
     """
     if INTERNAL_API_KEY:
         if not x_internal_key or x_internal_key != INTERNAL_API_KEY:
@@ -218,12 +177,7 @@ if not raw_origins:
 
 app = FastAPI(
     title="ResearchFlow AI — Expert RAG Service",
-    description=(
-        "Expert knowledge retrieval for scientific, medical, technical, and multidisciplinary research queries. "
-        "Powered by BGE-base embeddings, hybrid BM25+vector search, cross-encoder reranking, "
-        "and Groq LLM (AsyncGroq). Supports Python, Bash, C/C++, JavaScript, PowerShell, "
-        "Ruby, SQL, Assembly, Go, Rust."
-    ),
+    description="Expert knowledge retrieval for scientific, medical, technical, and multidisciplinary research queries.",
     version="6.0.0"
 )
 
@@ -235,12 +189,11 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-
 # ─── Startup warmup ───────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def on_startup():
     """
-    v7.0: Warm up expensive components at server start. Logs Gemini status.
+    v7.0: Warm up expensive components at server start. Logs Gemini & Auth status.
     """
     import threading
     if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
@@ -251,11 +204,36 @@ async def on_startup():
 
     if GEMINI_API_KEY and GEMINI_API_KEY not in ("your_gemini_api_key_here", ""):
         print(f"  [Startup] OK: GEMINI_API_KEY detected — Gemini models enabled ({GEMINI_DEFAULT_MODEL}).")
+    else:
+        print("  [Startup] INFO: No GEMINI_API_KEY set. Gemini models will return an error until key is added to .env.")
 
     if INTERNAL_API_KEY:
         print("  [Startup] OK: INTERNAL_API_KEY detected — service-to-service internal auth ENABLED.")
     else:
         print("  [Startup] WARNING: INTERNAL_API_KEY not set in backend-python/.env — internal auth is DISABLED.")
+
+    def _warmup():
+        try:
+            warmup_embedder()
+            print("  [Startup] OK: BGE embedder warmed up.")
+        except Exception as e:
+            print(f"  [Startup] WARNING: Embedder warmup failed: {e}")
+        try:
+            from src.hybrid_search import _build_bm25_index
+            _build_bm25_index()
+            print("  [Startup] OK: BM25 index ready.")
+        except Exception as e:
+            print(f"  [Startup] WARNING: BM25 warmup failed: {e}")
+
+    threading.Thread(target=_warmup, daemon=True).start()
+    print("  [Startup] NexusAI v7.0 ready.")
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": str(exc.body)},
+    )
 
 # ─── Query Cache (Phase 1: LRU In-Memory Cache) ───────────────────────────────
 class QueryCache:
@@ -278,109 +256,39 @@ class QueryCache:
             if len(self.cache) > self.capacity:
                 self.cache.popitem(last=False)
 
-# Store full SSE text for repeat queries (TTFT < 50ms)
 _query_cache = QueryCache(capacity=100)
 
 # ─── AsyncGroq singleton ─────────────────────────────────────────────────────
 _async_groq: AsyncGroq = None
 
 def _get_async_groq() -> AsyncGroq:
-    """Return or create the module-level AsyncGroq singleton."""
     global _async_groq
     if _async_groq is None:
         _async_groq = AsyncGroq(api_key=GROQ_API_KEY)
         print("  [AsyncGroq] Singleton initialized.")
     return _async_groq
 
-
 # ─── Gemini async client (google-generativeai) ────────────────────────────────
-# Uses the official Google Generative AI Python SDK.
-# Free tier: https://aistudio.google.com/app/apikey
-#   gemini-2.0-flash  — 15 RPM, 1M TPM, 1500 RPD  (best free option)
-#   gemini-1.5-flash  — 15 RPM, 1M TPM, 1500 RPD
-#   gemini-1.5-pro    — 2  RPM,  32K TPM,  50 RPD
 _gemini_client = None
 _gemini_available = False
 
 def _get_gemini_client():
-    """Lazy-load and return the Gemini GenerativeModel client."""
     global _gemini_client, _gemini_available
     if _gemini_client is not None:
         return _gemini_client
     if not GEMINI_API_KEY:
-        raise RuntimeError(
-            "GEMINI_API_KEY is not set. "
-            "Get a free key at https://aistudio.google.com/app/apikey "
-            "and add GEMINI_API_KEY=your_key to backend-python/.env"
-        )
+        raise RuntimeError("GEMINI_API_KEY is not set.")
     try:
         import google.generativeai as genai
         genai.configure(api_key=GEMINI_API_KEY)
         _gemini_client = genai
         _gemini_available = True
-        print("  [Gemini] Client initialized.")
         return _gemini_client
     except ImportError:
-        raise RuntimeError(
-            "google-generativeai package not installed. "
-            "Run: pip install google-generativeai"
-        )
-
+        raise RuntimeError("google-generativeai not installed.")
 
 def _is_gemini_model(model_name: str) -> bool:
-    """Return True if model_name should be routed to Gemini API."""
     return model_name in SUPPORTED_GEMINI_MODELS
-
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"]
-)
-
-
-# ─── Startup warmup ───────────────────────────────────────────────────────────
-@app.on_event("startup")
-async def on_startup():
-    """
-    v7.0: Warm up expensive components at server start. Logs Gemini status.
-    """
-    import threading
-    if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
-        print("  [Startup] WARNING: GROQ_API_KEY not set -- Groq streaming will fail.")
-    else:
-        _get_async_groq()
-        print("  [Startup] OK: AsyncGroq singleton ready.")
-
-    if GEMINI_API_KEY and GEMINI_API_KEY not in ("your_gemini_api_key_here", ""):
-        print(f"  [Startup] OK: GEMINI_API_KEY detected — Gemini models enabled ({GEMINI_DEFAULT_MODEL}).")
-    else:
-        print("  [Startup] INFO: No GEMINI_API_KEY set. Gemini models will return an error until key is added to .env.")
-
-    def _warmup():
-        try:
-            warmup_embedder()
-            print("  [Startup] OK: BGE embedder warmed up.")
-        except Exception as e:
-            print(f"  [Startup] WARNING: Embedder warmup failed: {e}")
-        try:
-            from src.hybrid_search import _build_bm25_index
-            _build_bm25_index()
-            print("  [Startup] OK: BM25 index ready.")
-        except Exception as e:
-            print(f"  [Startup] WARNING: BM25 warmup failed: {e}")
-
-    threading.Thread(target=_warmup, daemon=True).start()
-    print("  [Startup] NexusAI v7.0 ready.")
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    print(f"  [422 Error] {request.method} {request.url.path} Validation Failed: {exc.errors()}")
-    return JSONResponse(
-        status_code=422,
-        content={"detail": exc.errors(), "body": str(exc.body)},
-    )
 
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────────
