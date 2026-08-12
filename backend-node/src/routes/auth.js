@@ -11,6 +11,7 @@ const {
   sendAdminNotification,
 } = require("../utils/email");
 const { generateToken, hashToken, expiresInHours, isTokenValid } = require("../utils/tokens");
+const { isValidEmail, isValidPassword } = require("../utils/validation");
 
 const router = express.Router();
 
@@ -49,11 +50,10 @@ router.post("/signup", authLimiter, async (req, res) => {
     if (name.trim().length < 2) {
       return res.status(400).json({ error: "Name must be at least 2 characters." });
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!isValidEmail(email)) {
       return res.status(400).json({ error: "Please provide a valid email address." });
     }
-    if (password.length < 8) {
+    if (!isValidPassword(password)) {
       return res.status(400).json({ error: "Password must be at least 8 characters." });
     }
 
@@ -343,6 +343,15 @@ router.post("/register", authMiddleware, requireRole("admin"), async (req, res) 
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: "Name, email, and password are required." });
+    }
+    if (name.trim().length < 2) {
+      return res.status(400).json({ error: "Name must be at least 2 characters." });
+    }
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: "Please provide a valid email address." });
+    }
+    if (!isValidPassword(password)) {
+      return res.status(400).json({ error: "Password must be at least 8 characters." });
     }
 
     const existing = await User.findOne({ email: email.toLowerCase().trim() });
