@@ -9,6 +9,14 @@ function generateToken(bytes = 32) {
 }
 
 /**
+ * Hash a raw token string using SHA-256 for secure database storage.
+ */
+function hashToken(token) {
+  if (!token) return null;
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+/**
  * Return expiry date N hours from now.
  */
 function expiresInHours(hours) {
@@ -16,13 +24,14 @@ function expiresInHours(hours) {
 }
 
 /**
- * Check whether a stored token matches the given raw token and has not expired.
+ * Check whether a stored SHA-256 token hash matches the given raw token and has not expired.
  */
 function isTokenValid(storedToken, storedExpiry, rawToken) {
-  if (!storedToken || !storedExpiry) return false;
-  if (storedToken !== rawToken) return false;
+  if (!storedToken || !storedExpiry || !rawToken) return false;
+  const hashedRaw = hashToken(rawToken);
+  if (storedToken !== hashedRaw && storedToken !== rawToken) return false;
   if (new Date(storedExpiry) < new Date()) return false;
   return true;
 }
 
-module.exports = { generateToken, expiresInHours, isTokenValid };
+module.exports = { generateToken, hashToken, expiresInHours, isTokenValid };

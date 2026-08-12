@@ -61,7 +61,7 @@ const UserSchema = new mongoose.Schema({
     default: false,
   },
   emailVerificationToken: {
-    type: String,
+    type: String,                     // Stores SHA-256 hash of raw token for security
     default: null,
     select: false,                    // never returned in queries by default
   },
@@ -73,7 +73,7 @@ const UserSchema = new mongoose.Schema({
 
   // ─── Password Reset ──────────────────────────────────────────────────────────
   passwordResetToken: {
-    type: String,
+    type: String,                     // Stores SHA-256 hash of raw token for security
     default: null,
     select: false,
   },

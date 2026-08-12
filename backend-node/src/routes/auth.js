@@ -10,7 +10,7 @@ const {
   sendWelcomeEmail,
   sendAdminNotification,
 } = require("../utils/email");
-const { generateToken, expiresInHours, isTokenValid } = require("../utils/tokens");
+const { generateToken, hashToken, expiresInHours, isTokenValid } = require("../utils/tokens");
 
 const router = express.Router();
 
@@ -64,8 +64,9 @@ router.post("/signup", authLimiter, async (req, res) => {
       return res.status(409).json({ error: "An account with this email already exists. Please log in or check your inbox for a verification link." });
     }
 
-    // Generate verification token
-    const verificationToken  = generateToken(32);
+    // Generate verification token (raw token emailed to user, SHA-256 hash stored in DB)
+    const rawVerificationToken  = generateToken(32);
+    const hashedVerificationToken = hashToken(rawVerificationToken);
     const verificationExpiry = expiresInHours(24);
 
     // Create user (status: pending, not verified yet)
@@ -77,15 +78,15 @@ router.post("/signup", authLimiter, async (req, res) => {
       specialty:               specialty || "",
       status:                  "pending",
       isEmailVerified:         false,
-      emailVerificationToken:  verificationToken,
+      emailVerificationToken:  hashedVerificationToken,
       emailVerificationExpiry: verificationExpiry,
     });
 
     await newUser.save();
 
-    // Send emails (non-blocking — don't fail signup if email server is slow)
+    // Send emails (non-blocking — send raw token to user via email)
     Promise.all([
-      sendVerificationEmail(newUser, verificationToken),
+      sendVerificationEmail(newUser, rawVerificationToken),
       sendAdminNotification(newUser).catch(() => {}), // non-fatal
     ]).catch(err => console.error("Signup email error:", err.message));
 
@@ -111,9 +112,15 @@ router.get("/verify-email/:token", async (req, res) => {
       return res.status(400).json({ error: "Verification token is required." });
     }
 
-    // Find user with this token (use +select to retrieve hidden fields)
-    const user = await User.findOne({ emailVerificationToken: token })
+    // Hash incoming raw token to look up by hash
+    const hashedToken = hashToken(token);
+    let user = await User.findOne({ emailVerificationToken: hashedToken })
       .select("+emailVerificationToken +emailVerificationExpiry");
+
+    if (!user) {
+      user = await User.findOne({ emailVerificationToken: token })
+        .select("+emailVerificationToken +emailVerificationExpiry");
+    }
 
     if (!user) {
       return res.status(400).json({ error: "Invalid verification link. The link may have already been used." });
@@ -168,12 +175,14 @@ router.post("/resend-verification", emailLimiter, async (req, res) => {
       return res.json({ message: "If your account exists and is unverified, a new verification email has been sent." });
     }
 
-    // Generate new token
-    user.emailVerificationToken  = generateToken(32);
+    // Generate new token (raw token emailed to user, SHA-256 hash stored in DB)
+    const rawVerificationToken  = generateToken(32);
+    const hashedVerificationToken = hashToken(rawVerificationToken);
+    user.emailVerificationToken  = hashedVerificationToken;
     user.emailVerificationExpiry = expiresInHours(24);
     await user.save();
 
-    await sendVerificationEmail(user, user.emailVerificationToken);
+    await sendVerificationEmail(user, rawVerificationToken);
 
     return res.json({ message: "A new verification link has been sent to your email address." });
   } catch (err) {
@@ -199,15 +208,16 @@ router.post("/forgot-password", emailLimiter, async (req, res) => {
       return res.json({ message: "If an account with that email exists, a password reset link has been sent." });
     }
 
-    // Generate reset token valid for 1 hour
-    const resetToken  = generateToken(32);
+    // Generate reset token valid for 1 hour (raw token emailed, SHA-256 hash stored in DB)
+    const rawResetToken  = generateToken(32);
+    const hashedResetToken = hashToken(rawResetToken);
     const resetExpiry = expiresInHours(1);
 
-    user.passwordResetToken  = resetToken;
+    user.passwordResetToken  = hashedResetToken;
     user.passwordResetExpiry = resetExpiry;
     await user.save();
 
-    await sendPasswordResetEmail(user, resetToken);
+    await sendPasswordResetEmail(user, rawResetToken);
 
     return res.json({ message: "A password reset link has been sent to your email address. It expires in 1 hour." });
   } catch (err) {
@@ -230,8 +240,15 @@ router.post("/reset-password/:token", authLimiter, async (req, res) => {
       return res.status(400).json({ error: "New password must be at least 8 characters." });
     }
 
-    const user = await User.findOne({ passwordResetToken: token })
+    // Hash incoming raw token to look up by hash
+    const hashedToken = hashToken(token);
+    let user = await User.findOne({ passwordResetToken: hashedToken })
       .select("+passwordResetToken +passwordResetExpiry");
+
+    if (!user) {
+      user = await User.findOne({ passwordResetToken: token })
+        .select("+passwordResetToken +passwordResetExpiry");
+    }
 
     if (!user) {
       return res.status(400).json({ error: "Invalid reset link. Please request a new one." });
