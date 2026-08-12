@@ -28,7 +28,8 @@ load_dotenv()
 
 QDRANT_URL      = os.getenv("QDRANT_URL",      "http://localhost:6333")
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "researchflow")
-VECTOR_SIZE     = 1024  # BAAI/bge-m3 outputs 1024-dim vectors
+EMBED_DIM       = int(os.getenv("EMBED_DIM",   "1024"))
+VECTOR_SIZE     = EMBED_DIM  # Default BAAI/bge-m3: 1024-dim
 
 # ─── Singleton Qdrant client (Bug 9 Fix) ─────────────────────────────────────
 # One persistent connection shared across all requests — no TCP overhead per call.
@@ -71,7 +72,7 @@ def create_collection(recreate: bool = False):
         client.create_collection(
             collection_name=COLLECTION_NAME,
             vectors_config=VectorParams(
-                size=VECTOR_SIZE,
+                size=EMBED_DIM,
                 distance=Distance.COSINE
             ),
             hnsw_config=HnswConfigDiff(
@@ -82,7 +83,7 @@ def create_collection(recreate: bool = False):
                 indexing_threshold=10000,   # Start HNSW after 10k points
             )
         )
-        print(f"  Collection '{COLLECTION_NAME}' created (1024-dim, COSINE, HNSW ef=300).")
+        print(f"  Collection '{COLLECTION_NAME}' created ({EMBED_DIM}-dim, COSINE, HNSW ef=300).")
 
         # Create payload indexes for filtered search
         try:
@@ -100,7 +101,30 @@ def create_collection(recreate: bool = False):
         except Exception as e:
             print(f"  Warning: payload index creation failed ({e})")
     else:
-        print(f"  Collection '{COLLECTION_NAME}' already exists.")
+        # Startup check: verify existing collection's vector dimension matches EMBED_DIM
+        try:
+            info = client.get_collection(COLLECTION_NAME)
+            existing_size = None
+            if hasattr(info, "config") and hasattr(info.config, "params"):
+                params = info.config.params
+                if hasattr(params, "vectors"):
+                    vectors_cfg = params.vectors
+                    if hasattr(vectors_cfg, "size"):
+                        existing_size = vectors_cfg.size
+                    elif isinstance(vectors_cfg, dict) and "size" in vectors_cfg:
+                        existing_size = vectors_cfg["size"]
+
+            if existing_size and existing_size != EMBED_DIM:
+                raise ValueError(
+                    f"Vector dimension mismatch for Qdrant collection '{COLLECTION_NAME}': "
+                    f"existing collection uses {existing_size}-dim vectors, but EMBED_DIM is configured as {EMBED_DIM}. "
+                    f"Please set EMBED_DIM={existing_size} in environment or recreate the collection."
+                )
+            print(f"  Collection '{COLLECTION_NAME}' already exists (verified {existing_size or EMBED_DIM}-dim).")
+        except ValueError:
+            raise
+        except Exception as e:
+            print(f"  Collection '{COLLECTION_NAME}' already exists (dimension check skipped: {e}).")
 
 
 def get_collection_info() -> dict:

@@ -1,21 +1,18 @@
 """
 ResearchFlow AI — Local Embedding Engine
-Uses BAAI/bge-base-en-v1.5 via FastEmbed (ONNX runtime).
+Uses BAAI/bge-m3 via FastEmbed (ONNX runtime).
 
-Why BGE-base over nomic-embed:
-  - Trained on technical English, code, and security content
-  - Much better recall for cybersec jargon (exploit, payload, shellcode, CVEs)
-  - 768-dim vectors — same size as nomic, no Qdrant collection recreation needed
-  - ~440MB model size — safe for 8GB RAM machines (i7 13th gen tested)
-  - BGE requires a task prefix for queries (handled automatically here)
+Why BGE-m3:
+  - 1024-dim dense vectors for high retrieval accuracy
+  - Multilingual support including English, Urdu, and technical jargon
+  - High recall on research, technical, and domain-specific corpora
+  - Downloads once on first run and caches automatically
 
-v4.0 — Cybersec-optimized with LRU cache (256 entries) for instant repeated lookups.
+v4.0 — Optimized with LRU cache (256 entries) for instant repeated lookups.
 """
 import os
 import hashlib
 import threading
-from collections import OrderedDict
-try:
     from dotenv import load_dotenv
 except ImportError:
     def load_dotenv(*args, **kwargs):
