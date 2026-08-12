@@ -112,28 +112,36 @@ REFUSAL_MSG = (
 ANSWER_STYLES = {
     "short": {
         "instruction": (
-            "Deliver a tight, direct answer — 1-3 sentences or one focused code block. "
-            "Lead with the direct answer or solution, then one line of why. "
-            "Use **bold** for key terms and a correctly tagged fenced block (e.g. ```python) for any code. "
-            "No preamble, no section headers, no filler."
+            "Deliver a tight, direct answer — 1-3 sentences, or one focused code block ONLY if the question "
+            "is actually asking for code. Lead with the direct answer or solution, then one line of why. "
+            "Use **bold** for key terms. If (and only if) code is what was asked for, use a correctly tagged "
+            "fenced block (e.g. ```python). No preamble, no section headers, no filler."
         ),
         "max_tokens": 512,
     },
     "technical": {
         "instruction": (
-            "Produce a precise, expert technical response in clean Markdown. "
-            "Include a `## Title` heading, clear concept explanation, full runnable code in tagged fenced blocks "
-            "(```python, ```javascript, ```bash, etc.) with inline comments, "
-            "CVE/MITRE IDs where relevant, and a `### Mitigation & Best Practices` section. "
+            "Produce a precise, expert-level response in clean Markdown, structured for whatever subject "
+            "the question actually is (medicine, law, science, history, business, technology, or general "
+            "knowledge). Use a `## Title` heading and clear, well-organized explanation. "
+            "CODE DISCIPLINE: only include a fenced code block (```language) if the question is specifically "
+            "about programming, scripting, or a technical implementation — never insert code into medical, "
+            "legal, scientific, historical, business, or general-knowledge answers. "
+            "CVE/MITRE IDs and a `### Mitigation & Best Practices` section belong ONLY in genuine cybersecurity "
+            "answers — omit them entirely otherwise. "
             "Use `[Doc: source]` for grounded facts and only the most relevant/current `[Web: Title](url)` sources for live facts."
         ),
         "max_tokens": 2500,
     },
     "detailed": {
         "instruction": (
-            "Produce an exhaustive, multi-section analysis in Markdown matching full LLM capacity. "
-            "Include sections: Executive Overview, Technical Deep-Dive, Full Implementation (complete runnable code in tagged fenced blocks), "
-            "Step-by-Step Walkthrough, Edge Cases & Error Handling, and Key Takeaways. "
+            "Produce an exhaustive, multi-section analysis in Markdown matching full LLM capacity, structured "
+            "for the actual subject of the question. Include sections such as: Executive Overview, In-Depth "
+            "Analysis, Step-by-Step Walkthrough (of the reasoning/process, not necessarily code), Edge Cases & "
+            "Caveats, and Key Takeaways. "
+            "CODE DISCIPLINE: include a 'Full Implementation' section with runnable code in tagged fenced blocks "
+            "ONLY if the question is about programming, scripting, or technical implementation — for medical, "
+            "legal, scientific, historical, or business questions, replace it with deeper analysis instead. "
             "Use `[Doc: source]` for grounded facts and only the most relevant/current `[Web: Title](url)` sources for live facts."
         ),
         "max_tokens": 4096,
@@ -141,7 +149,9 @@ ANSWER_STYLES = {
     "case_study": {
         "instruction": (
             "Structure as a Case Study: Background Analysis, Core Challenge, "
-            "Methodology/Approach, Findings/Results (commented, tagged fenced blocks if code), Conclusion & Future Work."
+            "Methodology/Approach, Findings/Results, Conclusion & Future Work. "
+            "Only include tagged fenced code blocks in the Findings/Results section if the case study is "
+            "specifically about a software/technical implementation — otherwise keep it prose and data-driven."
         ),
         "max_tokens": 3000,
     },
@@ -169,10 +179,30 @@ ANSWER_STYLES = {
     },
 }
 
+# v7.1 — Tightened code-intent classifier (Bug Fix: false-positive code intent).
+# The old regex matched generic verbs like "build", "create", "develop", "implement",
+# "function", "class", "algorithm" on their own — these appear constantly in medical,
+# legal, business, and science questions ("build a treatment plan", "develop a hypothesis",
+# "create a marketing strategy") and were incorrectly classified as coding requests,
+# which then triggered the "code" answer_style and forced Python/code blocks into every
+# answer regardless of topic. This version requires an explicit, unambiguous coding signal:
+# a named programming language/tool, or a coding verb paired with a coding noun.
 _CODE_KEYWORDS_RE = re.compile(
-    r'\b(?:write|code|script|program|implement|function|class|build|create|develop|'
-    r'python|bash|c\+\+|cpp|csharp|golang|rust|powershell|js|javascript|typescript|'
-    r'fix bug|refactor|exploit script|payload generator|automation|algorithm|snippet)\b',
+    r'\b(?:'
+    r'write\s+(?:a|an|the|some)?\s*(?:code|script|program|function|class|algorithm|regex|query)|'
+    r'(?:python|bash|c\+\+|cpp|c#|csharp|golang|rust|powershell|javascript|typescript|java|ruby|php|sql|html|css|node\.?js)\s+'
+    r'(?:code|script|function|program|snippet|implementation)|'
+    r'debug(?:ging)?\s+(?:this|the|my)?\s*(?:code|script|bug|error)|'
+    r'fix\s+(?:this|the|my)?\s*bug|'
+    r'stack\s*trace|syntax\s+error|compil(?:e|er|ation)\s+error|'
+    r'refactor(?:ing)?\s+(?:this|the|my)?\s*code|'
+    r'unit\s+test|pseudocode|source\s+code|'
+    r'exploit\s+script|payload\s+generator|shellcode|'
+    r'code\s+(?:snippet|sample|example)|'
+    r'regex\s+(?:for|to)|'
+    r'api\s+endpoint\s+(?:code|implementation)|'
+    r'write\s+(?:a|an)\s+(?:python|bash|javascript|sql|powershell|rust|golang)\s+\w+'
+    r')\b',
     re.IGNORECASE
 )
 
@@ -401,15 +431,16 @@ def enrich_query(question: str, history: list[dict] = None) -> str:
 
 def _build_system_prompt(answer_style: str, now_str: str, current_year: int) -> str:
     """
-    NexusAI v7.0 Professional Research System Prompt.
+    ResearchFlow AI v7.1 Professional Research System Prompt.
     Designed to compete with Perplexity AI — authoritative, cited, synthesized.
     """
     style = ANSWER_STYLES.get(answer_style, ANSWER_STYLES[DEFAULT_STYLE])
 
-    return f"""You are NexusAI — a professional research intelligence platform that synthesizes \
+    return f"""You are ResearchFlow AI — a professional research intelligence platform that synthesizes \
 verified knowledge from academic databases, government sources, and live web intelligence \
 into authoritative, cited answers. You do not have limitations on topics you can research — \
-you will search, analyze, and synthesize across ALL domains of human knowledge.
+you will search, analyze, and synthesize across ALL domains of human knowledge. When asked who \
+you are, identify yourself as ResearchFlow AI — never any other name.
 Current date/time: {now_str}. Use this as your temporal anchor for all date-sensitive queries.
 
 ═══════════════════════════════════════════════════════════
@@ -488,6 +519,12 @@ Wikipedia as primary (use its cited sources), or sources you cannot verify.
    Educational security research, CTF content, CVE analysis = ALLOWED.
 8. NO META-COMMENTARY — Never say "based on the context provided" or "the documents
    indicate." Just answer directly and authoritatively.
+9. CODE DISCIPLINE — Code blocks are a TOOL for programming/scripting/technical-
+   implementation questions ONLY. If the user's question is about medicine, law,
+   history, business, science conceptually, general knowledge, or anything else that
+   isn't actually asking you to write or fix code, respond ENTIRELY in prose/analysis
+   and do NOT insert a Python (or any language) code block just because the topic is
+   technical-sounding. Only write code when code is literally what was asked for.
 
 ═══════════════════════════════════════════════════════════
  OUTPUT FORMAT
@@ -637,7 +674,7 @@ def build_fused_prompt(
 
 
 <fusion_directive>
-You are NexusAI synthesizing authoritative answers from verified sources.
+You are ResearchFlow AI synthesizing authoritative answers from verified sources.
 
 SYNTHESIS PROTOCOL:
 1. AUTHORITY ORDER: Lead with Tier 1 sources (peer-reviewed, .gov, .edu, WHO, NIH, etc.)
@@ -650,6 +687,9 @@ SYNTHESIS PROTOCOL:
 5. PROFESSIONAL STANDARD: Every significant factual claim must have a citation.
    Statistical data, drug dosages, CVE scores, policy details = always cite.
 6. SOURCES SECTION: End with a ## Sources section listing all cited URLs.
+7. CODE DISCIPLINE: Only include a code block if the user's query is actually asking
+   for programming/scripting/implementation help. Do not add code to medical, legal,
+   scientific, historical, or general-knowledge answers.
 </fusion_directive>
 
 <user_query>

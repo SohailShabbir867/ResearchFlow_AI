@@ -102,7 +102,7 @@ async function sendVerificationEmail(user, token) {
 
   const body = `
 <p ${P}>Hi <strong style="color:#ffffff;">${user.name}</strong>,</p>
-<p ${P}>Welcome to <strong style="color:#E21B70;">NexusAI</strong>! Please verify your email address to activate your account and start your research journey.</p>
+<p ${P}>Welcome to <strong style="color:#E21B70;">ResearchFlow AI</strong>! Please verify your email address to activate your account and start your research journey.</p>
 ${emailButton(url, "✉️  Verify My Email")}
 <p ${SM}>Or copy and paste this link into your browser:</p>
 <p style="margin:0 0 20px;font-size:12px;color:#E21B70;word-break:break-all;">${url}</p>
@@ -110,9 +110,9 @@ ${emailButton(url, "✉️  Verify My Email")}
 
   try {
     await transporter.sendMail({
-      from: `"NexusAI" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      from: `"ResearchFlow AI" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
       to:   user.email,
-      subject: "Verify your NexusAI account",
+      subject: "Verify your ResearchFlow AI account",
       html: emailWrapper("Verify Your Email", body),
     });
   } catch (err) {
@@ -131,7 +131,7 @@ async function sendPasswordResetEmail(user, token) {
 
   const body = `
 <p ${P}>Hi <strong style="color:#ffffff;">${user.name}</strong>,</p>
-<p ${P}>We received a request to reset the password for your NexusAI account associated with <strong style="color:#E21B70;">${user.email}</strong>.</p>
+<p ${P}>We received a request to reset the password for your ResearchFlow AI account associated with <strong style="color:#E21B70;">${user.email}</strong>.</p>
 ${emailButton(url, "🔑  Reset My Password")}
 <p ${SM}>Or copy and paste this link into your browser:</p>
 <p style="margin:0 0 20px;font-size:12px;color:#E21B70;word-break:break-all;">${url}</p>
@@ -139,9 +139,9 @@ ${emailButton(url, "🔑  Reset My Password")}
 
   try {
     await transporter.sendMail({
-      from: `"NexusAI" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      from: `"ResearchFlow AI" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
       to:   user.email,
-      subject: "Reset your NexusAI password",
+      subject: "Reset your ResearchFlow AI password",
       html: emailWrapper("Password Reset Request", body),
     });
   } catch (err) {
@@ -155,15 +155,15 @@ async function sendWelcomeEmail(user) {
 
   const body = `
 <p ${P}>Hi <strong style="color:#ffffff;">${user.name}</strong>,</p>
-<p ${P}>Your email has been verified and your account is now <strong style="color:#10B981;">active</strong>. Welcome to the NexusAI research platform!</p>
+<p ${P}>Your email has been verified and your account is now <strong style="color:#10B981;">active</strong>. Welcome to the ResearchFlow AI research platform!</p>
 ${emailButton(`${process.env.FRONTEND_URL || "http://localhost:5173"}/`, "🔬  Start Researching")}
 <p ${SM}>You can now log in and start asking research questions from your indexed document library.</p>`;
 
   try {
     await transporter.sendMail({
-      from: `"NexusAI" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      from: `"ResearchFlow AI" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
       to:   user.email,
-      subject: "Welcome to NexusAI — Account Activated",
+      subject: "Welcome to ResearchFlow AI — Account Activated",
       html: emailWrapper("Account Activated!", body),
     });
   } catch (err) {
@@ -186,7 +186,7 @@ ${emailButton(`${process.env.FRONTEND_URL || "http://localhost:5173"}/admin/user
 
   try {
     await transporter.sendMail({
-      from: `"NexusAI" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      from: `"ResearchFlow AI" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
       to: process.env.ADMIN_EMAIL,
       subject: `New User Registration: ${newUser.name}`,
       html: emailWrapper("New User Pending", body),

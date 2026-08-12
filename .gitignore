@@ -57,3 +57,7 @@ backend-python/data/**/*.txt
 backend-python/data/**/*.docx
 backend-python/qdrant_storage/
 backend-python/qdrant_storage/**
+
+# Dev scratch & utility scripts
+backend-python/scripts/dev/
+
