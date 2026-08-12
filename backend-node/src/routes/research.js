@@ -13,6 +13,10 @@ const router = express.Router();
 router.use(authMiddleware);
 
 const PYTHON_URL = () => process.env.PYTHON_RAG_URL || "http://localhost:8000";
+const getPythonHeaders = () => {
+  const key = process.env.PYTHON_INTERNAL_KEY || process.env.INTERNAL_API_KEY || "";
+  return key ? { "X-Internal-Key": key } : {};
+};
 
 // ─── GET /api/research/chats ──────────────────────────────────────────────────
 router.get("/chats", async (req, res) => {
@@ -135,7 +139,7 @@ router.post("/chats/:id/ask", async (req, res) => {
           history: history.length > 0 ? history : null,
           answer_style: answer_style || "technical",
         },
-        { timeout: 120000 }
+        { timeout: 120000, headers: getPythonHeaders() }
       );
       timing.totalMs = Date.now() - startTime;
 
@@ -319,7 +323,7 @@ router.post("/chats/:id/stream", async (req, res) => {
         history: sanitizedHistory,
         max_tokens: maxTokens,
       },
-      { responseType: "stream", timeout: 180000 }  // 3 min for long detailed answers
+      { responseType: "stream", timeout: 180000, headers: getPythonHeaders() }  // 3 min for long detailed answers
     );
 
     let fullAnswer = "";
@@ -431,7 +435,7 @@ router.post("/chats/:id/stream", async (req, res) => {
 // ─── GET /api/research/health ─────────────────────────────────────────────────
 router.get("/health", async (_req, res) => {
   try {
-    const response = await axios.get(`${PYTHON_URL()}/health`, { timeout: 3000 });
+    const response = await axios.get(`${PYTHON_URL()}/health`, { timeout: 3000, headers: getPythonHeaders() });
     return res.json({ node: "ok", python: response.data.status || "ok", details: response.data });
   } catch (_e) {
     return res.json({ node: "ok", python: "unreachable" });

@@ -15,6 +15,10 @@ const router = express.Router();
 router.use(authMiddleware, requireRole("admin"));
 
 const PYTHON_URL = () => process.env.PYTHON_RAG_URL || "http://localhost:8000";
+const getPythonHeaders = () => {
+  const key = process.env.PYTHON_INTERNAL_KEY || process.env.INTERNAL_API_KEY || "";
+  return key ? { "X-Internal-Key": key } : {};
+};
 
 // ─── Multer: memory storage for file uploads ───────────────────────────────────
 const upload = multer({
@@ -63,9 +67,9 @@ router.get("/stats", async (req, res) => {
     let totalDocs = 0;
     let totalChunks = 0;
     try {
-      const pyHealth = await axios.get(`${PYTHON_URL()}/health`, { timeout: 5000 });
+      const pyHealth = await axios.get(`${PYTHON_URL()}/health`, { timeout: 5000, headers: getPythonHeaders() });
       totalChunks = pyHealth.data?.collection?.points_count || pyHealth.data?.chunks || 0;
-      const pyDocs = await axios.get(`${PYTHON_URL()}/documents`, { timeout: 5000 });
+      const pyDocs = await axios.get(`${PYTHON_URL()}/documents`, { timeout: 5000, headers: getPythonHeaders() });
       totalDocs = Array.isArray(pyDocs.data?.documents) ? pyDocs.data.documents.length : 0;
     } catch {
       // Python service may be down — return zeros
@@ -257,7 +261,7 @@ router.patch("/users/:id/upload-access", async (req, res) => {
 // ─── GET /api/admin/documents ─────────────────────────────────────────────────
 router.get("/documents", async (req, res) => {
   try {
-    const response = await axios.get(`${PYTHON_URL()}/documents`, { timeout: 10000 });
+    const response = await axios.get(`${PYTHON_URL()}/documents`, { timeout: 10000, headers: getPythonHeaders() });
     return res.json(response.data);
   } catch (err) {
     if (err.code === "ECONNREFUSED") {
@@ -288,7 +292,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     }
 
     const response = await axios.post(`${PYTHON_URL()}/upload`, form, {
-      headers: form.getHeaders(),
+      headers: { ...form.getHeaders(), ...getPythonHeaders() },
       timeout: 300000, // 5 minutes for large files/embeddings
     });
 
@@ -309,7 +313,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 router.delete("/documents/:source", async (req, res) => {
   try {
     const source = decodeURIComponent(req.params.source);
-    const response = await axios.delete(`${PYTHON_URL()}/documents/${encodeURIComponent(source)}`, { timeout: 15000 });
+    const response = await axios.delete(`${PYTHON_URL()}/documents/${encodeURIComponent(source)}`, { timeout: 15000, headers: getPythonHeaders() });
     return res.json(response.data);
   } catch (err) {
     if (err.code === "ECONNREFUSED") {
@@ -394,7 +398,7 @@ router.get("/health", async (req, res) => {
 
   // Python RAG
   try {
-    const pyRes = await axios.get(`${PYTHON_URL()}/health`, { timeout: 5000 });
+    const pyRes = await axios.get(`${PYTHON_URL()}/health`, { timeout: 5000, headers: getPythonHeaders() });
     services.pythonRag = {
       status: "online",
       port: 8000,
@@ -430,7 +434,7 @@ router.get("/settings", async (req, res) => {
 
     // Merge any live Python overrides
     try {
-      const pyRes = await axios.get(`${PYTHON_URL()}/settings`, { timeout: 5000 });
+      const pyRes = await axios.get(`${PYTHON_URL()}/settings`, { timeout: 5000, headers: getPythonHeaders() });
       if (pyRes.data) Object.assign(result, pyRes.data);
     } catch {
       // Python may be down — use DB values
@@ -457,7 +461,7 @@ router.post("/settings", async (req, res) => {
 
     // Forward settings (guardrails + llm maxTokens) to Python
     try {
-      await axios.post(`${PYTHON_URL()}/settings`, settings, { timeout: 5000 });
+      await axios.post(`${PYTHON_URL()}/settings`, settings, { timeout: 5000, headers: getPythonHeaders() });
     } catch (err) {
       console.warn("Failed to sync settings to Python:", err.message);
     }

@@ -61,7 +61,7 @@ from datetime import datetime
 
 # ── Module-level imports (v6.0: AsyncGroq replaces sync Groq — never blocks event loop) ──
 from groq import AsyncGroq
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Header, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -186,6 +186,35 @@ GROQ_API_KEY  = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL    = os.getenv("GROQ_MODEL",   "llama-3.3-70b-versatile")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
+
+def verify_internal_key(x_internal_key: Optional[str] = Header(None, alias="X-Internal-Key")):
+    """
+    FastAPI security dependency for service-to-service internal authentication.
+    Requires header 'X-Internal-Key' to match INTERNAL_API_KEY configured in env.
+    """
+    if INTERNAL_API_KEY:
+        if not x_internal_key or x_internal_key != INTERNAL_API_KEY:
+            raise HTTPException(
+                status_code=401,
+                detail="Unauthorized: Invalid or missing X-Internal-Key header."
+            )
+
+ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "")
+NODE_URL = os.getenv("NODE_URL", "http://localhost:5000")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+raw_origins = [origin.strip() for origin in ALLOWED_ORIGINS_ENV.split(",") if origin.strip()]
+if not raw_origins:
+    raw_origins = [
+        NODE_URL,
+        FRONTEND_URL,
+        "http://localhost:5000",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ]
 
 app = FastAPI(
     title="ResearchFlow AI — Expert RAG Service",
@@ -198,84 +227,10 @@ app = FastAPI(
     version="6.0.0"
 )
 
-# ─── Query Cache (Phase 1: LRU In-Memory Cache) ───────────────────────────────
-class QueryCache:
-    def __init__(self, capacity=100):
-        self.cache = OrderedDict()
-        self.capacity = capacity
-        self._lock = threading.Lock()
-    
-    def get(self, key):
-        with self._lock:
-            if key not in self.cache:
-                return None
-            self.cache.move_to_end(key)
-            return list(self.cache[key])
-        
-    def put(self, key, value):
-        with self._lock:
-            self.cache[key] = list(value)
-            self.cache.move_to_end(key)
-            if len(self.cache) > self.capacity:
-                self.cache.popitem(last=False)
-
-# Store full SSE text for repeat queries (TTFT < 50ms)
-_query_cache = QueryCache(capacity=100)
-
-# ─── AsyncGroq singleton ─────────────────────────────────────────────────────
-_async_groq: AsyncGroq = None
-
-def _get_async_groq() -> AsyncGroq:
-    """Return or create the module-level AsyncGroq singleton."""
-    global _async_groq
-    if _async_groq is None:
-        _async_groq = AsyncGroq(api_key=GROQ_API_KEY)
-        print("  [AsyncGroq] Singleton initialized.")
-    return _async_groq
-
-
-# ─── Gemini async client (google-generativeai) ────────────────────────────────
-# Uses the official Google Generative AI Python SDK.
-# Free tier: https://aistudio.google.com/app/apikey
-#   gemini-2.0-flash  — 15 RPM, 1M TPM, 1500 RPD  (best free option)
-#   gemini-1.5-flash  — 15 RPM, 1M TPM, 1500 RPD
-#   gemini-1.5-pro    — 2  RPM,  32K TPM,  50 RPD
-_gemini_client = None
-_gemini_available = False
-
-def _get_gemini_client():
-    """Lazy-load and return the Gemini GenerativeModel client."""
-    global _gemini_client, _gemini_available
-    if _gemini_client is not None:
-        return _gemini_client
-    if not GEMINI_API_KEY:
-        raise RuntimeError(
-            "GEMINI_API_KEY is not set. "
-            "Get a free key at https://aistudio.google.com/app/apikey "
-            "and add GEMINI_API_KEY=your_key to backend-python/.env"
-        )
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_API_KEY)
-        _gemini_client = genai
-        _gemini_available = True
-        print("  [Gemini] Client initialized.")
-        return _gemini_client
-    except ImportError:
-        raise RuntimeError(
-            "google-generativeai package not installed. "
-            "Run: pip install google-generativeai"
-        )
-
-
-def _is_gemini_model(model_name: str) -> bool:
-    """Return True if model_name should be routed to Gemini API."""
-    return model_name in SUPPORTED_GEMINI_MODELS
-
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=raw_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
 )
@@ -296,6 +251,32 @@ async def on_startup():
 
     if GEMINI_API_KEY and GEMINI_API_KEY not in ("your_gemini_api_key_here", ""):
         print(f"  [Startup] OK: GEMINI_API_KEY detected — Gemini models enabled ({GEMINI_DEFAULT_MODEL}).")
+
+    if INTERNAL_API_KEY:
+        print("  [Startup] OK: INTERNAL_API_KEY detected — service-to-service internal auth ENABLED.")
+    else:
+        print("  [Startup] WARNING: INTERNAL_API_KEY not set in backend-python/.env — internal auth is DISABLED.")
+
+# ─── Query Cache (Phase 1: LRU In-Memory Cache) ───────────────────────────────
+class QueryCache:
+    def __init__(self, capacity=100):
+        self.cache = OrderedDict()
+        self.capacity = capacity
+        self._lock = threading.Lock()
+
+    def get(self, key):
+        with self._lock:
+            if key not in self.cache:
+                return None
+            self.cache.move_to_end(key)
+            return list(self.cache[key])
+
+    def put(self, key, value):
+        with self._lock:
+            self.cache[key] = list(value)
+            self.cache.move_to_end(key)
+            if len(self.cache) > self.capacity:
+                self.cache.popitem(last=False)
 
 # Store full SSE text for repeat queries (TTFT < 50ms)
 _query_cache = QueryCache(capacity=100)
@@ -573,7 +554,7 @@ def health():
 
 # ─── Documents ────────────────────────────────────────────────────────────────
 
-@app.get("/documents")
+@app.get("/documents", dependencies=[Depends(verify_internal_key)])
 def list_documents():
     """List all indexed research document sources and total chunk count."""
     sources = get_indexed_sources()
@@ -586,7 +567,7 @@ def list_documents():
 
 # ─── Query (standard — full response at once) ─────────────────────────────────
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/query", response_model=QueryResponse, dependencies=[Depends(verify_internal_key)])
 def query(request: QueryRequest):
     """Standard ResearchFlow AI RAG query with conversation memory and answer style control."""
     if not request.question.strip():
@@ -617,7 +598,7 @@ def query(request: QueryRequest):
 
 # ─── OpenAI / Ollama Compatible Endpoint ──────────────────────────────────────
 
-@app.post("/v1/chat/completions")
+@app.post("/v1/chat/completions", dependencies=[Depends(verify_internal_key)])
 def openai_chat_completions(request: OpenAIChatRequest):
     """
     OpenAI / Ollama compatible endpoint (/v1/chat/completions).
@@ -671,7 +652,7 @@ def openai_chat_completions(request: OpenAIChatRequest):
 
 # ─── Stream (token-by-token SSE — AsyncGroq Parallel RAG+Web Fusion) ──────────
 
-@app.post("/stream")
+@app.post("/stream", dependencies=[Depends(verify_internal_key)])
 async def stream_query(request: QueryRequest):
     """
     Streaming ResearchFlow AI RAG+Web Fusion query via Server-Sent Events (SSE).
@@ -1299,7 +1280,7 @@ async def _stream_local_time_response(question: str):
 
 # ─── Upload ───────────────────────────────────────────────────────────────────
 
-@app.post("/upload")
+@app.post("/upload", dependencies=[Depends(verify_internal_key)])
 async def upload_document(file: UploadFile = File(...)):
     """
     Upload a research document (PDF, TXT, DOCX, MD).
@@ -1368,7 +1349,7 @@ async def upload_document(file: UploadFile = File(...)):
 
 # ─── Delete Document ──────────────────────────────────────────────────────────
 
-@app.delete("/documents/{source}")
+@app.delete("/documents/{source}", dependencies=[Depends(verify_internal_key)])
 def delete_document(source: str):
     """Delete a research document and all its vector chunks from Qdrant."""
     from src.vector_store import delete_document_by_source
@@ -1405,7 +1386,7 @@ class SettingsUpdate(BaseModel):
     guardrail:  Optional[dict]  = None
 
 
-@app.get("/settings")
+@app.get("/settings", dependencies=[Depends(verify_internal_key)])
 def get_settings():
     """Get current active ResearchFlow AI runtime thresholds."""
     return {
@@ -1425,7 +1406,7 @@ def get_settings():
     }
 
 
-@app.post("/settings")
+@app.post("/settings", dependencies=[Depends(verify_internal_key)])
 def update_settings(update: SettingsUpdate):
     """Update runtime guardrail & max_tokens settings dynamically."""
     if update.threshold is not None:
@@ -1483,7 +1464,7 @@ def update_settings(update: SettingsUpdate):
 
 # ─── Index Rebuild ────────────────────────────────────────────────────────────
 
-@app.post("/rebuild-index")
+@app.post("/rebuild-index", dependencies=[Depends(verify_internal_key)])
 def rebuild_index():
     """Rebuild the in-memory BM25 keyword index from Qdrant."""
     try:
