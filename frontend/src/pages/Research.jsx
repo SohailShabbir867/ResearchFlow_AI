@@ -1661,6 +1661,10 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                     <option value="gemini-1.5-flash">🔵 Gemini 1.5 Flash — Free Tier</option>
                     <option value="gemini-1.5-pro">🔵 Gemini 1.5 Pro — Free (50/day)</option>
                   </optgroup>
+                  <optgroup label="🔮 DeepSeek Models">
+                    <option value="deepseek-v4-flash">⚡ DeepSeek Flash v4 — High Speed</option>
+                    <option value="deepseek-v4-pro">🧠 DeepSeek Pro — Advanced Reasoning</option>
+                  </optgroup>
                 </select>
               </div>
               <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
