@@ -30,7 +30,7 @@ import re
 from collections import OrderedDict
 import threading
 from datetime import datetime
-from typing import Optional
+from typing import Optional, AsyncIterator
 
 from groq import AsyncGroq
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Header, Depends
@@ -66,7 +66,7 @@ from src.rag_pipeline import (
     LLM_TEMPERATURE,
 )
 from src.vector_store import get_collection_info, get_indexed_sources
-from src.hybrid_search import rebuild_bm25_index, _build_bm25_index
+from src.hybrid_search import rebuild_bm25_index, _build_bm25_index, add_chunks_to_bm25, remove_chunks_from_bm25
 from src.embedder import get_embedding, warmup as warmup_embedder
 from src.web_search import perform_web_search, needs_freshness
 from src.hybrid_search import hybrid_search
@@ -224,6 +224,12 @@ async def on_startup():
             print("  [Startup] OK: BM25 index ready.")
         except Exception as e:
             print(f"  [Startup] WARNING: BM25 warmup failed: {e}")
+        try:
+            from src.reranker import rerank
+            rerank("warmup", [{"text": "warmup text"}], top_k=1)
+            print("  [Startup] OK: Cross-Encoder reranker model warmed up.")
+        except Exception as e:
+            print(f"  [Startup] WARNING: Reranker warmup failed: {e}")
 
     threading.Thread(target=_warmup, daemon=True).start()
     print("  [Startup] NexusAI v7.0 ready.")
@@ -257,6 +263,7 @@ class QueryCache:
                 self.cache.popitem(last=False)
 
 _query_cache = QueryCache(capacity=100)
+_sync_query_cache = QueryCache(capacity=100)
 
 # ─── AsyncGroq singleton ─────────────────────────────────────────────────────
 _async_groq: AsyncGroq = None
@@ -267,6 +274,75 @@ def _get_async_groq() -> AsyncGroq:
         _async_groq = AsyncGroq(api_key=GROQ_API_KEY)
         print("  [AsyncGroq] Singleton initialized.")
     return _async_groq
+
+
+async def stream_llm_tokens(
+    model_name: str,
+    sys_content: str,
+    user_content: str,
+    max_tokens: int,
+    language: str = "en",
+) -> AsyncIterator[str]:
+    """
+    Unified async generator streaming text tokens across Groq, Gemini, or future providers.
+    """
+    if language == "ur":
+        sys_content += "\n\nCRITICAL DIRECTIVE: The user is speaking Urdu. You MUST reply completely in native Urdu language (using Urdu script)."
+
+    if _is_gemini_model(model_name):
+        if not GEMINI_API_KEY:
+            raise HTTPException(status_code=503, detail="GEMINI_API_KEY not configured in backend-python/.env")
+        try:
+            from google import genai as google_genai
+            from google.genai import types as genai_types
+        except ImportError:
+            raise HTTPException(status_code=500, detail="google-genai package missing. Run: pip install google-genai")
+
+        gem_client = google_genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1"})
+        try:
+            combined_prompt = f"{sys_content}\n\n---\n\n{user_content}"
+            stream = await gem_client.aio.models.generate_content_stream(
+                model=model_name,
+                contents=combined_prompt,
+                config=genai_types.GenerateContentConfig(
+                    max_output_tokens=max_tokens,
+                    temperature=rag.LLM_TEMPERATURE,
+                ),
+            )
+            async for chunk in stream:
+                token = (chunk.text or "") if hasattr(chunk, "text") else ""
+                if token:
+                    yield token
+        except Exception as e:
+            err_str = str(e)
+            if "API_KEY" in err_str or "UNAUTHENTICATED" in err_str or "invalid" in err_str.lower():
+                raise HTTPException(status_code=401, detail="Invalid GEMINI_API_KEY.")
+            elif "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+                raise HTTPException(status_code=429, detail="Gemini rate limit / quota exceeded.")
+            else:
+                raise HTTPException(status_code=500, detail=f"Gemini API error: {err_str}")
+    else:
+        if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
+            raise HTTPException(status_code=503, detail="GROQ_API_KEY not configured in backend-python/.env")
+
+        client = _get_async_groq()
+        try:
+            groq_stream = await client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": sys_content},
+                    {"role": "user",   "content": user_content},
+                ],
+                temperature=rag.LLM_TEMPERATURE,
+                max_tokens=max_tokens,
+                stream=True,
+            )
+            async for chunk in groq_stream:
+                token = chunk.choices[0].delta.content or ""
+                if token:
+                    yield token
+        except Exception as e:
+            _handle_groq_error(e)
 
 # ─── Gemini async client (google-generativeai) ────────────────────────────────
 _gemini_client = None
@@ -485,6 +561,15 @@ def query(request: QueryRequest):
     if request.history:
         history = [{"role": m.role, "text": m.text} for m in request.history]
 
+    cache_key_raw = f"sync:{request.question}_{request.answer_style}_{request.top_k}_{json.dumps(history)}"
+    cache_key = hashlib.md5(cache_key_raw.encode()).hexdigest()
+
+    cached = _sync_query_cache.get(cache_key)
+    if cached:
+        print("  [Query] Sync cache hit! Returning cached response.")
+        cached_dict = cached[0] if isinstance(cached, list) and len(cached) > 0 else cached
+        return QueryResponse(**cached_dict)
+
     try:
         result = answer(
             request.question,
@@ -495,13 +580,16 @@ def query(request: QueryRequest):
     except Exception as e:
         _handle_groq_error(e)
 
-    return QueryResponse(
-        answer=result["answer"],
-        sources=result.get("sources", []),
-        web_sources=result.get("web_sources", []),
-        is_web_fallback=result.get("is_web_fallback", False),
-        intent=result.get("intent", "general"),
-    )
+    response_data = {
+        "answer": result["answer"],
+        "sources": result.get("sources", []),
+        "web_sources": result.get("web_sources", []),
+        "is_web_fallback": result.get("is_web_fallback", False),
+        "intent": result.get("intent", "general"),
+    }
+    _sync_query_cache.put(cache_key, [response_data])
+
+    return QueryResponse(**response_data)
 
 
 # ─── OpenAI / Ollama Compatible Endpoint ──────────────────────────────────────
@@ -686,7 +774,7 @@ async def stream_query(request: QueryRequest):
                     fallback_text = "I think AI is most useful when it is applied to real problems, checked carefully, and used to augment human judgment rather than replace it."
                     yield await yield_event(f"data: {json.dumps({'token': fallback_text})}\n\n")
 
-                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'rag_source_details': []})}\n\n")
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'rag_source_details': [], 'provider': 'gemini' if using_gemini else 'groq', 'model': request_model})}\n\n")
                 _query_cache.put(cache_key, events_to_cache)
                 return
 
@@ -748,7 +836,7 @@ async def stream_query(request: QueryRequest):
 
                 web_sources = [r["url"] for r in web_results if r.get("url")]
                 web_titles  = [r["title"] for r in web_results if r.get("title")]
-                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': [], 'is_web_fallback': True, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language})}\n\n")
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': [], 'is_web_fallback': True, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'provider': 'gemini' if using_gemini else 'groq', 'model': request_model})}\n\n")
                 _query_cache.put(cache_key, events_to_cache)
                 return
 
@@ -783,7 +871,7 @@ async def stream_query(request: QueryRequest):
                     if token:
                         yield await yield_event(f"data: {json.dumps({'token': token})}\n\n")
                         
-                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'rag_source_details': []})}\n\n")
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'rag_source_details': [], 'provider': 'gemini' if using_gemini else 'groq', 'model': request_model})}\n\n")
                 
                 # Save to cache
                 _query_cache.put(cache_key, events_to_cache)
@@ -862,7 +950,7 @@ async def stream_query(request: QueryRequest):
 
             if should_refuse and not web_results:
                 yield await yield_event(f"data: {json.dumps({'token': REFUSAL_MSG})}\n\n")
-                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': True, 'intent': intent})}\n\n")
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'is_web_fallback': False, 'refused': True, 'intent': intent, 'provider': 'gemini' if using_gemini else 'groq', 'model': request_model})}\n\n")
                 _query_cache.put(cache_key, events_to_cache)
                 return
 
@@ -940,7 +1028,7 @@ async def stream_query(request: QueryRequest):
                         src_chunks = [c for c in passing_chunks if c["source"] == src]
                         top_score  = max((c.get("rerank_score", -99) for c in src_chunks), default=-99)
                         rag_source_details.append({"source": src, "chunks": len(src_chunks), "confidence": source_confidence_score(top_score)})
-                    yield await yield_event(f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_src_urls, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'related_questions': related_questions})}\n\n")
+                    yield await yield_event(f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_src_urls, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'related_questions': related_questions, 'provider': 'gemini', 'model': request_model})}\n\n")
                     if request.research_mode == "quick":
                         _query_cache.put(cache_key, events_to_cache)
                     return
@@ -1143,7 +1231,7 @@ async def stream_query(request: QueryRequest):
 
                 web_sources = [r["url"]   for r in web_results if r.get("url")]
                 web_titles  = [r["title"] for r in web_results if r.get("title")]
-                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': [], 'is_web_fallback': True, 'refused': False, 'intent': intent, 'intent_info': intent_info})}\n\n")
+                yield await yield_event(f"data: {json.dumps({'done': True, 'sources': web_titles[:3], 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': [], 'is_web_fallback': True, 'refused': False, 'intent': intent, 'intent_info': intent_info, 'provider': 'gemini' if using_gemini else 'groq', 'model': request_model})}\n\n")
                 _query_cache.put(cache_key, events_to_cache)
                 return
 
@@ -1163,7 +1251,7 @@ async def stream_query(request: QueryRequest):
                 })
 
             related_questions = await related_task
-            yield await yield_event(f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'related_questions': related_questions})}\n\n")
+            yield await yield_event(f"data: {json.dumps({'done': True, 'sources': rag_sources, 'web_sources': web_sources, 'web_results': web_results, 'rag_source_details': rag_source_details, 'is_web_fallback': bool(should_refuse), 'refused': False, 'intent': intent, 'intent_info': intent_info, 'language': language, 'related_questions': related_questions, 'provider': 'gemini' if using_gemini else 'groq', 'model': request_model})}\n\n")
 
             # Cache the successful response
             if request.research_mode == "quick":
@@ -1205,6 +1293,7 @@ async def upload_document(file: UploadFile = File(...)):
     """
     Upload a research document (PDF, TXT, DOCX, MD).
     Auto-chunks with semantic boundaries, embeds with BGE-base, stores in Qdrant.
+    Includes SHA-256 content deduplication and incremental BM25 index updates.
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename cannot be empty.")
@@ -1223,6 +1312,35 @@ async def upload_document(file: UploadFile = File(...)):
     content  = await file.read()
     if len(content) > MAX_SIZE:
         raise HTTPException(status_code=413, detail="File too large. Maximum size is 50MB.")
+
+    # ── SHA-256 Content Deduplication Check ────────────────────────────────────
+    content_hash = hashlib.sha256(content).hexdigest()
+    client = vector_store.get_client()
+    if client:
+        try:
+            from qdrant_client.models import Filter, FieldCondition, MatchValue
+            existing, _ = client.scroll(
+                collection_name=vector_store.COLLECTION_NAME,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(key="source", match=MatchValue(value=safe_filename)),
+                        FieldCondition(key="content_hash", match=MatchValue(value=content_hash)),
+                    ]
+                ),
+                limit=1,
+                with_payload=False,
+                with_vectors=False,
+            )
+            if existing and len(existing) > 0:
+                print(f"  [Upload] Document '{safe_filename}' content hash unchanged ({content_hash[:8]}). Skipping re-index.")
+                return {
+                    "message": f"Document '{safe_filename}' is unchanged, skipping re-index.",
+                    "skipped": True,
+                    "source": safe_filename,
+                    "file_size_kb": round(len(content) / 1024, 1),
+                }
+        except Exception as hash_err:
+            print(f"  [Upload] Deduplication check warning: {hash_err}")
 
     os.makedirs(DOCS_FOLDER, exist_ok=True)
 
@@ -1244,10 +1362,30 @@ async def upload_document(file: UploadFile = File(...)):
                 detail="No text could be extracted from the file. Is it a scanned PDF?"
             )
 
-        chunks   = chunk_document(pages, source_name=safe_filename)
+        chunks = chunk_document(pages, source_name=safe_filename)
+        for c in chunks:
+            if "metadata" not in c:
+                c["metadata"] = {}
+            c["metadata"]["content_hash"] = content_hash
+
         embedded = embed_chunks(chunks)
         store_chunks(embedded, recreate=False)   # Incremental — don't wipe existing
-        rebuild_bm25_index()
+
+        # ── Incremental BM25 Add ──────────────────────────────────────────────
+        bm25_chunks = []
+        for c in chunks:
+            meta = c.get("metadata", {})
+            bm25_chunks.append({
+                "id": c.get("id"),
+                "text": c.get("text", ""),
+                "source": safe_filename,
+                "chunk_index": meta.get("chunk_index", 0),
+                "pages": meta.get("pages", [1]),
+                "content_type": meta.get("content_type", "general"),
+                "cves": meta.get("cves", []),
+                "section": meta.get("section", ""),
+            })
+        add_chunks_to_bm25(bm25_chunks)
 
         code_chunks = sum(1 for c in chunks if c["metadata"].get("content_type") == "code")
         cve_chunks  = sum(1 for c in chunks if c["metadata"].get("cves"))
@@ -1286,7 +1424,8 @@ def delete_document(source: str):
         except Exception as e:
             print(f"  Warning: could not delete file '{file_path}': {e}")
 
-    rebuild_bm25_index()
+    # Incremental BM25 Remove
+    remove_chunks_from_bm25(safe_source)
 
     return {
         "status":               "ok",

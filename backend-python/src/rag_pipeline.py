@@ -96,8 +96,9 @@ WEB_SUPPLEMENT_THRESHOLD = float(os.getenv("WEB_SUPPLEMENT_THRESHOLD", "1.0"))
 RELEVANCE_THRESHOLD = float(os.getenv("RELEVANCE_THRESHOLD", "-3.5"))
 MIN_RELEVANT_CHUNKS = int(os.getenv("MIN_RELEVANT_CHUNKS", "1"))
 
-# ─── Thread pool (kept warm for fast parallel execution) ──────────────────────
-_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="researchflow-worker")
+# ─── Thread pool (configurable, scales with concurrent user load) ─────────────
+RAG_EXECUTOR_WORKERS = int(os.getenv("RAG_EXECUTOR_WORKERS", "16"))
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=RAG_EXECUTOR_WORKERS, thread_name_prefix="researchflow-worker")
 
 # ─── Refusal message ──────────────────────────────────────────────────────────
 REFUSAL_MSG = (
@@ -861,41 +862,33 @@ def call_gemini(
     if not GEMINI_API_KEY:
         raise Exception("GEMINI_API_KEY not set. Configure backend-python/.env or set LLM_PROVIDER to 'groq'.")
 
-    combined_prompt = system_content + "\n\n" + user_content
-    url = f"{GEMINI_ENDPOINT}/{GEMINI_MODEL}:generate"
-    headers = {
-        "Authorization": f"Bearer {GEMINI_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "prompt": combined_prompt,
-        "temperature": float(LLM_TEMPERATURE),
-        "max_output_tokens": int(max_tokens),
-    }
+    try:
+        from google import genai as google_genai
+        from google.genai import types as genai_types
+    except ImportError:
+        raise Exception("google-genai SDK not installed. Install with: pip install google-genai")
+
+    client = google_genai.Client(api_key=GEMINI_API_KEY)
 
     for attempt in range(max_retries):
-        resp = requests.post(url, headers=headers, json=payload, timeout=30)
-        if resp.status_code == 200:
-            try:
-                data = resp.json()
-                # Common response extraction heuristics
-                if isinstance(data, dict):
-                    if "candidates" in data and data["candidates"]:
-                        return data["candidates"][0].get("content", "").strip()
-                    if "output" in data and isinstance(data["output"], dict):
-                        maybe = data["output"].get("text") or data["output"].get("content")
-                        if maybe:
-                            return maybe.strip()
-                return resp.text.strip()
-            except Exception:
-                return resp.text.strip()
-        else:
-            if resp.status_code in (429, 503) and attempt < max_retries - 1:
+        try:
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=user_content,
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=system_content,
+                    temperature=float(LLM_TEMPERATURE),
+                    max_output_tokens=int(max_tokens),
+                )
+            )
+            return (response.text or "").strip()
+        except Exception as e:
+            if ("429" in str(e) or "quota" in str(e).lower()) and attempt < max_retries - 1:
                 wait = (attempt + 1) * 2
-                print(f"  [Gemini] rate limited, retrying in {wait}s...")
+                print(f"  [Gemini] Rate limited/quota hit, retrying in {wait}s...")
                 time.sleep(wait)
                 continue
-            raise Exception(f"Gemini API error {resp.status_code}: {resp.text}")
+            raise Exception(f"Gemini API error: {str(e)}")
 
 
 def call_llm(

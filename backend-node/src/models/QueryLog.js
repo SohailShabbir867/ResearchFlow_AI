@@ -36,6 +36,14 @@ const QueryLogSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  provider: {
+    type: String,
+    default: "groq",
+  },
+  model: {
+    type: String,
+    default: "llama-3.3-70b-versatile",
+  },
   timing: {
     embedMs:  { type: Number, default: 0 },
     searchMs: { type: Number, default: 0 },

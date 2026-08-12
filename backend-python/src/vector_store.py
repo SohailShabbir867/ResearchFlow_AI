@@ -189,6 +189,7 @@ def store_chunks(embedded_chunks: list[dict], recreate: bool = True):
                     "content_type": meta.get("content_type", "general"),
                     "cves":         meta.get("cves",         []),
                     "section":      meta.get("section",      ""),
+                    "content_hash": meta.get("content_hash", ""),
                 }
             )
         )

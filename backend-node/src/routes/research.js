@@ -348,6 +348,8 @@ router.post("/chats/:id/stream", async (req, res) => {
     let finalWebSources = [];
     let finalWebResults = [];
     let finalRagSourceDetails = [];
+    let finalProvider = "groq";
+    let finalModel = model || "llama-3.3-70b-versatile";
     let isRefused = false;
 
     let nodeBuffer = "";
@@ -382,6 +384,8 @@ router.post("/chats/:id/stream", async (req, res) => {
               finalWebSources       = data.web_sources       || [];
               finalWebResults       = data.web_results       || [];
               finalRagSourceDetails = data.rag_source_details || [];
+              if (data.provider) finalProvider = data.provider;
+              if (data.model) finalModel = data.model;
               if (data.refused) isRefused = true;
             }
           } catch (_e) {}
@@ -422,6 +426,8 @@ router.post("/chats/:id/stream", async (req, res) => {
             sources: finalSources,
             status: isRefused ? "refused" : "answered",
             refused: isRefused,
+            provider: finalProvider,
+            model: finalModel,
           });
 
           User.findByIdAndUpdate(req.user._id, {

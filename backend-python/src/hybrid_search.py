@@ -205,7 +205,7 @@ def get_bm25_results(query: str, top_k: int = 30) -> list[dict]:
             results.append({
                 "text":         chunk["text"],
                 "source":       chunk["source"],
-                "chunk_index":  chunk["chunk_index"],
+                "chunk_index":  chunk.get("chunk_index", 0),
                 "pages":        chunk.get("pages",        [1]),
                 "content_type": chunk.get("content_type", "general"),
                 "cves":         chunk.get("cves",         []),
@@ -289,3 +289,52 @@ def rebuild_bm25_index():
     _bm25_ready.clear()
     _bm25_building.clear()
     _build_bm25_index()
+
+
+def add_chunks_to_bm25(new_chunks: list[dict]):
+    """
+    Incrementally add new chunks to the in-memory BM25 index without re-scrolling Qdrant.
+    Re-tokenizes the updated in-memory corpus under _bm25_lock.
+    """
+    global _bm25_index, _bm25_chunks
+    if not new_chunks:
+        return
+
+    with _bm25_lock:
+        if _bm25_chunks is None:
+            _bm25_chunks = []
+
+        _bm25_chunks.extend(new_chunks)
+        tokenized_corpus = [_tokenize(c.get("text", "")) for c in _bm25_chunks]
+        _bm25_index = BM25Okapi(tokenized_corpus)
+        _bm25_ready.set()
+        _bm25_building.clear()
+        print(f"  [BM25] Incrementally added {len(new_chunks)} chunks (total: {len(_bm25_chunks)})")
+
+
+def remove_chunks_from_bm25(source_name: str):
+    """
+    Incrementally remove chunks for source_name from the in-memory BM25 index without re-scrolling Qdrant.
+    Filters _bm25_chunks under _bm25_lock and rebuilds BM25Okapi.
+    """
+    global _bm25_index, _bm25_chunks
+    if not source_name:
+        return
+
+    with _bm25_lock:
+        if not _bm25_chunks:
+            return
+
+        initial_len = len(_bm25_chunks)
+        _bm25_chunks = [c for c in _bm25_chunks if c.get("source") != source_name]
+        removed_count = initial_len - len(_bm25_chunks)
+
+        if not _bm25_chunks:
+            _bm25_index = None
+        else:
+            tokenized_corpus = [_tokenize(c.get("text", "")) for c in _bm25_chunks]
+            _bm25_index = BM25Okapi(tokenized_corpus)
+
+        _bm25_ready.set()
+        _bm25_building.clear()
+        print(f"  [BM25] Incrementally removed {removed_count} chunks for source '{source_name}' (remaining: {len(_bm25_chunks)})")
