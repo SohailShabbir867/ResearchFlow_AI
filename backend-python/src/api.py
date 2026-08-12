@@ -33,6 +33,26 @@ from datetime import datetime
 from typing import Optional, AsyncIterator
 
 from groq import AsyncGroq
+
+
+def clean_and_parse_json(text: str) -> dict:
+    """Robustly parse JSON output from LLMs, stripping markdown codeblocks or extra text."""
+    if not text or not isinstance(text, str):
+        raise ValueError("Empty or invalid LLM text response")
+    
+    cleaned = text.strip()
+    # Strip markdown fences
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    cleaned = cleaned.strip()
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        match = re.search(r"(\{.*\})", cleaned, re.DOTALL)
+        if match:
+            return json.loads(match.group(1))
+        raise
 try:
     from openai import AsyncOpenAI as _AsyncOpenAI
 except ImportError:
@@ -1040,7 +1060,7 @@ async def stream_query(request: QueryRequest):
                             messages=[{"role": "system", "content": sys_r}, {"role": "user", "content": request.question}],
                             temperature=0.3, max_tokens=200, response_format={"type": "json_object"}
                         )
-                        return json.loads(resp.choices[0].message.content).get("questions", [])[:3]
+                        return clean_and_parse_json(resp.choices[0].message.content).get("questions", [])[:3]
                     except Exception:
                         return []
                 related_task = asyncio.create_task(fetch_related_questions_gemini())
@@ -1110,7 +1130,7 @@ async def stream_query(request: QueryRequest):
                             messages=[{"role": "system", "content": sys_r}, {"role": "user", "content": request.question}],
                             temperature=0.3, max_tokens=200, response_format={"type": "json_object"}
                         )
-                        return json.loads(resp.choices[0].message.content).get("questions", [])[:3]
+                        return clean_and_parse_json(resp.choices[0].message.content).get("questions", [])[:3]
                     except Exception:
                         if _groq_client_for_related:
                             try:
@@ -1120,7 +1140,7 @@ async def stream_query(request: QueryRequest):
                                     messages=[{"role": "system", "content": sys_r}, {"role": "user", "content": request.question}],
                                     temperature=0.3, max_tokens=200, response_format={"type": "json_object"}
                                 )
-                                return json.loads(resp.choices[0].message.content).get("questions", [])[:3]
+                                return clean_and_parse_json(resp.choices[0].message.content).get("questions", [])[:3]
                             except Exception:
                                 pass
                         return []
@@ -1192,7 +1212,7 @@ async def stream_query(request: QueryRequest):
                         max_tokens=200,
                         response_format={"type": "json_object"}
                     )
-                    parsed = json.loads(resp.choices[0].message.content)
+                    parsed = clean_and_parse_json(resp.choices[0].message.content)
                     return parsed.get("questions", [])[:3]
                 except Exception as e:
                     print(f"  [Related Questions Error]: {e}")

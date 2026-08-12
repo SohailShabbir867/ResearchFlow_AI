@@ -15,6 +15,26 @@ class SubQueries(BaseModel):
     queries: list[str]
 
 
+def clean_and_parse_json(text: str) -> dict:
+    """Robustly parse JSON output from LLMs, stripping markdown codeblocks or extra text."""
+    if not text or not isinstance(text, str):
+        raise ValueError("Empty or invalid LLM text response")
+    
+    cleaned = text.strip()
+    # Strip markdown fences
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    cleaned = cleaned.strip()
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        match = re.search(r"(\{.*\})", cleaned, re.DOTALL)
+        if match:
+            return json.loads(match.group(1))
+        raise
+
+
 def _dedupe_subqueries(sub_queries: list[str], question: str, limit: int = 3) -> list[str]:
     """Normalize, deduplicate, and cap sub-queries for better coverage and speed."""
     seen = set()
@@ -99,7 +119,7 @@ async def perform_deep_research(request, history, style_name, intent, intent_inf
             ):
                 raw_text += token
 
-            parsed = json.loads(raw_text.strip())
+            parsed = clean_and_parse_json(raw_text)
             return parsed.get("questions", [])[:3]
         except Exception as e:
             print(f"  [Deep Research] Related Questions Error: {e}")
@@ -128,7 +148,7 @@ async def perform_deep_research(request, history, style_name, intent, intent_inf
         ):
             raw_decomp_json += token
         
-        parsed = json.loads(raw_decomp_json.strip())
+        parsed = clean_and_parse_json(raw_decomp_json)
         if "queries" in parsed and isinstance(parsed["queries"], list):
             sub_queries = parsed["queries"][:3]
     except Exception as e:
