@@ -1,13 +1,19 @@
 version: "3.8"
 
+# ─── SECURITY NOTE ────────────────────────────────────────────────────────────
+# Database services (Qdrant & MongoDB) are bound strictly to 127.0.0.1 (loopback).
+# They MUST NOT be exposed to the public internet (0.0.0.0) on VPS/cloud servers.
+# ──────────────────────────────────────────────────────────────────────────────
+
 services:
   qdrant:
     image: qdrant/qdrant
     container_name: researchflow_qdrant
     restart: unless-stopped
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      # Bind to 127.0.0.1 only — prevents public internet exposure
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
 
@@ -16,11 +22,14 @@ services:
     container_name: researchflow_mongodb
     restart: unless-stopped
     ports:
-      - "27017:27017"
+      # Bind to 127.0.0.1 only — prevents public internet exposure
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongo_data:/data/db
     environment:
       - MONGO_INITDB_DATABASE=researchflow
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=change_this_root_password_in_production
 
 volumes:
   qdrant_data:
