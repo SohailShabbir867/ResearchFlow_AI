@@ -8,6 +8,7 @@ const QueryLog = require("../models/QueryLog");
 const AppSettings = require("../models/AppSettings");
 const authMiddleware = require("../middleware/auth");
 const { requireRole } = require("../middleware/role");
+const { escapeRegex } = require("../utils/escapeRegex");
 
 const router = express.Router();
 
@@ -99,9 +100,10 @@ router.get("/users", async (req, res) => {
 
     const filter = {};
     if (search) {
+      const safeSearch = escapeRegex(search);
       filter.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
+        { name: { $regex: safeSearch, $options: "i" } },
+        { email: { $regex: safeSearch, $options: "i" } },
       ];
     }
     if (role && role !== "all") filter.role = role;
@@ -331,10 +333,11 @@ router.get("/logs", async (req, res) => {
 
     const filter = {};
     if (search) {
+      const safeSearch = escapeRegex(search);
       filter.$or = [
-        { question: { $regex: search, $options: "i" } },
-        { answer: { $regex: search, $options: "i" } },
-        { userName: { $regex: search, $options: "i" } },
+        { question: { $regex: safeSearch, $options: "i" } },
+        { answer: { $regex: safeSearch, $options: "i" } },
+        { userName: { $regex: safeSearch, $options: "i" } },
       ];
     }
     if (userId) filter.userId = userId;
