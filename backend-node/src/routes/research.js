@@ -60,6 +60,10 @@ router.post("/chats", async (req, res) => {
 
 // ─── GET /api/research/chats/:id ─────────────────────────────────────────────
 router.get("/chats/:id", async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ error: "Invalid chat id." });
+  }
+
   try {
     const chat = await Chat.findById(req.params.id);
     if (!chat) return res.status(404).json({ error: "Chat not found." });
@@ -77,6 +81,10 @@ router.get("/chats/:id", async (req, res) => {
 
 // ─── DELETE /api/research/chats/:id ──────────────────────────────────────────
 router.delete("/chats/:id", async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ error: "Invalid chat id." });
+  }
+
   try {
     const chat = await Chat.findById(req.params.id);
     if (!chat) return res.status(404).json({ error: "Chat not found." });
@@ -96,6 +104,10 @@ router.delete("/chats/:id", async (req, res) => {
 router.post("/chats/:id/ask", async (req, res) => {
   const { question, answer_style } = req.body;
   const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: "Invalid chat id." });
+  }
 
   if (!question || !question.trim()) {
     return res.status(400).json({ error: "Question is required." });
@@ -217,10 +229,14 @@ router.post("/chats/:id/ask", async (req, res) => {
 
 // ─── POST /api/research/feedback/:chatId/:messageIndex ────────────────────────
 router.post("/feedback/:chatId/:messageIndex", async (req, res) => {
-  try {
-    const { feedback } = req.body;
-    const { chatId, messageIndex } = req.params;
+  const { feedback } = req.body;
+  const { chatId, messageIndex } = req.params;
 
+  if (!mongoose.Types.ObjectId.isValid(chatId)) {
+    return res.status(400).json({ error: "Invalid chat id." });
+  }
+
+  try {
     if (!["positive", "negative"].includes(feedback)) {
       return res.status(400).json({ error: "Feedback must be 'positive' or 'negative'." });
     }
