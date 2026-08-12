@@ -26,6 +26,34 @@ import json
 import time
 import asyncio
 import hashlib
+"""
+ResearchFlow AI — FastAPI REST Service
+v6.0.0 — AsyncGroq Streaming + Startup Warmup + Keep-Alive
+
+Bug Fixes (v6.0):
+  AsyncGroq   — Replaced sync Groq client with AsyncGroq inside async generate().
+                The sync Groq client was blocking the FastAPI event loop on every
+                streaming request, causing the frontend to receive no tokens.
+  Keep-Alive  — SSE keep-alive comment frames prevent proxy/nginx timeout on slow LLM.
+  Warmup      — Embedder + BM25 index warm up at startup → no cold-start delay.
+  Import Bug  — source_confidence_score import moved from inside generate() to module-level.
+
+Endpoints:
+  GET  /health          — Service status and config
+  GET  /documents       — List indexed research documents
+  POST /query           — Standard RAG query (full response)
+  POST /stream          — Streaming RAG query (SSE token-by-token, AsyncGroq)
+  POST /upload          — Upload document (PDF/TXT/DOCX/MD)
+  DELETE /documents/:s  — Delete document and its vectors
+  GET  /settings        — Get active guardrail config
+  POST /settings        — Update runtime settings
+  POST /rebuild-index   — Rebuild BM25 keyword index
+"""
+import os
+import json
+import time
+import asyncio
+import hashlib
 import re
 from collections import OrderedDict
 import threading
@@ -33,9 +61,10 @@ from datetime import datetime
 
 # ── Module-level imports (v6.0: AsyncGroq replaces sync Groq — never blocks event loop) ──
 from groq import AsyncGroq
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional
 try:
@@ -228,6 +257,84 @@ async def on_startup():
 
     if GEMINI_API_KEY and GEMINI_API_KEY not in ("your_gemini_api_key_here", ""):
         print(f"  [Startup] OK: GEMINI_API_KEY detected — Gemini models enabled ({GEMINI_DEFAULT_MODEL}).")
+
+# Store full SSE text for repeat queries (TTFT < 50ms)
+_query_cache = QueryCache(capacity=100)
+
+# ─── AsyncGroq singleton ─────────────────────────────────────────────────────
+_async_groq: AsyncGroq = None
+
+def _get_async_groq() -> AsyncGroq:
+    """Return or create the module-level AsyncGroq singleton."""
+    global _async_groq
+    if _async_groq is None:
+        _async_groq = AsyncGroq(api_key=GROQ_API_KEY)
+        print("  [AsyncGroq] Singleton initialized.")
+    return _async_groq
+
+
+# ─── Gemini async client (google-generativeai) ────────────────────────────────
+# Uses the official Google Generative AI Python SDK.
+# Free tier: https://aistudio.google.com/app/apikey
+#   gemini-2.0-flash  — 15 RPM, 1M TPM, 1500 RPD  (best free option)
+#   gemini-1.5-flash  — 15 RPM, 1M TPM, 1500 RPD
+#   gemini-1.5-pro    — 2  RPM,  32K TPM,  50 RPD
+_gemini_client = None
+_gemini_available = False
+
+def _get_gemini_client():
+    """Lazy-load and return the Gemini GenerativeModel client."""
+    global _gemini_client, _gemini_available
+    if _gemini_client is not None:
+        return _gemini_client
+    if not GEMINI_API_KEY:
+        raise RuntimeError(
+            "GEMINI_API_KEY is not set. "
+            "Get a free key at https://aistudio.google.com/app/apikey "
+            "and add GEMINI_API_KEY=your_key to backend-python/.env"
+        )
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+        _gemini_client = genai
+        _gemini_available = True
+        print("  [Gemini] Client initialized.")
+        return _gemini_client
+    except ImportError:
+        raise RuntimeError(
+            "google-generativeai package not installed. "
+            "Run: pip install google-generativeai"
+        )
+
+
+def _is_gemini_model(model_name: str) -> bool:
+    """Return True if model_name should be routed to Gemini API."""
+    return model_name in SUPPORTED_GEMINI_MODELS
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+
+# ─── Startup warmup ───────────────────────────────────────────────────────────
+@app.on_event("startup")
+async def on_startup():
+    """
+    v7.0: Warm up expensive components at server start. Logs Gemini status.
+    """
+    import threading
+    if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
+        print("  [Startup] WARNING: GROQ_API_KEY not set -- Groq streaming will fail.")
+    else:
+        _get_async_groq()
+        print("  [Startup] OK: AsyncGroq singleton ready.")
+
+    if GEMINI_API_KEY and GEMINI_API_KEY not in ("your_gemini_api_key_here", ""):
+        print(f"  [Startup] OK: GEMINI_API_KEY detected — Gemini models enabled ({GEMINI_DEFAULT_MODEL}).")
     else:
         print("  [Startup] INFO: No GEMINI_API_KEY set. Gemini models will return an error until key is added to .env.")
 
@@ -247,26 +354,33 @@ async def on_startup():
     threading.Thread(target=_warmup, daemon=True).start()
     print("  [Startup] NexusAI v7.0 ready.")
 
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    print(f"  [422 Error] {request.method} {request.url.path} Validation Failed: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": str(exc.body)},
+    )
+
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────────
 
 class HistoryMessage(BaseModel):
-    role: str
-    text: str
+    role: Optional[str] = "user"
+    text: Optional[str] = ""
 
 class QueryRequest(BaseModel):
-    question:     str = Field(..., min_length=1, max_length=8_000)
-    top_k:        int = Field(default=8, ge=1, le=20)
+    question:     str = Field(..., min_length=1, max_length=50_000)
+    top_k:        Optional[int] = Field(default=8, ge=1, le=50)
     history:      Optional[list[HistoryMessage]] = Field(
         default=None,
-        description="Previous conversation turns for context-aware follow-ups"
     )
     answer_style: Optional[str] = Field(
         default=None,
         description="short | technical | detailed | case_study | conversational"
     )
     max_tokens:   Optional[int] = Field(
-        default=None, ge=64, le=4_096,
+        default=None, ge=1, le=32_768,
         description="Override max LLM generation tokens"
     )
     research_mode: Optional[str] = Field(

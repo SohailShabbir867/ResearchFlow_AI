@@ -297,7 +297,8 @@ router.post("/chats/:id/stream", async (req, res) => {
 
   try {
     const appSettings = await AppSettings.findOne({ key: "global" }).lean();
-    const maxTokens = appSettings?.data?.llm?.maxTokens ? parseInt(appSettings.data.llm.maxTokens) : 4000;
+    const rawMaxTokens = appSettings?.data?.llm?.maxTokens ? parseInt(appSettings.data.llm.maxTokens) : 4000;
+    const maxTokens = (!isNaN(rawMaxTokens) && rawMaxTokens > 0) ? Math.min(rawMaxTokens, 32768) : 4000;
 
     // Sanitize and cap conversation history (last 6 messages max, 500 chars max per text)
     const sanitizedHistory = Array.isArray(history)
@@ -329,10 +330,6 @@ router.post("/chats/:id/stream", async (req, res) => {
     let finalRagSourceDetails = [];
     let isRefused = false;
 
-    // v6.0: SSE buffer accumulator — axios chunks don't respect SSE event
-    // boundaries. A single SSE event can span two chunks, or two events can
-    // arrive in one chunk. Without buffering, split events are silently dropped
-    // causing fullAnswer to be incomplete in MongoDB.
     let nodeBuffer = "";
 
     pyResponse.data.on("data", (chunk) => {
