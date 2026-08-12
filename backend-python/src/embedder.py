@@ -22,13 +22,10 @@ except ImportError:
 from fastembed import TextEmbedding
 
 load_dotenv()
-EMBED_MODEL      = os.getenv("EMBED_MODEL", "BAAI/bge-m3")
+EMBED_MODEL      = os.getenv("EMBED_MODEL", "BAAI/bge-base-en-v1.5")
 EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "16"))  # Safe for 8GB RAM
 
-# BGE-m3 does not require a query prefix for standard usage
 BGE_QUERY_PREFIX = ""
-
-# Lazy-load model (downloads ~440MB on first run, cached after that)
 _model = None
 
 # ─── LRU Query Embedding Cache ───────────────────────────────────────────────

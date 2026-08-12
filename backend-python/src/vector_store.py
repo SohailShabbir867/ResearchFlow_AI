@@ -28,8 +28,8 @@ load_dotenv()
 
 QDRANT_URL      = os.getenv("QDRANT_URL",      "http://localhost:6333")
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "researchflow")
-EMBED_DIM       = int(os.getenv("EMBED_DIM",   "1024"))
-VECTOR_SIZE     = EMBED_DIM  # Default BAAI/bge-m3: 1024-dim
+EMBED_DIM       = int(os.getenv("EMBED_DIM",   "768"))
+VECTOR_SIZE     = EMBED_DIM  # Default BAAI/bge-base-en-v1.5: 768-dim
 
 # ─── Singleton Qdrant client (Bug 9 Fix) ─────────────────────────────────────
 # One persistent connection shared across all requests — no TCP overhead per call.
