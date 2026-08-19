@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
+import axios from "axios";
 import {
-  Sparkles, AtSign, Lock, Eye, EyeOff, AlertCircle, CheckCircle2,
+  Sparkles, AtSign, Lock, Eye, EyeOff, AlertCircle, CheckCircle2, Mail, Loader2,
 } from "lucide-react";
 import { loginUser, clearAuthError } from "../store/authSlice.js";
 import ThemeToggle from "../components/ThemeToggle.jsx";
@@ -27,6 +28,9 @@ export default function Login() {
   const [emailError, setEmailError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [unverified, setUnverified] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendDone, setResendDone] = useState(false);
+  const [resendError, setResendError] = useState("");
 
   const from = location.state?.from?.pathname || "/";
 
@@ -60,6 +64,22 @@ export default function Login() {
       setTimeout(() => navigate(from, { replace: true }), 800);
     } else if (result.payload?.toLowerCase?.().includes("verify") || result.payload?.toLowerCase?.().includes("pending")) {
       setUnverified(true);
+      setResendDone(false);
+      setResendError("");
+    }
+  };
+
+  const handleResend = async () => {
+    if (!email || resendLoading || resendDone) return;
+    setResendLoading(true);
+    setResendError("");
+    try {
+      await axios.post("/api/auth/resend-verification", { email });
+      setResendDone(true);
+    } catch (err) {
+      setResendError(err.response?.data?.error || "Failed to resend. Please try again.");
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -120,11 +140,41 @@ export default function Login() {
             )}
 
             {unverified && (
-              <div className="mb-5 p-3.5 rounded-2xl text-xs flex items-start gap-2.5" style={{ background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.25)", color: "#FCD34D" }}>
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#F59E0B" }} />
-                <div>
-                  <p className="font-bold">Email not verified</p>
-                  <p className="mt-0.5">Please check your inbox for the activation link.</p>
+              <div className="mb-5 rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(245,158,11,0.30)" }}>
+                {/* Warning header */}
+                <div className="p-3.5 flex items-start gap-2.5" style={{ background: "rgba(245,158,11,0.10)" }}>
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#F59E0B" }} />
+                  <div>
+                    <p className="text-xs font-bold" style={{ color: "#FCD34D" }}>Email not verified</p>
+                    <p className="text-xs mt-0.5" style={{ color: "rgba(252,211,77,0.75)" }}>
+                      Check your inbox for the activation link, or resend it below.
+                    </p>
+                  </div>
+                </div>
+                {/* Resend action */}
+                <div className="px-3.5 py-3" style={{ background: "rgba(245,158,11,0.05)", borderTop: "1px solid rgba(245,158,11,0.15)" }}>
+                  {resendDone ? (
+                    <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: "#6EE7B7" }}>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Verification email sent! Check your inbox.</span>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleResend}
+                        disabled={resendLoading || !email}
+                        className="flex items-center gap-2 text-xs font-bold rounded-xl px-3 py-2 transition-all active:scale-95 disabled:opacity-50"
+                        style={{ background: "rgba(245,158,11,0.15)", color: "#FCD34D", border: "1px solid rgba(245,158,11,0.3)" }}
+                      >
+                        {resendLoading
+                          ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Sending…</span></>
+                          : <><Mail className="w-3.5 h-3.5" /><span>Resend Verification Email</span></>}
+                      </button>
+                      {!email && <p className="text-[10px] mt-1.5" style={{ color: "rgba(252,211,77,0.55)" }}>Enter your email above first</p>}
+                      {resendError && <p className="text-[10px] mt-1.5 font-medium" style={{ color: "#FCA5A5" }}>{resendError}</p>}
+                    </>
+                  )}
                 </div>
               </div>
             )}
