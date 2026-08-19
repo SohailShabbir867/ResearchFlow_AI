@@ -25,7 +25,7 @@ jobs:
             # 1. Clone repository if not present, otherwise pull latest changes
             if [ ! -d "$PROJECT_DIR" ]; then
               echo "Cloning repository..."
-              git clone https://github.com/SohailShabbir867/medisearch-ai.git "$PROJECT_DIR"
+              git clone https://github.com/SohailShabbir867/ResearchFlow_AI.git "$PROJECT_DIR"
             fi
 
             cd "$PROJECT_DIR"
