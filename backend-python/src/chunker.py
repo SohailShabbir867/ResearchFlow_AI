@@ -12,7 +12,9 @@ Key improvements over generic chunkers:
 Supports: PDF, TXT, DOCX, MD
 """
 from __future__ import annotations
+import logging
 import re
+import sys
 from pathlib import Path
 
 # ─── Chunking config (in TOKENS) ─────────────────────────────────────────────
@@ -310,15 +312,84 @@ def _extract_section_header(text: str) -> str:
 
 # ─── Document loaders ─────────────────────────────────────────────────────────
 
+class _PdfStderrFilter:
+    """Drop pypdf's per-stream zlib noise; keep real errors visible."""
+
+    _SKIP = (
+        "incorrect header check",
+        "incorrect startxref",
+        "parsing for Object Streams",
+        "Multiple definitions in dictionary",
+        "while decompressing data",
+        "Unexpected end of stream",
+        "invalid stored block lengths",
+        "invalid distance too far back",
+    )
+
+    def __init__(self, wrapped):
+        self._wrapped = wrapped
+
+    def write(self, s):
+        if any(marker in s for marker in self._SKIP):
+            return len(s)
+        return self._wrapped.write(s)
+
+    def flush(self):
+        self._wrapped.flush()
+
+    def fileno(self):
+        return self._wrapped.fileno()
+
+    def isatty(self):
+        return False
+
+
 def load_pdf(file_path: str) -> list[dict]:
-    """Load PDF with per-page text and page number tracking."""
+    """
+    Load PDF with per-page text extraction.
+
+    Damaged textbooks (bad xref, corrupt Flate streams) are common; skip
+    unreadable pages instead of aborting the whole indexing run.
+    """
     from pypdf import PdfReader
-    reader = PdfReader(file_path)
-    pages = []
-    for i, page in enumerate(reader.pages):
-        text = page.extract_text() or ""
-        if text.strip():
-            pages.append({"text": text, "page": i + 1})
+
+    pypdf_log = logging.getLogger("pypdf")
+    prev_level = pypdf_log.level
+    pypdf_log.setLevel(logging.ERROR)
+
+    old_err = sys.stderr
+    try:
+        sys.stderr = _PdfStderrFilter(old_err)
+        try:
+            reader = PdfReader(file_path, strict=False)
+        except Exception as e:
+            print(f"  Warning: cannot open PDF ({e}). Skipping file.")
+            return []
+
+        try:
+            total = len(reader.pages)
+        except Exception as e:
+            print(f"  Warning: cannot enumerate PDF pages ({e}). Skipping file.")
+            return []
+
+        pages = []
+        skipped = 0
+        for i in range(total):
+            try:
+                text = reader.pages[i].extract_text() or ""
+            except KeyboardInterrupt:
+                raise
+            except Exception:
+                skipped += 1
+                continue
+            if text.strip():
+                pages.append({"text": text, "page": i + 1})
+    finally:
+        sys.stderr = old_err
+        pypdf_log.setLevel(prev_level)
+
+    if skipped:
+        print(f"  Warning: skipped {skipped}/{total} unreadable page(s) (damaged PDF).")
     return pages
 
 
@@ -412,17 +483,22 @@ def load_all_documents(docs_folder: str) -> list[dict]:
 
     for file_path in sorted(files):
         print(f"\nLoading: {file_path.name}")
-        pages = load_document(str(file_path))
-        if pages:
-            chunks = chunk_document(pages, source_name=file_path.name)
-            all_chunks.extend(chunks)
-            total_chars  = sum(len(p["text"]) for p in pages)
-            code_chunks  = sum(1 for c in chunks if c["metadata"]["content_type"] == "code")
-            cve_chunks   = sum(1 for c in chunks if c["metadata"]["cves"])
-            print(f"  -> {len(chunks)} chunks | {total_chars:,} chars | "
-                  f"{code_chunks} code chunks | {cve_chunks} CVE chunks")
-        else:
-            print(f"  -> No text extracted (scanned PDF or empty file)")
+        try:
+            pages = load_document(str(file_path))
+            if pages:
+                chunks = chunk_document(pages, source_name=file_path.name)
+                all_chunks.extend(chunks)
+                total_chars  = sum(len(p["text"]) for p in pages)
+                code_chunks  = sum(1 for c in chunks if c["metadata"]["content_type"] == "code")
+                cve_chunks   = sum(1 for c in chunks if c["metadata"]["cves"])
+                print(f"  -> {len(chunks)} chunks | {total_chars:,} chars | "
+                      f"{code_chunks} code chunks | {cve_chunks} CVE chunks")
+            else:
+                print(f"  -> No text extracted (scanned, encrypted, or corrupt PDF)")
+        except KeyboardInterrupt:
+            raise
+        except Exception as e:
+            print(f"  -> FAILED, skipping file: {e}")
 
     print(f"\nTotal chunks ready: {len(all_chunks)}")
     return all_chunks
