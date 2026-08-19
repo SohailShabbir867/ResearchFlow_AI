@@ -197,13 +197,15 @@ def split_by_tokens(text: str, chunk_size: int, chunk_overlap: int) -> list[str]
                 current_tokens = overlap_tok
 
             # Split large paragraph into sentence-level chunks
-            sentence_chunks = _chunk_sentences(para, chunk_size, chunk_overlap, tokenizer)
+            sentence_chunks = _chunk_sentences(
+                para, chunk_size, chunk_overlap, tokenizer, code_placeholders
+            )
             for sc in sentence_chunks[:-1]:
                 chunks.append(_restore_code_blocks(sc, code_placeholders))
             # Last sentence chunk goes back into current buffer
             if sentence_chunks:
                 last = sentence_chunks[-1]
-                last_tok = _count_tokens(last, tokenizer)
+                last_tok = _count_para_tokens(last, code_placeholders, tokenizer)
                 current_paras = [last]
                 current_tokens = last_tok
             continue
@@ -241,18 +243,25 @@ def _build_overlap(paras: list[str], overlap_budget: int, placeholders: dict[str
     return overlap_paras, overlap_tok
 
 
-def _chunk_sentences(text: str, chunk_size: int, chunk_overlap: int, tokenizer) -> list[str]:
+def _chunk_sentences(
+    text: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    tokenizer,
+    placeholders: dict[str, str] | None = None,
+) -> list[str]:
     """Split a large paragraph into sentence-level chunks with overlap."""
+    placeholders = placeholders or {}
     sentences = _split_sentences(text)
     chunks: list[str] = []
     buf: list[str] = []
     buf_tok = 0
 
     for sent in sentences:
-        s_tok = _count_tokens(sent, tokenizer)
+        s_tok = _count_para_tokens(sent, placeholders, tokenizer)
         if buf_tok + s_tok > chunk_size and buf:
             chunks.append(" ".join(buf))
-            overlap_buf, overlap_tok = _build_overlap(buf, chunk_overlap, tokenizer)
+            overlap_buf, overlap_tok = _build_overlap(buf, chunk_overlap, placeholders, tokenizer)
             buf = overlap_buf + [sent]
             buf_tok = overlap_tok + s_tok
         else:

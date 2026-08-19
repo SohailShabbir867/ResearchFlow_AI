@@ -203,6 +203,7 @@ def get_bm25_results(query: str, top_k: int = 30) -> list[dict]:
         if score > 0:
             chunk = chunks[idx]
             results.append({
+                "id":           chunk.get("id"),
                 "text":         chunk["text"],
                 "source":       chunk["source"],
                 "chunk_index":  chunk.get("chunk_index", 0),

@@ -8,6 +8,7 @@ v4.0 — Cybersec upgrades:
   - Wider reranker window gives LLM broader coverage of techniques
 """
 import os
+import threading
 try:
     from dotenv import load_dotenv
 except ImportError:
@@ -21,15 +22,18 @@ RERANKER_TOP_K = int(os.getenv("RERANKER_TOP_K", "8"))
 
 # Lazy-load reranker
 _reranker = None
+_reranker_lock = threading.Lock()
 
 
 def _get_reranker():
     global _reranker
     if _reranker is None:
-        from fastembed.rerank.cross_encoder import TextCrossEncoder
-        print(f"Loading reranker model: {RERANKER_MODEL}...")
-        _reranker = TextCrossEncoder(model_name=RERANKER_MODEL)
-        print("Reranker model loaded.")
+        with _reranker_lock:
+            if _reranker is None:
+                from fastembed.rerank.cross_encoder import TextCrossEncoder
+                print(f"Loading reranker model: {RERANKER_MODEL}...")
+                _reranker = TextCrossEncoder(model_name=RERANKER_MODEL)
+                print("Reranker model loaded.")
     return _reranker
 
 

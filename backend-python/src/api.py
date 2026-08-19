@@ -90,6 +90,7 @@ from src.rag_pipeline import (
     LLM_TEMPERATURE,
 )
 from src.vector_store import get_collection_info, get_indexed_sources
+import src.vector_store as vector_store
 from src.hybrid_search import rebuild_bm25_index, _build_bm25_index, add_chunks_to_bm25, remove_chunks_from_bm25
 from src.embedder import get_embedding, warmup as warmup_embedder
 from src.web_search import perform_web_search, needs_freshness
@@ -948,20 +949,19 @@ async def stream_query(request: QueryRequest):
             # ── Deep Research Mode ───────────────────────────────────────────────────
             if use_deep_research:
                 from src.deep_research import perform_deep_research
-                await perform_deep_research(
-                    request=request, 
-                    history=history, 
-                    style_name=style_name, 
-                    intent=intent, 
-                    intent_info=intent_info, 
+                async for event in perform_deep_research(
+                    request=request,
+                    history=history,
+                    style_name=style_name,
+                    intent=intent,
+                    intent_info=intent_info,
                     language=language,
                     model_name=request_model,
                     stream_llm_tokens_fn=stream_llm_tokens,
-                    yield_event=yield_event, 
-                    cache_key=cache_key, 
-                    events_to_cache=events_to_cache, 
-                    query_cache=_query_cache
-                )
+                ):
+                    events_to_cache.append(event)
+                    yield event
+                _query_cache.put(cache_key, events_to_cache)
                 return
 
             yield await yield_event(f"data: {json.dumps({'status_text': '🔍 Searching knowledge base...'})}\n\n")
@@ -996,7 +996,10 @@ async def stream_query(request: QueryRequest):
                 reranked, web_results = await asyncio.gather(do_rag(), do_web())
             else:
                 reranked = await do_rag()
-                top_score = reranked[0]["score"] if reranked else -999.0
+                top_score = (
+                    reranked[0].get("rerank_score", reranked[0].get("score", -999.0))
+                    if reranked else -999.0
+                )
                 should_refuse_rag = not reranked or (top_score < rag.RELEVANCE_THRESHOLD)
                 
                 if should_refuse_rag or top_score < rag.WEB_SUPPLEMENT_THRESHOLD:
@@ -1194,6 +1197,9 @@ async def stream_query(request: QueryRequest):
             # ─── GROQ ROUTE ──────────────────────────────────────────────────
             # BUG FIX: client MUST be initialised before creating the related_task
             client = _groq_client_for_related
+            if client is None:
+                yield f"data: {json.dumps({'error': 'GROQ_API_KEY is not configured.'})}\n\n"
+                return
 
 
             # Start fetching related questions concurrently (client is now defined)

@@ -11,6 +11,9 @@ from src.vector_store import get_client
 def migrate():
     print("Starting migration...")
     client = get_client()
+    if client is None:
+        print("Qdrant is not running. Start it and retry.")
+        return
     
     # 1. Create new researchflow collection
     new_col = "researchflow"

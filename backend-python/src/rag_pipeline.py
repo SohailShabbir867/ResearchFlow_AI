@@ -1067,7 +1067,10 @@ def answer(
     reranked = rerank(question, candidates, top_k=top_k) if candidates else []
     t_rerank = time.time() - t3
 
-    top_score = reranked[0]["score"] if reranked else -999.0
+    top_score = (
+        reranked[0].get("rerank_score", reranked[0].get("score", -999.0))
+        if reranked else -999.0
+    )
 
     # ── Step 5: Guardrail Evaluation & Smart Web Supplement (Task 14 Optimization) ────
     if candidates:

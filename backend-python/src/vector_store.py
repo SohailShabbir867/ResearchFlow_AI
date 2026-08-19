@@ -130,6 +130,8 @@ def create_collection(recreate: bool = False):
 def get_collection_info() -> dict:
     """Get collection statistics."""
     client = get_client()
+    if client is None:
+        return {"name": COLLECTION_NAME, "points_count": 0, "status": "unavailable"}
     try:
         info = client.get_collection(COLLECTION_NAME)
         return {
@@ -145,6 +147,8 @@ def get_collection_info() -> dict:
 def get_indexed_sources() -> list[str]:
     """Get list of unique source document names in the collection."""
     client = get_client()
+    if client is None:
+        return []
     try:
         sources = set()
         offset = None
@@ -172,6 +176,8 @@ def store_chunks(embedded_chunks: list[dict], recreate: bool = True):
     from tqdm import tqdm
 
     client = get_client()
+    if client is None:
+        raise RuntimeError(f"Qdrant is not available at {QDRANT_URL}. Start Qdrant before indexing.")
     create_collection(recreate=recreate)
 
     points = []
@@ -205,24 +211,32 @@ def store_chunks(embedded_chunks: list[dict], recreate: bool = True):
 def search(query_vector: list[float], top_k: int = 30) -> list[dict]:
     """Dense vector search via Qdrant with tuned HNSW ef_runtime."""
     client = get_client()
+    if client is None:
+        return []
 
-    results = client.query_points(
-        collection_name=COLLECTION_NAME,
-        query=query_vector,
-        limit=top_k,
-        search_params={"hnsw_ef": 128}  # v6.0: up from default 64 → better recall
-    )
+    try:
+        results = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=query_vector,
+            limit=top_k,
+            search_params={"hnsw_ef": 128}  # v6.0: up from default 64 → better recall
+        )
+    except Exception as e:
+        print(f"  [Qdrant] Search failed — returning empty results. ({e})")
+        return []
 
     matches = []
     for r in results.points:
+        payload = r.payload or {}
         matches.append({
-            "text":         r.payload["text"],
-            "source":       r.payload["source"],
-            "chunk_index":  r.payload["chunk_index"],
-            "pages":        r.payload.get("pages",        [1]),
-            "content_type": r.payload.get("content_type", "general"),
-            "cves":         r.payload.get("cves",         []),
-            "section":      r.payload.get("section",      ""),
+            "id":           r.id,
+            "text":         payload.get("text", ""),
+            "source":       payload.get("source", ""),
+            "chunk_index":  payload.get("chunk_index", 0),
+            "pages":        payload.get("pages",        [1]),
+            "content_type": payload.get("content_type", "general"),
+            "cves":         payload.get("cves",         []),
+            "section":      payload.get("section",      ""),
             "score":        round(r.score, 4)
         })
 
@@ -233,6 +247,9 @@ def delete_document_by_source(source_name: str) -> bool:
     """Delete all chunks matching a document source from Qdrant."""
     from qdrant_client.models import Filter, FieldCondition, MatchValue, FilterSelector
     client = get_client()
+    if client is None:
+        print(f"  Error deleting points for '{source_name}': Qdrant is unavailable.")
+        return False
     try:
         client.delete(
             collection_name=COLLECTION_NAME,
