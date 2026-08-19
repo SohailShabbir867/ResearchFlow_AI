@@ -1,0 +1,67 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+      - production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script_stop: true
+          script: |
+            PROJECT_DIR="/home/ubuntu/medresearch-ai"
+
+            # 1. Clone repository if not present, otherwise pull latest changes
+            if [ ! -d "$PROJECT_DIR" ]; then
+              echo "Cloning repository..."
+              git clone https://github.com/SohailShabbir867/medisearch-ai.git "$PROJECT_DIR"
+            fi
+
+            cd "$PROJECT_DIR"
+            echo "Pulling latest changes..."
+            git fetch --all
+            git reset --hard origin/${GITHUB_REF_NAME}
+
+            # 2. Update Node.js backend
+            if [ -d "backend-node" ]; then
+              echo "Updating Node backend..."
+              cd backend-node
+              npm install --omit=dev
+              pm2 restart medresearch-node || pm2 start src/server.js --name "medresearch-node"
+              cd ..
+            fi
+
+            # 3. Update Python backend
+            if [ -d "backend-python" ]; then
+              echo "Updating Python backend..."
+              cd backend-python
+              if [ ! -d ".venv" ]; then
+                python3 -m venv .venv
+              fi
+              source .venv/bin/activate
+              pip install -r requirements.txt
+              pm2 restart medresearch-python || pm2 start "uvicorn src.api:app --host 0.0.0.0 --port 8000" --name "medresearch-python"
+              cd ..
+            fi
+
+            # 4. Build Frontend
+            if [ -d "frontend" ]; then
+              echo "Building Frontend..."
+              cd frontend
+              npm install
+              npm run build
+              cd ..
+            fi
+
+            echo "🚀 Deployment successfully completed!"
