@@ -24,6 +24,7 @@ import {
   X,
   Globe,
   Microscope,
+  ExternalLink,
 } from "lucide-react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -54,34 +55,28 @@ const DETAIL_LEVELS = [
 
 /* ─── Markdown renderer config ──────────────────────────────────────
    Renders the streamed LLM answer with proper headings, sub-headings,
-   lists, bold/italic, code, blockquotes and tables. A blinking caret is
-   shown while the message is still streaming to reinforce the typewriter
-   effect.
+   lists, bold/italic, code, blockquotes and tables. In react-markdown v10,
+   inline is undefined so we detect codeblocks via language class or multiline.
 */
 const mdComponents = (streaming) => ({
-  h1: ({ children }) => (
-    <h1 className="chat-h1">{children}</h1>
-  ),
+  h1: ({ children }) => <h1 className="chat-h1">{children}</h1>,
   h2: ({ children }) => (
     <h2 className="chat-h2">
       <span className="chat-h2-bar" />
       <span>{children}</span>
     </h2>
   ),
-  h3: ({ children }) => (
-    <h3 className="chat-h3">{children}</h3>
+  h3: ({ children }) => <h3 className="chat-h3">{children}</h3>,
+  h4: ({ children }) => <h4 className="chat-h4">{children}</h4>,
+  p: ({ children }) => (
+    <p className="chat-p">
+      {children}
+      {streaming && <span className="stream-caret" />}
+    </p>
   ),
-  h4: ({ children }) => (
-    <h4 className="chat-h4">{children}</h4>
-  ),
-  p: ({ children }) => {
-    // For the very last paragraph of a streaming message, append the caret.
-    return <p className="chat-p">{children}{streaming && <span className="stream-caret" />}</p>;
-  },
   ul: ({ children }) => <ul className="chat-ul">{children}</ul>,
   ol: ({ children }) => <ol className="chat-ol">{children}</ol>,
   li: ({ children, ...props }) => {
-    // remark-gfm marks task list items with a checkbox child
     const isTask = props.checked !== null && props.checked !== undefined;
     if (isTask) {
       return <li className="chat-li chat-task">{children}</li>;
@@ -100,26 +95,45 @@ const mdComponents = (streaming) => ({
   ),
   hr: () => <hr className="chat-hr" />,
   a: ({ children, href }) => (
-    <a className="bg-blue-900/50 text-blue-300 text-xs px-1.5 py-0.5 rounded-md mx-1 hover:bg-blue-800 transition-colors" href={href} target="_blank" rel="noreferrer" title={href}>{children}</a>
+    <a
+      className="chat-link"
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      title={href}
+    >
+      {children}
+    </a>
   ),
-  code: ({ inline, children, className }) =>
-    inline ? (
-      <code className="chat-code-inline">{children}</code>
-    ) : (
-      <CodeBlock className={className}>{children}</CodeBlock>
-    ),
+  pre: ({ children }) => <div className="chat-pre-wrapper not-prose">{children}</div>,
+  code: ({ node, className, children, ...props }) => {
+    const match = /language-(\w+)/.exec(className || "");
+    const rawContent = String(children || "").replace(/\n$/, "");
+    const isMultiLine = rawContent.includes("\n");
+    if (match || isMultiLine) {
+      return <CodeBlock className={className} rawCode={rawContent}>{rawContent}</CodeBlock>;
+    }
+    return (
+      <code className="chat-code-inline font-mono" {...props}>
+        {children}
+      </code>
+    );
+  },
   table: ({ children }) => (
     <div className="chat-table-wrap">
       <table className="chat-table">{children}</table>
     </div>
   ),
+  thead: ({ children }) => <thead className="chat-thead">{children}</thead>,
+  tbody: ({ children }) => <tbody className="chat-tbody">{children}</tbody>,
+  tr: ({ children }) => <tr className="chat-tr">{children}</tr>,
   th: ({ children }) => <th className="chat-th">{children}</th>,
   td: ({ children }) => <td className="chat-td">{children}</td>,
 });
 
-function CodeBlock({ children, className }) {
+function CodeBlock({ children, className, rawCode: propRawCode }) {
   const [copied, setCopied] = useState(false);
-  const rawCode  = String(children || "").replace(/\n$/, "");
+  const rawCode = propRawCode !== undefined ? propRawCode : String(children || "").replace(/\n$/, "");
 
   // Detect language from className (e.g. "language-python" → "python")
   const langRaw  = (className || "").replace("language-", "").trim();
@@ -145,11 +159,11 @@ function CodeBlock({ children, className }) {
 
   // Brand color for the language badge
   const LANG_COLORS = {
-    python: "#3B82F6", bash: "#10B981", sh: "#10B981", shell: "#10B981",
-    javascript: "#F59E0B", typescript: "#06B6D4",
-    c: "#6366F1", cpp: "#8B5CF6", go: "#22D3EE",
-    rust: "#F97316", ruby: "#EF4444", sql: "#14B8A6",
-    powershell: "#A78BFA", assembly: "#EC4899", nasm: "#EC4899",
+    python: "#38BDF8", bash: "#34D399", sh: "#34D399", shell: "#34D399",
+    javascript: "#FBBF24", typescript: "#22D3EE",
+    c: "#818CF8", cpp: "#A78BFA", go: "#38BDF8",
+    rust: "#FB923C", ruby: "#F87171", sql: "#2DD4BF",
+    powershell: "#C084FC", assembly: "#F472B6", nasm: "#F472B6",
   };
   const badgeColor = LANG_COLORS[language.toLowerCase()] || "#9CA3AF";
 
@@ -160,22 +174,25 @@ function CodeBlock({ children, className }) {
   };
 
   return (
-    <div className="my-4 rounded-xl overflow-hidden shadow-lg" style={{ border: `1px solid ${badgeColor}30` }}>
+    <div className="my-3.5 rounded-xl overflow-hidden shadow-md border border-[var(--border-color)]" style={{ background: "#0D1117" }}>
       {/* Header bar with language badge + copy button */}
-      <div className="flex items-center justify-between px-4 py-2 select-none" style={{ background: "#161B22", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-        <span className="text-[11px] font-bold uppercase tracking-widest font-mono" style={{ color: badgeColor }}>
-          {langLabel}
-        </span>
+      <div className="flex items-center justify-between px-3.5 py-1.5 select-none border-b border-white/5 bg-[#161B22]/90">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full" style={{ background: badgeColor }} />
+          <span className="text-[11px] font-bold uppercase tracking-wider font-mono" style={{ color: badgeColor }}>
+            {langLabel}
+          </span>
+        </div>
         <button
           onClick={handleCopy}
           type="button"
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all text-xs cursor-pointer"
-          style={{ color: copied ? "#10B981" : "#8B949E", background: copied ? "rgba(16,185,129,0.1)" : "transparent" }}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all text-xs cursor-pointer hover:bg-white/5"
+          style={{ color: copied ? "#34D399" : "#8B949E", background: copied ? "rgba(52,211,153,0.12)" : "transparent" }}
         >
           {copied ? (
-            <><Check className="w-3.5 h-3.5" /><span className="font-semibold">Copied!</span></>
+            <><Check className="w-3.5 h-3.5 text-emerald-400" /><span className="font-semibold text-emerald-400 text-[11px]">Copied!</span></>
           ) : (
-            <><Copy className="w-3.5 h-3.5" /><span>Copy</span></>
+            <><Copy className="w-3.5 h-3.5" /><span className="text-[11px]">Copy</span></>
           )}
         </button>
       </div>
@@ -184,15 +201,15 @@ function CodeBlock({ children, className }) {
       <SyntaxHighlighter
         language={language}
         style={atomDark}
-        showLineNumbers={rawCode.split("\n").length > 4}
-        lineNumberStyle={{ color: "#4B5563", fontSize: "11px", minWidth: "2.5em" }}
+        showLineNumbers={rawCode.split("\n").length > 3}
+        lineNumberStyle={{ color: "#4B5563", fontSize: "11px", minWidth: "2.2em" }}
         customStyle={{
           margin: 0,
           borderRadius: 0,
           fontSize: "12.5px",
           lineHeight: "1.65",
           background: "#0D1117",
-          padding: "1rem 1.25rem",
+          padding: "0.85rem 1.1rem",
         }}
         codeTagProps={{ style: { fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace" } }}
         wrapLongLines={false}
@@ -204,16 +221,24 @@ function CodeBlock({ children, className }) {
 }
 
 function MarkdownContent({ text, streaming = false, language = "en" }) {
+  // Pre-process text to convert raw <br> or <br/> tags to newlines so they render cleanly in markdown/tables
+  const cleanText = React.useMemo(() => {
+    if (!text) return "";
+    return String(text)
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/&lt;br\s*\/?&gt;/gi, "\n");
+  }, [text]);
+
   return (
     <div className={`prose-chat max-w-none ${language === "ur" ? "urdu-text" : ""}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={mdComponents(streaming)}
       >
-        {text || (streaming ? "" : "")}
+        {cleanText}
       </ReactMarkdown>
       {/* Caret shows up when streaming hasn't emitted a paragraph yet */}
-      {streaming && (!text || !text.trim()) && (
+      {streaming && (!cleanText || !cleanText.trim()) && (
         <span className="stream-caret" />
       )}
     </div>
@@ -1149,7 +1174,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                   className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(52,211,153,0.8)]"
                 />
                 <p className="text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
-                  ETHICAL HACKING EXPERT · HYBRID RAG · GROQ LLAMA 3.3 70B
+                  ETHICAL HACKING & MEDICAL AI · HYBRID RAG · {model.toUpperCase().replace("OPENAI/", "")}
                 </p>
               </div>
             </div>
@@ -1317,7 +1342,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                       </>
                     )}
 
-                    {/* AI message — clean, uncontained presentation matching Image 2 */}
+                    {/* AI message — clean, uncontained presentation */}
                     {!isUser && (
                       <>
                         <div
@@ -1325,24 +1350,102 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                           style={{ color: "var(--text-primary)" }}
                         >
                           {isRefused && (
-                            <div className="flex items-center gap-1.5 text-amber-500 text-xs font-bold uppercase tracking-wide mb-2">
+                            <div className="flex items-center gap-1.5 text-amber-500 text-xs font-bold uppercase tracking-wide mb-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
                               <AlertTriangle className="w-4 h-4" />
                               <span>Outside document scope</span>
                             </div>
                           )}
 
-                          {/* Source Type Badge */}
-                          {msg.isWebFallback ? (
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold text-cyan-400 bg-cyan-950/40 border border-cyan-800/50 mb-2 shadow-xs">
-                              <Globe className="w-3.5 h-3.5 text-cyan-400" />
-                              <span>Live Web Intelligence (DuckDuckGo)</span>
+                          {/* ── Perplexity-Style Interactive Sources Bar ── */}
+                          {((msg.sources && msg.sources.length > 0) || (msg.webSources && msg.webSources.length > 0)) && (
+                            <div className="mb-3.5 p-3 rounded-2xl border transition-all" style={{ background: "var(--bg-elevated)", borderColor: "var(--border-color-subtle)" }}>
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                                  {msg.isWebFallback ? (
+                                    <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                                  ) : (
+                                    <FileText className="w-3.5 h-3.5 text-amber-500" />
+                                  )}
+                                  <span>{msg.isWebFallback ? "Live Web Sources" : "Indexed Research Documents"}</span>
+                                  <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded-md bg-white/5 text-[var(--text-secondary)] border border-white/10">
+                                    {(msg.sources?.length || 0) + (msg.webSources?.length || 0)}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveSources(formatSourcesData(msg.ragSourceDetails, msg.webResults, msg.sources, msg.webSources));
+                                    setSourcePanelOpen(true);
+                                  }}
+                                  className="text-[11px] font-medium transition-colors hover:underline flex items-center gap-1"
+                                  style={{ color: "var(--brand-primary)" }}
+                                >
+                                  <span>View Drawer</span>
+                                  <ChevronRight className="w-3 h-3" />
+                                </button>
+                              </div>
+
+                              {/* Horizontal scrollable source cards */}
+                              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                                {/* RAG Document Sources */}
+                                {msg.sources && msg.sources.map((src, i) => (
+                                  <button
+                                    key={`rag_src_${i}`}
+                                    onClick={() => {
+                                      setActiveSources(formatSourcesData(msg.ragSourceDetails, msg.webResults, msg.sources, msg.webSources));
+                                      setSourcePanelOpen(true);
+                                    }}
+                                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs border transition-all text-left flex-shrink-0 hover:border-[var(--brand-primary)] cursor-pointer"
+                                    style={{ background: "var(--bg-card)", borderColor: "var(--border-color)" }}
+                                    title={`Click to inspect ${src}`}
+                                  >
+                                    <div className="w-5 h-5 rounded-lg flex items-center justify-center bg-amber-500/10 text-amber-500 flex-shrink-0">
+                                      <FileText className="w-3 h-3" />
+                                    </div>
+                                    <div className="max-w-[170px] truncate">
+                                      <p className="font-semibold text-[11px] text-[var(--text-heading)] truncate">{src}</p>
+                                      <p className="text-[9px] text-[var(--text-muted)]">Local RAG Knowledge</p>
+                                    </div>
+                                  </button>
+                                ))}
+
+                                {/* Web Sources */}
+                                {msg.webSources && msg.webSources.map((url, i) => {
+                                  let domain = "";
+                                  try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch(e) { domain = url; }
+                                  const webResult = (msg.webResults || []).find(r => r.url === url);
+                                  const title = webResult?.title || domain;
+                                  return (
+                                    <a
+                                      key={`web_src_${i}`}
+                                      href={url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs border transition-all text-left flex-shrink-0 group hover:border-cyan-500/60"
+                                      style={{ background: "var(--bg-card)", borderColor: "var(--border-color)" }}
+                                      title={url}
+                                    >
+                                      <div className="w-5 h-5 rounded-lg flex items-center justify-center bg-cyan-500/10 flex-shrink-0 overflow-hidden">
+                                        <img
+                                          src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
+                                          alt=""
+                                          className="w-3.5 h-3.5 rounded-xs"
+                                          onError={(e) => { e.target.style.display = "none"; }}
+                                        />
+                                      </div>
+                                      <div className="max-w-[180px] truncate">
+                                        <p className="font-semibold text-[11px] text-[var(--text-heading)] truncate group-hover:text-cyan-400 transition-colors">
+                                          {title}
+                                        </p>
+                                        <p className="text-[9px] text-[var(--text-muted)] truncate">{domain}</p>
+                                      </div>
+                                      <ExternalLink className="w-3 h-3 text-[var(--text-muted)] group-hover:text-cyan-400 transition-colors ml-0.5 flex-shrink-0" />
+                                    </a>
+                                  );
+                                })}
+                              </div>
                             </div>
-                          ) : msg.sources && msg.sources.length > 0 ? (
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-800/50 mb-2 shadow-xs">
-                              <FileText className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>Local Document RAG</span>
-                            </div>
-                          ) : null}
+                          )}
 
                           {msg.councilTexts && Object.keys(msg.councilTexts).length > 0 ? (
                             <div className="flex gap-4 overflow-x-auto pb-2">
@@ -1360,18 +1463,18 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                           )}
                         </div>
 
-                        {/* Clean bottom action bar (Copy, Feedback, Sources button) */}
+                        {/* Clean bottom action bar (Copy, Feedback, Export) */}
                         <div className="flex items-center gap-2 mt-3 flex-wrap">
                           <button
                             onClick={() => handleCopy(msg.id, msg.text)}
-                            className="p-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors hover:bg-white/5"
+                            className="p-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors hover:bg-white/5 cursor-pointer"
                             style={{ color: "var(--text-muted)" }}
                             title="Copy response"
                           >
                             {copiedId === msg.id ? (
                               <>
                                 <Check className="w-4 h-4 text-emerald-500" />
-                                <span className="text-emerald-500">Copied</span>
+                                <span className="text-emerald-500 font-semibold">Copied</span>
                               </>
                             ) : (
                               <Copy className="w-4 h-4" />
@@ -1380,7 +1483,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
 
                           <button
                             onClick={() => handleFeedback(activeChatId, idx, "up")}
-                            className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
+                            className="p-1.5 rounded-lg transition-colors hover:bg-white/5 cursor-pointer"
                             style={{ color: feedbacks[idx] === "up" || feedbacks[msg.id] === "up" ? "#10B981" : "var(--text-muted)" }}
                             title="Good response"
                           >
@@ -1389,7 +1492,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
 
                           <button
                             onClick={() => handleFeedback(activeChatId, idx, "down")}
-                            className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
+                            className="p-1.5 rounded-lg transition-colors hover:bg-white/5 cursor-pointer"
                             style={{ color: feedbacks[idx] === "down" || feedbacks[msg.id] === "down" ? "#EF4444" : "var(--text-muted)" }}
                             title="Bad response"
                           >
@@ -1398,77 +1501,13 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
 
                           <button
                             onClick={() => handleExportMD(msg.text, idx)}
-                            className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
+                            className="p-1.5 rounded-lg transition-colors hover:bg-white/5 cursor-pointer"
                             style={{ color: "var(--text-muted)" }}
-                            title="Export to MD"
+                            title="Export to Markdown"
                           >
                             <FileText className="w-4 h-4" />
                           </button>
-
-                          {/* Sources pill button if available */}
-                          {((msg.sources && msg.sources.length > 0) || (msg.webSources && msg.webSources.length > 0)) && (
-                            <button
-                              onClick={() => {
-                                setSourcesOpen((p) => ({ ...p, [msg.id]: !p[msg.id] }));
-                                setActiveSources(formatSourcesData(msg.ragSourceDetails, msg.webResults, msg.sources, msg.webSources));
-                                setSourcePanelOpen(true);
-                              }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-colors border cursor-pointer"
-                              style={{
-                                borderColor: "var(--border-color)",
-                                color: "var(--text-muted)",
-                                background: "transparent",
-                              }}
-                            >
-                              {msg.isWebFallback ? <Globe className="w-3.5 h-3.5 text-cyan-400" /> : <FileText className="w-3.5 h-3.5" />}
-                              <span>Sources ({(msg.sources?.length || 0) + (msg.webSources?.length || 0)})</span>
-                              <span>{sourcesOpen[msg.id] ? "▲" : "▼"}</span>
-                            </button>
-                          )}
                         </div>
-
-                        {/* Expanded sources list */}
-                        {sourcesOpen[msg.id] && (
-                          <div className="mt-2 flex flex-wrap gap-2 pl-1">
-                            {/* Document sources */}
-                            {msg.sources && msg.sources.map((src, i) => (
-                              <div
-                                key={`doc_${i}`}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all"
-                                style={{
-                                  background: "var(--brand-primary)",
-                                  color: "#FFFFFF",
-                                }}
-                              >
-                                <FileText className="w-3.5 h-3.5" />
-                                <span>{src}</span>
-                              </div>
-                            ))}
-
-                            {/* Web source URLs */}
-                            {msg.webSources && msg.webSources.map((url, i) => {
-                              let domain = "";
-                              try { domain = new URL(url).hostname; } catch(e) { domain = url; }
-                              return (
-                                <a
-                                  key={`web_${i}`}
-                                  href={url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-cyan-900/60 text-cyan-200 border border-cyan-700/60 hover:bg-cyan-800/70 transition-all"
-                                >
-                                  <img 
-                                    src={`https://www.google.com/s2/favicons?domain=${domain}`} 
-                                    alt="" 
-                                    className="w-4 h-4 rounded-sm flex-shrink-0"
-                                    onError={(e) => { e.target.style.display = "none"; }}
-                                  />
-                                  <span className="max-w-[200px] truncate">{url}</span>
-                                </a>
-                              );
-                            })}
-                          </div>
-                        )}
 
                         {/* Related Questions */}
                         {msg.relatedQuestions && msg.relatedQuestions.length > 0 && (
