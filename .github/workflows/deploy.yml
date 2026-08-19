@@ -29,9 +29,10 @@ jobs:
             fi
 
             cd "$PROJECT_DIR"
-            echo "Pulling latest changes..."
+            echo "Pulling latest changes on branch ${{ github.ref_name }}..."
             git fetch --all
-            git reset --hard origin/${GITHUB_REF_NAME}
+            git checkout ${{ github.ref_name }} || git checkout -b ${{ github.ref_name }} origin/${{ github.ref_name }}
+            git reset --hard origin/${{ github.ref_name }}
 
             # 2. Update Node.js backend
             if [ -d "backend-node" ]; then
@@ -50,6 +51,7 @@ jobs:
                 python3 -m venv .venv
               fi
               source .venv/bin/activate
+              pip install --upgrade pip
               pip install -r requirements.txt
               pm2 restart medresearch-python || pm2 start "uvicorn src.api:app --host 0.0.0.0 --port 8000" --name "medresearch-python"
               cd ..
