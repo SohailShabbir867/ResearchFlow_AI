@@ -1422,7 +1422,8 @@ async def _stream_local_time_response(question: str):
     yield f"data: {json.dumps({'intent': 'general', 'intent_info': INTENT_META['general'], 'language': 'en'})}\n\n"
     for line in payload["answer"].splitlines():
         if line:
-            yield f"data: {json.dumps({'token': line + '\n'})}\n\n"
+            token_payload = json.dumps({'token': line + '\n'})
+            yield f"data: {token_payload}\n\n"
     yield f"data: {json.dumps({'done': True, 'sources': [], 'web_sources': [], 'web_results': [], 'rag_source_details': [], 'is_web_fallback': False, 'refused': False, 'intent': 'general', 'intent_info': INTENT_META['general'], 'language': 'en', 'related_questions': []})}\n\n"
 
 
