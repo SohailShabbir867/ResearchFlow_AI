@@ -11,6 +11,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Write Node .env to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          envs: NODE_ENV_FILE
+          script: |
+            mkdir -p /home/ubuntu/medresearch-ai/backend-node
+            cat > /home/ubuntu/medresearch-ai/backend-node/.env << 'ENVEOF'
+            ${{ secrets.NODE_ENV_FILE }}
+            ENVEOF
+        env:
+          NODE_ENV_FILE: ${{ secrets.NODE_ENV_FILE }}
+
+      - name: Write Python .env to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            mkdir -p /home/ubuntu/medresearch-ai/backend-python
+            cat > /home/ubuntu/medresearch-ai/backend-python/.env << 'ENVEOF'
+            ${{ secrets.PYTHON_ENV_FILE }}
+            ENVEOF
+
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
