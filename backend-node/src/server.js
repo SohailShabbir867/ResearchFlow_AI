@@ -12,6 +12,9 @@ const researchRoutes = require("./routes/research");
 const adminRoutes = require("./routes/admin");
 
 const app = express();
+
+// ─── Trust Nginx / Cloudflare proxy ──────────────────────────────────────────
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/medresearch";
 
@@ -41,8 +44,11 @@ async function connectDB() {
 connectDB();
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
+// FRONTEND_URL can be a single URL or comma-separated list
 const allowedOrigins = [
-  process.env.FRONTEND_URL || "http://localhost:5173",
+  ...(process.env.FRONTEND_URL
+    ? process.env.FRONTEND_URL.split(",").map(u => u.trim())
+    : ["http://localhost:5173"]),
   "http://localhost:3000",
   "http://127.0.0.1:5173",
 ];
