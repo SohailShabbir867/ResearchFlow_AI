@@ -100,13 +100,19 @@ import src.rag_pipeline as rag
 
 # ── Supported Groq models (validated allowlist — prevents silent fallbacks) ──
 SUPPORTED_GROQ_MODELS = {
+    # Current active models (as of 2026-08)
+    "openai/gpt-oss-120b",       # 120B — best quality on Groq
+    "openai/gpt-oss-20b",        # 20B — fast
+    "qwen/qwen3.6-27b",          # Qwen 27B
+    "groq/compound",             # Groq compound model
+    "groq/compound-mini",        # Groq compound mini
+    # Legacy aliases kept for backward-compat (remapped via DEPRECATED_MODEL_ALIASES)
     "llama-3.3-70b-versatile",
     "llama-3.1-70b-versatile",
     "llama-3.1-8b-instant",
     "llama3-70b-8192",
     "llama3-8b-8192",
     "gemma2-9b-it",
-    "gemma-7b-it",
     "council",
 }
 
@@ -127,18 +133,26 @@ SUPPORTED_DEEPSEEK_MODELS = {
 }
 
 COUNCIL_MODELS = [
-    os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-    "gemma2-9b-it",
+    os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+    "qwen/qwen3.6-27b",
 ]
 
 DEPRECATED_MODEL_ALIASES = {
-    "mixtral-8x7b-32768":  os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-    "llama2-70b-4096":     os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-    "gemini-mini":         "gemini-2.0-flash",
-    "gemini-1.0":          "gemini-1.5-flash",
-    "gemini-1.0-pro":      "gemini-1.5-pro",
-    "deepseek-chat":       "deepseek-v4-flash",
-    "deepseek-reasoner":   "deepseek-v4-pro",
+    # Retired Groq models — redirect to current best
+    "llama-3.3-70b-versatile": "openai/gpt-oss-120b",
+    "llama-3.1-70b-versatile": "openai/gpt-oss-120b",
+    "llama-3.1-8b-instant":    "openai/gpt-oss-20b",
+    "llama3-70b-8192":         "openai/gpt-oss-120b",
+    "llama3-8b-8192":          "openai/gpt-oss-20b",
+    "gemma2-9b-it":            "qwen/qwen3.6-27b",
+    "gemma-7b-it":             "qwen/qwen3.6-27b",
+    "mixtral-8x7b-32768":      os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+    "llama2-70b-4096":         os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+    "gemini-mini":             "gemini-2.0-flash",
+    "gemini-1.0":              "gemini-1.5-flash",
+    "gemini-1.0-pro":          "gemini-1.5-pro",
+    "deepseek-chat":           "deepseek-v4-flash",
+    "deepseek-reasoner":       "deepseek-v4-pro",
 }
 
 load_dotenv()
@@ -146,7 +160,7 @@ load_dotenv()
 DOCS_FOLDER = os.path.join(os.path.dirname(__file__), "../data/documents")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
@@ -1596,7 +1610,7 @@ def get_settings():
         },
         "llm": {
             "provider": getattr(rag, "LLM_PROVIDER", "groq"),
-            "model": getattr(rag, "GROQ_MODEL", "llama-3.3-70b-versatile"),
+            "model": getattr(rag, "GROQ_MODEL", "openai/gpt-oss-120b"),
             "geminiModel": getattr(rag, "GEMINI_MODEL", "gemini-mini"),
             "maxTokens": getattr(rag, "GLOBAL_MAX_TOKENS", 4000),
         },

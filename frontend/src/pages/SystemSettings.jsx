@@ -43,7 +43,7 @@ export default function SystemSettings() {
   const [maxUploadsPerDay, setMaxUploadsPerDay] = useState(10);
 
   // LLM Configuration State
-  const [selectedModel, setSelectedModel] = useState("llama-3.3-70b-versatile");
+  const [selectedModel, setSelectedModel] = useState("openai/gpt-oss-120b");
   const [llmProvider, setLlmProvider] = useState("groq");
   const [geminiModel, setGeminiModel] = useState("gemini-mini");
   const [maxTokens, setMaxTokens] = useState(2048);
@@ -445,10 +445,10 @@ export default function SystemSettings() {
                     onChange={(e) => setSelectedModel(e.target.value)}
                     className="w-full h-11 px-4 text-sm text-white bg-[#1A1230] border border-white/10 rounded-xl outline-none focus:border-[#E21B70] transition-all cursor-pointer"
                   >
-                    <option value="llama-3.3-70b-versatile">⚡ LLaMA 3.3 70B — Best Quality (Default)</option>
-                    <option value="llama-3.1-70b-versatile">🔬 LLaMA 3.1 70B — Deep Research</option>
-                    <option value="llama-3.1-8b-instant">🚀 LLaMA 3.1 8B Instant — Fastest</option>
-                    <option value="gemma2-9b-it">🌟 Gemma 2 9B — Google / Efficient</option>
+                    <option value="openai/gpt-oss-120b">⚡ GPT-OSS 120B — Best Quality (Default)</option>
+                    <option value="openai/gpt-oss-20b">🚀 GPT-OSS 20B — Ultra Fast</option>
+                    <option value="qwen/qwen3.6-27b">🧠 Qwen 3.6 27B — High Accuracy</option>
+                    <option value="groq/compound">🔬 Groq Compound — Deep Reasoning</option>
                   </select>
                 </div>
               ) : (

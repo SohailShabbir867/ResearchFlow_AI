@@ -335,7 +335,7 @@ router.post("/chats/:id/stream", async (req, res) => {
         top_k: top_k || 8,
         answer_style: safeStyle,
         research_mode: research_mode || 'quick',
-        model: model || 'llama-3.3-70b-versatile',
+        model: model || 'openai/gpt-oss-120b',
         history: sanitizedHistory,
         max_tokens: maxTokens,
       },
@@ -349,7 +349,7 @@ router.post("/chats/:id/stream", async (req, res) => {
     let finalWebResults = [];
     let finalRagSourceDetails = [];
     let finalProvider = "groq";
-    let finalModel = model || "llama-3.3-70b-versatile";
+    let finalModel = model || "openai/gpt-oss-120b";
     let isRefused = false;
 
     let nodeBuffer = "";

@@ -254,7 +254,7 @@ export default function Research() {
   const [feedbacks, setFeedbacks] = useState({});
   const [detailLevel, setDetailLevel] = useState("technical");
   const [isDeepResearch, setIsDeepResearch] = useState(false);
-  const [model, setModel] = useState('llama-3.3-70b-versatile');
+  const [model, setModel] = useState('openai/gpt-oss-120b');
   const [sourcesOpen, setSourcesOpen] = useState({});
 
   useEffect(() => {
@@ -1650,10 +1650,10 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                   }}
                 >
                   <optgroup label="⚡ Groq Models (Fastest)">
-                    <option value="llama-3.3-70b-versatile">⚡ LLaMA 3.3 (70B) — Best</option>
-                    <option value="llama-3.1-8b-instant">🚀 LLaMA 3.1 (8B) — Fastest</option>
-                    <option value="gemma2-9b-it">🌟 Gemma 2 (9B) — Google</option>
-                    <option value="llama-3.1-70b-versatile">🔬 LLaMA 3.1 (70B) — Research</option>
+                    <option value="openai/gpt-oss-120b">⚡ GPT-OSS (120B) — Best Quality</option>
+                    <option value="openai/gpt-oss-20b">🚀 GPT-OSS (20B) — Ultra Fast</option>
+                    <option value="qwen/qwen3.6-27b">🧠 Qwen 3.6 (27B) — High Accuracy</option>
+                    <option value="groq/compound">🔬 Groq Compound — Deep Analysis</option>
                     <option value="council">🏛️ Council Mode — Multi-Model</option>
                   </optgroup>
                   <optgroup label="🤖 Gemini Models (Google AI)">
@@ -1670,11 +1670,11 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
               <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
                 {(() => {
                   const map = {
-                    'llama-3.3-70b-versatile': 'Groq LLaMA 3.3 70B · Best overall quality',
-                    'llama-3.1-8b-instant': 'Groq LLaMA 3.1 8B · Fastest responses',
-                    'gemma2-9b-it': 'Google Gemma 2 9B via Groq · Efficient',
-                    'llama-3.1-70b-versatile': 'Groq LLaMA 3.1 70B · Deep research',
-                    'council': 'Council Mode · LLaMA + Gemma2 in parallel',
+                    'openai/gpt-oss-120b': 'Groq GPT-OSS 120B · Best overall quality',
+                    'openai/gpt-oss-20b': 'Groq GPT-OSS 20B · Ultra-fast responses',
+                    'qwen/qwen3.6-27b': 'Qwen 3.6 27B via Groq · High accuracy & coding',
+                    'groq/compound': 'Groq Compound · Reasoning & tool synthesis',
+                    'council': 'Council Mode · Multi-Model parallel deliberation',
                     'gemini-2.0-flash': 'Google Gemini 2.0 Flash · Free 1500/day',
                     'gemini-1.5-flash': 'Google Gemini 1.5 Flash · Free 1500/day',
                     'gemini-1.5-pro': 'Google Gemini 1.5 Pro · Free 50/day',
