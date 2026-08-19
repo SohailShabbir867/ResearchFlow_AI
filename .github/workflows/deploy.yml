@@ -51,7 +51,14 @@ jobs:
                 ~/.local/bin/uv venv .venv --python 3.11
               fi
               ~/.local/bin/uv pip install -r requirements.txt --python .venv
+              # Ensure documents folder exists for the watcher
+              mkdir -p data/documents
               pm2 restart medresearch-python || pm2 start ".venv/bin/uvicorn src.api:app --host 0.0.0.0 --port 8000" --name "medresearch-python"
+              # Auto-embedding watcher — watches data/documents/ for new files
+              pm2 restart medresearch-watcher || pm2 start "src/watcher.py" \
+                --name "medresearch-watcher" \
+                --interpreter ".venv/bin/python" \
+                --log-date-format "YYYY-MM-DD HH:mm:ss"
               cd ..
             fi
 
