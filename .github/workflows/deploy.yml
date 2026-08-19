@@ -43,17 +43,15 @@ jobs:
               cd ..
             fi
 
-            # 3. Update Python backend
+            # 3. Update Python backend (Python 3.11 via uv)
             if [ -d "backend-python" ]; then
               echo "Updating Python backend..."
               cd backend-python
               if [ ! -d ".venv" ]; then
-                python3 -m venv .venv
+                ~/.local/bin/uv venv .venv --python 3.11
               fi
-              source .venv/bin/activate
-              pip install --upgrade pip
-              pip install -r requirements.txt
-              pm2 restart medresearch-python || pm2 start "uvicorn src.api:app --host 0.0.0.0 --port 8000" --name "medresearch-python"
+              ~/.local/bin/uv pip install -r requirements.txt --python .venv
+              pm2 restart medresearch-python || pm2 start ".venv/bin/uvicorn src.api:app --host 0.0.0.0 --port 8000" --name "medresearch-python"
               cd ..
             fi
 
