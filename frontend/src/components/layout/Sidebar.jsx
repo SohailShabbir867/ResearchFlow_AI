@@ -72,6 +72,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
       const result = await dispatch(createChat("New Chat")).unwrap();
       navigate("/");
       dispatch(loadChat(result._id));
+      if (onMobileClose) onMobileClose();
     } catch (e) {
       console.error(e);
     } finally {

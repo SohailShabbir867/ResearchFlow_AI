@@ -144,7 +144,7 @@ export default function SystemSettings() {
 
 
       {/* ── MAIN CONTENT AREA (max-w-[900px]) ── */}
-      <main className="flex-1 flex flex-col h-full bg-[#0F0A1E] relative overflow-y-auto p-6 lg:p-8">
+      <main className="flex-1 flex flex-col h-full relative overflow-y-auto p-4 sm:p-6 lg:p-8" style={{ background: "var(--bg-page)", color: "var(--text-primary)" }}>
         <div className="max-w-[900px] w-full mx-auto space-y-8">
 
           {/* Page Header */}

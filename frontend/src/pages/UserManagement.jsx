@@ -117,7 +117,7 @@ export default function UserManagement() {
       <AdminSidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
 
       {/* ── MAIN CONTENT AREA ── */}
-      <main className="flex-1 flex flex-col h-full relative overflow-y-auto p-6 lg:p-8">
+      <main className="flex-1 flex flex-col h-full relative overflow-y-auto p-4 sm:p-6 lg:p-8">
         
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">

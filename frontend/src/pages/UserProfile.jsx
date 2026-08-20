@@ -275,7 +275,7 @@ export default function UserProfile() {
       </aside>
 
       {/* ── MAIN CONTENT AREA ── */}
-      <main className="flex-1 flex flex-col h-full relative overflow-y-auto p-6 lg:p-8" style={{ background: "var(--bg-page)" }}>
+      <main className="flex-1 flex flex-col h-full relative overflow-y-auto p-4 sm:p-6 lg:p-8" style={{ background: "var(--bg-page)" }}>
         <div className="max-w-[900px] w-full mx-auto space-y-6">
           
           {/* Page Header */}

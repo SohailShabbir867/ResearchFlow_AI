@@ -132,7 +132,7 @@ export default function QueryAuditLog() {
 
 
       {/* ── MAIN CONTENT AREA ── */}
-      <main className="flex-1 flex flex-col h-full bg-[#0F0A1E] relative overflow-y-auto p-6 lg:p-8">
+      <main className="flex-1 flex flex-col h-full relative overflow-y-auto p-4 sm:p-6 lg:p-8" style={{ background: "var(--bg-page)", color: "var(--text-primary)" }}>
         
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">

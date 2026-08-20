@@ -1017,8 +1017,45 @@
 }
 
 /* ==========================================================================
-   MOBILE RESPONSIVE
+   MOBILE RESPONSIVE & ACCESSIBILITY UTILITIES
 ========================================================================== */
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Touch target enhancement for mobile devices */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Responsive Table Wrapper */
+.table-responsive-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-color-subtle);
+}
+
+.table-responsive-container table {
+  min-width: 600px;
+  width: 100%;
+}
+
+/* Bottom Safe Area Padding for Mobile Keyboards / Navigation */
+.safe-pb {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
 
 @media (max-width: 1023px) {
   .sidebar {
@@ -1029,13 +1066,20 @@
 @media (max-width: 640px) {
   .msg-user,
   .msg-ai {
-    @apply px-4 py-3;
-    max-width: 90vw !important;
+    @apply px-3.5 py-3;
+    max-width: 92vw !important;
   }
   .send-btn {
-    @apply px-4;
+    @apply px-3.5;
   }
   .btn-primary {
-    @apply px-4 py-2 text-xs;
+    @apply px-4 py-2.5 text-xs;
+  }
+
+  /* Code block on narrow mobile */
+  .chat-pre-wrapper pre {
+    font-size: 11.5px !important;
+    padding: 0.6rem 0.8rem !important;
   }
 }
+

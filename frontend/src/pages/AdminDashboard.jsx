@@ -87,7 +87,7 @@ export default function AdminDashboard() {
       <AdminSidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
 
       {/* ── MAIN CONTENT AREA ── */}
-      <main className="flex-1 flex flex-col h-full relative overflow-y-auto p-6 lg:p-8">
+      <main className="flex-1 flex flex-col h-full relative overflow-y-auto p-4 sm:p-6 lg:p-8">
 
         {/* Mobile hamburger header */}
         <div className="lg:hidden flex items-center gap-3 mb-6">

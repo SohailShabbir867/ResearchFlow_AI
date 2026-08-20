@@ -373,6 +373,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
 
   const handleSelectChat = async (chatId) => {
     setActiveChatId(chatId);
+    setMobileMenuOpen(false);
     let msgs = messagesMap[chatId];
     if (chatId && (!msgs || msgs.length === 0)) {
       setChatLoading(true);
@@ -464,6 +465,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
     setActiveChatId(null);
     setInput("");
     setIsTyping(false);
+    setMobileMenuOpen(false);
   };
 
   const handleSend = async (queryText) => {
@@ -1145,54 +1147,56 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
       >
         {/* Top Header */}
         <header
-          className="h-14 px-4 sm:px-6 flex items-center justify-between shrink-0 z-20"
+          className="h-14 px-3 sm:px-6 flex items-center justify-between shrink-0 z-20"
           style={{ borderBottom: "1px solid var(--border-color-subtle)", background: "var(--bg-input-bar)" }}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
             {/* Mobile hamburger */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-1.5 rounded-lg transition-colors"
+              className="lg:hidden p-1.5 rounded-lg transition-colors shrink-0 touch-target"
               style={{ color: "var(--text-muted)" }}
+              aria-label="Toggle menu"
             >
               <Menu className="w-5 h-5" />
             </button>
 
             {/* AI Icon + name */}
             <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center shadow-sm"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shadow-sm shrink-0"
               style={{ background: "var(--brand-primary)" }}
             >
-              <Sparkles className="w-5 h-5 text-white" strokeWidth={2.2} />
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white" strokeWidth={2.2} />
             </div>
-            <div>
-              <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm font-bold truncate" style={{ color: "var(--text-primary)" }}>
                 ResearchFlow AI
               </p>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
                 <span
-                  className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(52,211,153,0.8)]"
+                  className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 shadow-[0_0_6px_rgba(52,211,153,0.8)]"
                 />
-                <p className="text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
+                <p className="text-[10px] font-medium truncate hidden sm:block" style={{ color: "var(--text-muted)" }}>
                   ETHICAL HACKING & MEDICAL AI · HYBRID RAG · {model.toUpperCase().replace("OPENAI/", "")}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {!isPro && (
               <button
                 onClick={() => setShowUpgradeModal(true)}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition-all cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition-all cursor-pointer"
+                title="Upgrade to Pro RAG"
               >
-                <Crown className="w-3.5 h-3.5 text-amber-700" />
-                <span>Upgrade Pro RAG</span>
+                <Crown className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                <span className="hidden sm:inline">Upgrade Pro</span>
               </button>
             )}
             <button
               onClick={() => setSourcePanelOpen(!sourcePanelOpen)}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5 cursor-pointer"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5 cursor-pointer"
               style={{
                 color: sourcePanelOpen ? "var(--brand-primary)" : "var(--text-muted)",
                 borderColor: sourcePanelOpen ? "var(--brand-primary)" : "var(--border-color-subtle)",
@@ -1200,8 +1204,13 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
               }}
               title="Toggle Sources Panel"
             >
-              <Globe className="w-3.5 h-3.5" />
-              <span>Sources {activeSources.web.length + activeSources.rag.length > 0 ? `(${activeSources.web.length + activeSources.rag.length})` : ""}</span>
+              <Globe className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden xs:inline">Sources</span>
+              {activeSources.web.length + activeSources.rag.length > 0 && (
+                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-600">
+                  {activeSources.web.length + activeSources.rag.length}
+                </span>
+              )}
             </button>
             <ThemeToggle />
             <button
@@ -1213,7 +1222,7 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                   setSourcePanelOpen(false);
                 }
               }}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5"
               style={{
                 color: "var(--text-muted)",
                 borderColor: "var(--border-color-subtle)",
@@ -1227,10 +1236,10 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                 e.currentTarget.style.color = "var(--text-muted)";
                 e.currentTarget.style.borderColor = "var(--border-color-subtle)";
               }}
-              title="Clear messages from screen view"
+              title="Clear View"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Clear View</span>
+              <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden md:inline">Clear</span>
             </button>
           </div>
         </header>
@@ -1645,17 +1654,17 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
               </button>
             </div>
 
-            {/* Detail level + footer */}
-            <div className="flex items-center justify-between mt-2.5 px-1">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+            {/* Detail level + footer controls */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-2.5 px-1">
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 max-w-full shrink">
+                <span className="text-xs font-semibold shrink-0" style={{ color: "var(--text-muted)" }}>
                   Detail:
                 </span>
                 {DETAIL_LEVELS.map(({ label, value }) => (
                   <button
                     key={value}
                     onClick={() => setDetailLevel(value)}
-                    className="px-3 py-1 rounded-full text-xs font-medium border transition-all"
+                    className="px-3 py-1 rounded-full text-xs font-medium border transition-all shrink-0 cursor-pointer"
                     style={
                       detailLevel === value
                         ? { background: "var(--brand-primary)", color: "#FFFFFF", borderColor: "var(--brand-primary)" }
@@ -1665,62 +1674,49 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
                     {label}
                   </button>
                 ))}
-                <div className="h-4 w-px bg-gray-500/30 mx-1"></div>
+              </div>
+
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0 justify-between sm:justify-end">
                 <button
                   onClick={() => setIsDeepResearch(!isDeepResearch)}
-                  className="px-3 py-1 rounded-full text-xs font-medium border transition-all flex items-center gap-1.5"
+                  className="px-3 py-1 rounded-full text-xs font-medium border transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
                   style={
                     isDeepResearch
                       ? { background: "rgba(139, 92, 246, 0.1)", color: "#8B5CF6", borderColor: "#8B5CF6" }
                       : { background: "transparent", color: "var(--text-muted)", borderColor: "var(--border-color)" }
                   }
                 >
-                  {isDeepResearch ? <Microscope className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
-                  {isDeepResearch ? "Deep Research" : "Quick Search"}
+                  {isDeepResearch ? <Microscope className="w-3.5 h-3.5 shrink-0" /> : <Sparkles className="w-3.5 h-3.5 shrink-0" />}
+                  <span>{isDeepResearch ? "Deep Research" : "Quick Search"}</span>
                 </button>
-                <div className="h-4 w-px bg-gray-500/30 mx-1"></div>
+                <div className="h-4 w-px bg-gray-500/30 shrink-0"></div>
                 <select
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
-                  className="px-2 py-1 rounded-md text-xs font-medium border outline-none bg-transparent"
+                  className="px-2 py-1 rounded-lg text-xs font-medium border outline-none bg-[var(--bg-card)] max-w-[180px] sm:max-w-none truncate cursor-pointer"
                   style={{
                     color: "var(--text-muted)",
                     borderColor: "var(--border-color)",
                   }}
                 >
                   <optgroup label="⚡ Groq Models (Fastest)">
-                    <option value="openai/gpt-oss-120b">⚡ GPT-OSS (120B) — Best Quality</option>
-                    <option value="openai/gpt-oss-20b">🚀 GPT-OSS (20B) — Ultra Fast</option>
-                    <option value="qwen/qwen3.6-27b">🧠 Qwen 3.6 (27B) — High Accuracy</option>
-                    <option value="groq/compound">🔬 Groq Compound — Deep Analysis</option>
-                    <option value="council">🏛️ Council Mode — Multi-Model</option>
+                    <option value="openai/gpt-oss-120b">⚡ GPT-OSS (120B)</option>
+                    <option value="openai/gpt-oss-20b">🚀 GPT-OSS (20B)</option>
+                    <option value="qwen/qwen3.6-27b">🧠 Qwen 3.6 (27B)</option>
+                    <option value="groq/compound">🔬 Groq Compound</option>
+                    <option value="council">🏛️ Council Mode</option>
                   </optgroup>
-                  <optgroup label="🤖 Gemini Models (Google AI)">
-                    <option value="gemini-2.0-flash">🔵 Gemini 2.0 Flash — Free Tier</option>
-                    <option value="gemini-1.5-flash">🔵 Gemini 1.5 Flash — Free Tier</option>
-                    <option value="gemini-1.5-pro">🔵 Gemini 1.5 Pro — Free (50/day)</option>
+                  <optgroup label="🤖 Gemini Models">
+                    <option value="gemini-2.0-flash">🔵 Gemini 2.0 Flash</option>
+                    <option value="gemini-1.5-flash">🔵 Gemini 1.5 Flash</option>
+                    <option value="gemini-1.5-pro">🔵 Gemini 1.5 Pro</option>
                   </optgroup>
                   <optgroup label="🔮 DeepSeek Models">
-                    <option value="deepseek-v4-flash">⚡ DeepSeek Flash v4 — High Speed</option>
-                    <option value="deepseek-v4-pro">🧠 DeepSeek Pro — Advanced Reasoning</option>
+                    <option value="deepseek-v4-flash">⚡ DeepSeek Flash v4</option>
+                    <option value="deepseek-v4-pro">🧠 DeepSeek Pro</option>
                   </optgroup>
                 </select>
               </div>
-              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                {(() => {
-                  const map = {
-                    'openai/gpt-oss-120b': 'Groq GPT-OSS 120B · Best overall quality',
-                    'openai/gpt-oss-20b': 'Groq GPT-OSS 20B · Ultra-fast responses',
-                    'qwen/qwen3.6-27b': 'Qwen 3.6 27B via Groq · High accuracy & coding',
-                    'groq/compound': 'Groq Compound · Reasoning & tool synthesis',
-                    'council': 'Council Mode · Multi-Model parallel deliberation',
-                    'gemini-2.0-flash': 'Google Gemini 2.0 Flash · Free 1500/day',
-                    'gemini-1.5-flash': 'Google Gemini 1.5 Flash · Free 1500/day',
-                    'gemini-1.5-pro': 'Google Gemini 1.5 Pro · Free 50/day',
-                  };
-                  return (map[model] || model) + ' · Hybrid RAG + Live Web';
-                })()}
-              </p>
             </div>
           </div>
         </div>
@@ -1838,172 +1834,179 @@ function formatSourcesData(ragDetails = [], webResults = [], sources = [], webSo
       </main>
 
       {/* ════════════════════════════════════════════════════════════
-          PERPLEXITY-STYLE SOURCES PANEL (Right Sidebar)
-          Feature 8 — slides in after stream completes with sources
+          PERPLEXITY-STYLE SOURCES PANEL
+          Right sidebar on Desktop, Bottom sheet drawer on Mobile
       ════════════════════════════════════════════════════════════ */}
       {sourcePanelOpen && (
-        <aside
-          style={{
-            width: "280px",
-            background: "var(--bg-sidebar)",
-            borderLeft: "1px solid var(--border-color-subtle)",
-            overflowY: "auto",
-            flexShrink: 0,
-            transition: "width 0.25s ease",
-          }}
-          className="flex flex-col h-full sidebar-scroll"
-        >
-          {/* Panel Header */}
+        <>
+          {/* Mobile backdrop */}
           <div
-            className="flex items-center justify-between px-4 h-14 shrink-0"
-            style={{ borderBottom: "1px solid var(--border-color-subtle)" }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 lg:hidden"
+            onClick={() => setSourcePanelOpen(false)}
+          />
+          <aside
+            style={{
+              background: "var(--bg-sidebar)",
+              borderColor: "var(--border-color-subtle)",
+            }}
+            className="flex flex-col z-50 fixed inset-x-0 bottom-0 max-h-[85vh] rounded-t-3xl border-t shadow-2xl overflow-y-auto lg:static lg:h-full lg:max-h-none lg:w-[280px] lg:rounded-none lg:border-t-0 lg:border-l lg:shadow-none shrink-0 transition-all duration-300 sidebar-scroll"
           >
-            <div className="flex items-center gap-2">
-              <Globe className="w-4 h-4" style={{ color: "var(--brand-primary)" }} />
-              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "var(--text-primary)" }}>
-                Sources
-              </p>
-            </div>
-            <button
-              onClick={() => setSourcePanelOpen(false)}
-              className="p-1.5 rounded-lg transition-colors"
-              style={{ color: "var(--text-muted)" }}
+            {/* Mobile drag handle indicator */}
+            <div className="w-12 h-1 bg-gray-400/30 rounded-full mx-auto my-2 lg:hidden" />
+
+            {/* Panel Header */}
+            <div
+              className="flex items-center justify-between px-4 h-12 lg:h-14 shrink-0"
+              style={{ borderBottom: "1px solid var(--border-color-subtle)" }}
             >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-3 py-4 space-y-5 sidebar-scroll">
-
-            {/* Web Sources */}
-            {activeSources.web.length > 0 && (
-              <section>
-                <p className="text-[10px] font-semibold uppercase tracking-widest mb-2 px-1" style={{ color: "var(--text-muted)" }}>
-                  🌐 Live Web Results
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4" style={{ color: "var(--brand-primary)" }} />
+                <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "var(--text-primary)" }}>
+                  Sources {activeSources.web.length + activeSources.rag.length > 0 ? `(${activeSources.web.length + activeSources.rag.length})` : ""}
                 </p>
-                <div className="space-y-2">
-                  {activeSources.web.map((src, i) => {
-                    const confLevel = src.confidence >= 70 ? "high" : src.confidence >= 45 ? "medium" : "low";
-                    const confColor = confLevel === "high" ? "#10b981" : confLevel === "medium" ? "#f59e0b" : "#ef4444";
-                    const confLabel = confLevel === "high" ? "High" : confLevel === "medium" ? "Med" : "Low";
-                    return (
-                      <a
-                        key={i}
-                        href={src.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block p-3 rounded-xl border transition-all group"
-                        style={{
-                          background: "var(--bg-card)",
-                          borderColor: "var(--border-color-subtle)",
-                          textDecoration: "none",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = "var(--brand-primary)";
-                          e.currentTarget.style.background = "rgba(142,78,20,0.05)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = "var(--border-color-subtle)";
-                          e.currentTarget.style.background = "var(--bg-card)";
-                        }}
-                      >
-                        {/* Favicon + domain */}
-                        <div className="flex items-center gap-2 mb-1.5">
-                          {src.favicon_url ? (
-                            <img
-                              src={src.favicon_url}
-                              alt=""
-                              className="w-4 h-4 rounded-sm flex-shrink-0"
-                              onError={(e) => { e.target.style.display = "none"; }}
-                            />
-                          ) : (
-                            <Globe className="w-4 h-4 flex-shrink-0" style={{ color: "var(--text-muted)" }} />
-                          )}
-                          <span className="text-[10px] font-medium truncate" style={{ color: "var(--text-muted)" }}>
-                            {src.domain || new URL(src.url || "https://example.com").hostname}
-                          </span>
-                          <span
-                            className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                            style={{ background: `${confColor}20`, color: confColor }}
-                          >
-                            {confLabel}
-                          </span>
-                        </div>
-                        {/* Title */}
-                        <p className="text-xs font-medium leading-tight line-clamp-2" style={{ color: "var(--text-primary)" }}>
-                          {src.title}
-                        </p>
-                        {/* Snippet */}
-                        {src.snippet && (
-                          <p className="text-[11px] mt-1 line-clamp-2 leading-relaxed" style={{ color: "var(--text-muted)" }}>
-                            {src.snippet}
+              </div>
+              <button
+                onClick={() => setSourcePanelOpen(false)}
+                className="p-1.5 rounded-lg transition-colors touch-target"
+                style={{ color: "var(--text-muted)" }}
+                aria-label="Close sources panel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-3 py-4 space-y-5 sidebar-scroll">
+
+              {/* Web Sources */}
+              {activeSources.web.length > 0 && (
+                <section>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-2 px-1" style={{ color: "var(--text-muted)" }}>
+                    🌐 Live Web Results
+                  </p>
+                  <div className="space-y-2">
+                    {activeSources.web.map((src, i) => {
+                      const confLevel = src.confidence >= 70 ? "high" : src.confidence >= 45 ? "medium" : "low";
+                      const confColor = confLevel === "high" ? "#10b981" : confLevel === "medium" ? "#f59e0b" : "#ef4444";
+                      const confLabel = confLevel === "high" ? "High" : confLevel === "medium" ? "Med" : "Low";
+                      return (
+                        <a
+                          key={i}
+                          href={src.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block p-3 rounded-xl border transition-all group"
+                          style={{
+                            background: "var(--bg-card)",
+                            borderColor: "var(--border-color-subtle)",
+                            textDecoration: "none",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = "var(--brand-primary)";
+                            e.currentTarget.style.background = "rgba(142,78,20,0.05)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = "var(--border-color-subtle)";
+                            e.currentTarget.style.background = "var(--bg-card)";
+                          }}
+                        >
+                          {/* Favicon + domain */}
+                          <div className="flex items-center gap-2 mb-1.5">
+                            {src.favicon_url ? (
+                              <img
+                                src={src.favicon_url}
+                                alt=""
+                                className="w-4 h-4 rounded-sm flex-shrink-0"
+                                onError={(e) => { e.target.style.display = "none"; }}
+                              />
+                            ) : (
+                              <Globe className="w-4 h-4 flex-shrink-0" style={{ color: "var(--text-muted)" }} />
+                            )}
+                            <span className="text-[10px] font-medium truncate" style={{ color: "var(--text-muted)" }}>
+                              {src.domain || new URL(src.url || "https://example.com").hostname}
+                            </span>
+                            <span
+                              className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                              style={{ background: `${confColor}20`, color: confColor }}
+                            >
+                              {confLabel}
+                            </span>
+                          </div>
+                          {/* Title */}
+                          <p className="text-xs font-medium leading-tight line-clamp-2" style={{ color: "var(--text-primary)" }}>
+                            {src.title}
                           </p>
-                        )}
-                      </a>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
-
-            {/* RAG Document Sources */}
-            {activeSources.rag.length > 0 && (
-              <section>
-                <p className="text-[10px] font-semibold uppercase tracking-widest mb-2 px-1" style={{ color: "var(--text-muted)" }}>
-                  📄 Knowledge Base
-                </p>
-                <div className="space-y-2">
-                  {activeSources.rag.map((src, i) => {
-                    const conf = src.confidence || {};
-                    const level = conf.level || "medium";
-                    const confColor = level === "high" ? "#10b981" : level === "medium" ? "#f59e0b" : "#ef4444";
-                    const confLabel = level === "high" ? "High" : level === "medium" ? "Med" : "Low";
-                    return (
-                      <div
-                        key={i}
-                        className="p-3 rounded-xl border"
-                        style={{ background: "var(--bg-card)", borderColor: "var(--border-color-subtle)" }}
-                      >
-                        <div className="flex items-start gap-2">
-                          <FileText className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "var(--brand-primary)" }} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>
-                              {src.source?.replace(/\.[^/.]+$/, "") || "Document"}
+                          {/* Snippet */}
+                          {src.snippet && (
+                            <p className="text-[11px] mt-1 line-clamp-2 leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                              {src.snippet}
                             </p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                                {src.chunks || 1} chunk{src.chunks !== 1 ? "s" : ""}
-                              </span>
-                              <span
-                                className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                                style={{ background: `${confColor}20`, color: confColor }}
-                              >
-                                {confLabel}
-                              </span>
-                              {conf.score != null && (
-                                <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>
-                                  {conf.score}%
+                          )}
+                        </a>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {/* RAG Document Sources */}
+              {activeSources.rag.length > 0 && (
+                <section>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-2 px-1" style={{ color: "var(--text-muted)" }}>
+                    📄 Knowledge Base
+                  </p>
+                  <div className="space-y-2">
+                    {activeSources.rag.map((src, i) => {
+                      const conf = src.confidence || {};
+                      const level = conf.level || "medium";
+                      const confColor = level === "high" ? "#10b981" : level === "medium" ? "#f59e0b" : "#ef4444";
+                      const confLabel = level === "high" ? "High" : level === "medium" ? "Med" : "Low";
+                      return (
+                        <div
+                          key={i}
+                          className="p-3 rounded-xl border"
+                          style={{ background: "var(--bg-card)", borderColor: "var(--border-color-subtle)" }}
+                        >
+                          <div className="flex items-start gap-2">
+                            <FileText className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "var(--brand-primary)" }} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                                {src.source?.replace(/\.[^/.]+$/, "") || "Document"}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                                  {src.chunks || 1} chunk{src.chunks !== 1 ? "s" : ""}
                                 </span>
-                              )}
+                                <span
+                                  className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                                  style={{ background: `${confColor}20`, color: confColor }}
+                                >
+                                  {confLabel}
+                                </span>
+                                {conf.score != null && (
+                                  <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>
+                                    {conf.score}%
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
 
-            {/* Empty state */}
-            {activeSources.web.length === 0 && activeSources.rag.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
-                <Globe className="w-8 h-8" style={{ color: "var(--text-muted)" }} />
-                <p className="text-xs" style={{ color: "var(--text-muted)" }}>No sources yet</p>
-              </div>
-            )}
-          </div>
-        </aside>
+              {/* Empty state */}
+              {activeSources.web.length === 0 && activeSources.rag.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
+                  <Globe className="w-8 h-8" style={{ color: "var(--text-muted)" }} />
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>No sources yet</p>
+                </div>
+              )}
+            </div>
+          </aside>
+        </>
       )}
 
     </div>
