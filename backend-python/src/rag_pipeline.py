@@ -155,7 +155,7 @@ ANSWER_STYLES = {
             "Only include tagged fenced code blocks in the Findings/Results section if the case study is "
             "specifically about a software/technical implementation — otherwise keep it prose and data-driven."
         ),
-        "max_tokens": 3000,
+        "max_tokens": 4000,
     },
     "code": {
         "instruction": (
