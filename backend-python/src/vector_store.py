@@ -171,8 +171,13 @@ def get_indexed_sources() -> list[str]:
         return []
 
 
-def store_chunks(embedded_chunks: list[dict], recreate: bool = True):
-    """Store all embedded chunks into Qdrant in batches with rich metadata."""
+def store_chunks(embedded_chunks: list[dict], recreate: bool = False):
+    """
+    Store all embedded chunks into Qdrant in batches with rich metadata.
+    recreate=True wipes the entire collection first — defaults to False
+    (incremental add) so an accidental omission of the kwarg can't nuke
+    an existing index. Full-reindex callers must opt in explicitly.
+    """
     from tqdm import tqdm
 
     client = get_client()
