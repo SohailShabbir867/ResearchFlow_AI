@@ -11,12 +11,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # VPS_SSH_KEY holds the private key base64-encoded (base64 -w0 <keyfile>).
+      # A raw multi-line PEM pasted into a GitHub secret is an easy way to
+      # silently corrupt the key (dropped/merged lines, stray whitespace) and
+      # produces "ssh: no key found" with no indication of what's wrong.
+      # Base64 collapses it to one line that paste can't mangle; decode it
+      # once here into a step output, reused by every SSH step below.
+      - name: Decode SSH deploy key
+        id: ssh_key
+        shell: bash
+        run: |
+          DECODED="$(printf '%s' "${{ secrets.VPS_SSH_KEY }}" | base64 -d 2>/dev/null || true)"
+          if [ -z "$DECODED" ] || ! printf '%s' "$DECODED" | grep -q "PRIVATE KEY"; then
+            echo "::error::VPS_SSH_KEY did not decode to a valid private key. Set it to the output of: base64 -w0 ~/.ssh/github_deploy_key (run on the VPS)."
+            exit 1
+          fi
+          echo "::add-mask::$DECODED"
+          {
+            echo "key<<SSHKEY_EOF"
+            echo "$DECODED"
+            echo "SSHKEY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Write Node .env to VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          key: ${{ steps.ssh_key.outputs.key }}
           port: ${{ secrets.VPS_PORT }}
           envs: NODE_ENV_FILE
           script: |
@@ -32,7 +54,7 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          key: ${{ steps.ssh_key.outputs.key }}
           port: ${{ secrets.VPS_PORT }}
           script: |
             mkdir -p /home/ubuntu/medresearch-ai/backend-python
@@ -45,7 +67,7 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          key: ${{ steps.ssh_key.outputs.key }}
           port: ${{ secrets.VPS_PORT }}
           script_stop: true
           script: |
