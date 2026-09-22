@@ -312,8 +312,15 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
     last_error = None
 
     # v6.0: Retry loop with exponential backoff
+    # v6.1: A non-rate-limit failure (network down, DDG fully blocked, library
+    # error) will fail identically for every query variant, so trying 2-3 more
+    # variants after one has already exhausted its retries just multiplies
+    # outbound calls during an outage without any chance of success. Only
+    # rate-limit errors — which can plausibly clear between variants — keep
+    # the outer loop going; anything else aborts the whole search immediately.
     for variant in query_variants:
         variant_results = []
+        hard_failure = False
         for attempt in range(_MAX_RETRIES + 1):
             try:
                 if attempt > 0:
@@ -352,11 +359,17 @@ def perform_web_search(query: str, max_results: int = 6) -> list[dict]:
                 else:
                     print(f"  [Web Search Warning] DuckDuckGo error (attempt {attempt+1}/{_MAX_RETRIES + 1}): {last_error[:120]}")
                     if attempt == _MAX_RETRIES:
-                        # Non-rate-limit errors are unlikely to succeed on retry
+                        # Non-rate-limit errors are unlikely to succeed on retry,
+                        # and will recur identically for the remaining variants.
+                        hard_failure = True
                         break
 
         if variant_results:
             ranked_sets.append(_rank_web_results(variant, variant_results))
+
+        if hard_failure:
+            print(f"  [Web Search] Non-recoverable error — skipping remaining query variants")
+            break
 
     if not ranked_sets:
         print(f"  [Web Search] All attempts failed — returning empty results")
