@@ -1,10 +1,11 @@
 """
 ResearchFlow AI — Local Embedding Engine
-Uses BAAI/bge-m3 via FastEmbed (ONNX runtime).
+Uses BAAI/bge-base-en-v1.5 via FastEmbed (ONNX runtime) by default
+(override with the EMBED_MODEL env var — must match EMBED_DIM in
+vector_store.py, which defaults to 768 for this model).
 
-Why BGE-m3:
-  - 1024-dim dense vectors for high retrieval accuracy
-  - Multilingual support including English, Urdu, and technical jargon
+Why BGE-base:
+  - 768-dim dense vectors, a good accuracy/speed/memory tradeoff
   - High recall on research, technical, and domain-specific corpora
   - Downloads once on first run and caches automatically
 
