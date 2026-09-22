@@ -15,7 +15,7 @@ const app = express();
 
 // ─── Trust Nginx / Cloudflare proxy ──────────────────────────────────────────
 app.set('trust proxy', 1);
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5050;
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/medresearch";
 
 // ─── MongoDB connection with retry ────────────────────────────────────────────
