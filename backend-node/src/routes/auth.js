@@ -11,7 +11,7 @@ const {
   sendAdminNotification,
 } = require("../utils/email");
 const { generateToken, hashToken, expiresInHours, isTokenValid } = require("../utils/tokens");
-const { isValidEmail, isValidPassword } = require("../utils/validation");
+const { isValidEmail, isValidPassword, PASSWORD_REQUIREMENTS_MESSAGE } = require("../utils/validation");
 
 const router = express.Router();
 
@@ -64,7 +64,7 @@ router.post("/signup", authLimiter, async (req, res) => {
       return res.status(400).json({ error: "Please provide a valid email address." });
     }
     if (!isValidPassword(password)) {
-      return res.status(400).json({ error: "Password must be at least 8 characters." });
+      return res.status(400).json({ error: PASSWORD_REQUIREMENTS_MESSAGE });
     }
 
     // Check duplicate
@@ -246,8 +246,8 @@ router.post("/reset-password/:token", authLimiter, async (req, res) => {
     if (!token) {
       return res.status(400).json({ error: "Reset token is required." });
     }
-    if (!password || password.length < 8) {
-      return res.status(400).json({ error: "New password must be at least 8 characters." });
+    if (!isValidPassword(password)) {
+      return res.status(400).json({ error: PASSWORD_REQUIREMENTS_MESSAGE });
     }
 
     // Hash incoming raw token to look up by hash
@@ -362,7 +362,7 @@ router.post("/register", authMiddleware, requireRole("admin"), async (req, res) 
       return res.status(400).json({ error: "Please provide a valid email address." });
     }
     if (!isValidPassword(password)) {
-      return res.status(400).json({ error: "Password must be at least 8 characters." });
+      return res.status(400).json({ error: PASSWORD_REQUIREMENTS_MESSAGE });
     }
 
     const existing = await User.findOne({ email: email.toLowerCase().trim() });
@@ -437,8 +437,8 @@ router.post("/change-password", authMiddleware, async (req, res) => {
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ error: "Current and new passwords are required." });
     }
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: "New password must be at least 8 characters." });
+    if (!isValidPassword(newPassword)) {
+      return res.status(400).json({ error: PASSWORD_REQUIREMENTS_MESSAGE });
     }
 
     const user = await User.findById(req.user._id);

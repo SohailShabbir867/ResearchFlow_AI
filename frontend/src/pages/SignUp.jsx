@@ -47,6 +47,9 @@ export default function SignUp() {
     if (!form.name.trim() || form.name.trim().length < 2) e.name = "Full name must be at least 2 characters.";
     if (!form.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Please enter a valid email address.";
     if (!form.password || form.password.length < 8) e.password = "Password must be at least 8 characters.";
+    else if (!/[A-Z]/.test(form.password)) e.password = "Password must include at least one uppercase letter.";
+    else if (!/[0-9]/.test(form.password)) e.password = "Password must include at least one number.";
+    else if (!/[^A-Za-z0-9]/.test(form.password)) e.password = "Password must include at least one symbol.";
     if (form.password !== form.confirmPassword) e.confirmPassword = "Passwords do not match.";
     return e;
   }
@@ -220,6 +223,7 @@ export default function SignUp() {
                       {showPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
                   </div>
+                  {touched.password && errors.password && <p className="text-[11px] mt-1 font-medium" style={{ color: "#FCA5A5" }}>⚠ {errors.password}</p>}
                 </div>
               </div>
 

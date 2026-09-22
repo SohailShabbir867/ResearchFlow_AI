@@ -9,7 +9,7 @@ const AppSettings = require("../models/AppSettings");
 const authMiddleware = require("../middleware/auth");
 const { requireRole } = require("../middleware/role");
 const { escapeRegex } = require("../utils/escapeRegex");
-const { isValidEmail, isValidPassword } = require("../utils/validation");
+const { isValidEmail, isValidPassword, PASSWORD_REQUIREMENTS_MESSAGE } = require("../utils/validation");
 const { isValidDocumentBuffer } = require("../utils/fileValidation");
 
 const router = express.Router();
@@ -143,7 +143,7 @@ router.post("/users", async (req, res) => {
       return res.status(400).json({ error: "Please provide a valid email address." });
     }
     if (!isValidPassword(password)) {
-      return res.status(400).json({ error: "Password must be at least 8 characters." });
+      return res.status(400).json({ error: PASSWORD_REQUIREMENTS_MESSAGE });
     }
 
     const existing = await User.findOne({ email: email.toLowerCase().trim() });
