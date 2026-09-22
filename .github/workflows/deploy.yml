@@ -99,7 +99,8 @@ jobs:
               echo "Updating Node backend..."
               cd backend-node
               npm install --omit=dev
-              pm2 restart medresearch-node || pm2 start src/server.js --name "medresearch-node"
+              pm2 delete medresearch-node 2>/dev/null || true
+              pm2 start src/server.js --name "medresearch-node"
               cd ..
             fi
 
@@ -113,9 +114,11 @@ jobs:
               ~/.local/bin/uv pip install -r requirements.txt --python .venv
               # Ensure documents folder exists for the watcher
               mkdir -p data/documents
-              pm2 restart medresearch-python || pm2 start ".venv/bin/uvicorn src.api:app --host 0.0.0.0 --port 8000" --name "medresearch-python"
+              pm2 delete medresearch-python 2>/dev/null || true
+              pm2 start ".venv/bin/uvicorn src.api:app --host 0.0.0.0 --port 8000" --name "medresearch-python"
               # Auto-embedding watcher — watches data/documents/ for new files
-              pm2 restart medresearch-watcher || pm2 start "src/watcher.py" \
+              pm2 delete medresearch-watcher 2>/dev/null || true
+              pm2 start "src/watcher.py" \
                 --name "medresearch-watcher" \
                 --interpreter ".venv/bin/python" \
                 --log-date-format "YYYY-MM-DD HH:mm:ss"
