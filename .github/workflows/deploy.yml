@@ -102,6 +102,9 @@ jobs:
               # owns port 5000, and the NODE_ENV_FILE secret still pins
               # PORT=5000, so any deploy would otherwise crash with EADDRINUSE.
               grep -q '^PORT=' .env && sed -i 's/^PORT=.*/PORT=5050/' .env || echo 'PORT=5050' >> .env
+              # Force the production frontend origin for CORS; the secret sets
+              # FRONTEND_URL=http://localhost:5173 which rejects real logins.
+              grep -q '^FRONTEND_URL=' .env && sed -i 's|^FRONTEND_URL=.*|FRONTEND_URL=https://researchflow.deveolpersohail.online|' .env || echo 'FRONTEND_URL=https://researchflow.deveolpersohail.online' >> .env
               npm install --omit=dev
               pm2 delete medresearch-node 2>/dev/null || true
               pm2 start src/server.js --name "medresearch-node"
