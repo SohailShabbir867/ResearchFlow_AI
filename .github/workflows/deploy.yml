@@ -73,10 +73,19 @@ jobs:
           script: |
             PROJECT_DIR="/home/ubuntu/medresearch-ai"
 
-            # 1. Clone repository if not present, otherwise pull latest changes
-            if [ ! -d "$PROJECT_DIR" ]; then
-              echo "Cloning repository..."
-              git clone https://github.com/SohailShabbir867/ResearchFlow_AI.git "$PROJECT_DIR"
+            # 1. Clone repository if not already a git checkout.
+            # Check for .git specifically, not just the directory — the
+            # ".env"-writing steps above `mkdir -p` backend-node/backend-python
+            # inside PROJECT_DIR before this step ever runs, so the directory
+            # already exists on first deploy without being a git repo, and a
+            # plain `git clone` into it would fail (non-empty destination).
+            # `git init` + remote in place preserves those untracked .env files.
+            if [ ! -d "$PROJECT_DIR/.git" ]; then
+              echo "No git repo at $PROJECT_DIR yet — initializing..."
+              mkdir -p "$PROJECT_DIR"
+              cd "$PROJECT_DIR"
+              git init
+              git remote add origin https://github.com/SohailShabbir867/ResearchFlow_AI.git
             fi
 
             cd "$PROJECT_DIR"
