@@ -98,11 +98,11 @@ export default function DocumentManager() {
   // Handle File Selection
   const handleFileSelect = (file) => {
     if (!file) return;
-    const allowedExts = [".pdf", ".txt", ".docx"];
+    const allowedExts = [".pdf", ".txt", ".docx", ".md"];
     const ext = "." + file.name.split(".").pop().toLowerCase();
-    
+
     if (!allowedExts.includes(ext)) {
-      setUploadError("Invalid file type. Only PDF, TXT, and DOCX files are allowed.");
+      setUploadError("Invalid file type. Only PDF, TXT, DOCX, and MD files are allowed.");
       return;
     }
 
@@ -210,6 +210,12 @@ export default function DocumentManager() {
             TXT
           </div>
         );
+      case "MD":
+        return (
+          <div className="w-8 h-8 rounded-lg bg-purple-600/30 border border-purple-500/40 text-purple-400 flex items-center justify-center text-[10px] font-bold shrink-0">
+            MD
+          </div>
+        );
       default:
         return (
           <div className="w-8 h-8 rounded-lg bg-gray-700/50 border border-gray-600 text-gray-300 flex items-center justify-center text-[10px] font-bold shrink-0">
@@ -289,7 +295,7 @@ export default function DocumentManager() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.txt,.docx"
+              accept=".pdf,.txt,.docx,.md"
               className="hidden"
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {
@@ -340,7 +346,7 @@ export default function DocumentManager() {
                   Drag and drop a file here
                 </p>
                 <p className="text-xs text-gray-400 mb-4">
-                  PDF · TXT · DOCX · Max 50MB
+                  PDF · TXT · DOCX · MD · Max 50MB
                 </p>
                 <button
                   type="button"

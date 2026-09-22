@@ -28,12 +28,12 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
   fileFilter: (_req, file, cb) => {
-    const allowed = [".pdf", ".txt", ".docx"];
+    const allowed = [".pdf", ".txt", ".docx", ".md"];
     const ext = "." + file.originalname.split(".").pop().toLowerCase();
     if (allowed.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error("Only .pdf, .txt, and .docx files are allowed."));
+      cb(new Error("Only .pdf, .txt, .docx, and .md files are allowed."));
     }
   },
 });
@@ -296,7 +296,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     // Verify magic bytes (file signature) match claimed document type
     if (!isValidDocumentBuffer(req.file.buffer, req.file.originalname)) {
       return res.status(400).json({
-        error: "Invalid file contents. File signature (magic bytes) does not match a valid .pdf, .docx, or .txt document.",
+        error: "Invalid file contents. File signature (magic bytes) does not match a valid .pdf, .docx, .txt, or .md document.",
       });
     }
 

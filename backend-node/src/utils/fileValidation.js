@@ -1,6 +1,6 @@
 /**
  * Validate document magic bytes (file signatures) to verify actual file type.
- * Supports PDF, DOCX (PK zip header), and plain UTF-8 text.
+ * Supports PDF, DOCX (PK zip header), and plain UTF-8 text (.txt, .md).
  * Rejects executables (MZ, ELF, Mach-O), scripts, and unexpected binary headers.
  */
 function isValidDocumentBuffer(buffer, originalname) {
@@ -32,8 +32,8 @@ function isValidDocumentBuffer(buffer, originalname) {
     );
   }
 
-  // Check TXT signature: Must be clean text (no binary executable headers or null bytes)
-  if (ext === ".txt") {
+  // Check TXT/MD signature: Must be clean text (no binary executable headers or null bytes)
+  if (ext === ".txt" || ext === ".md") {
     // Reject Windows PE/EXE (MZ header: 0x4D 0x5A)
     if (buffer.length >= 2 && buffer[0] === 0x4d && buffer[1] === 0x5a) {
       return false;
