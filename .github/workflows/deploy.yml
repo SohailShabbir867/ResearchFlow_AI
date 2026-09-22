@@ -100,4 +100,35 @@ jobs:
               cd ..
             fi
 
-            echo "🚀 Deployment successfully completed!"
+            # 5. Persist the PM2 process list so it survives a VPS reboot.
+            # (Requires `pm2 startup` to have been run once manually on the
+            # server beforehand — see README/deployment docs.)
+            pm2 save
+
+            # 6. Post-deploy health check — fail the workflow loudly instead of
+            # reporting success while a service is actually down.
+            echo "Waiting for services to come up..."
+            sleep 5
+            NODE_OK=false
+            PYTHON_OK=false
+            for i in 1 2 3 4 5 6; do
+              curl -sf http://localhost:5000/health > /dev/null && NODE_OK=true
+              curl -sf http://localhost:8000/health > /dev/null && PYTHON_OK=true
+              if [ "$NODE_OK" = true ] && [ "$PYTHON_OK" = true ]; then
+                break
+              fi
+              sleep 5
+            done
+
+            if [ "$NODE_OK" != true ]; then
+              echo "::error::Node backend health check failed after deploy — pm2 logs medresearch-node"
+              pm2 logs medresearch-node --lines 30 --nostream || true
+              exit 1
+            fi
+            if [ "$PYTHON_OK" != true ]; then
+              echo "::error::Python RAG backend health check failed after deploy — pm2 logs medresearch-python"
+              pm2 logs medresearch-python --lines 30 --nostream || true
+              exit 1
+            fi
+
+            echo "🚀 Deployment successfully completed and health checks passed!"
