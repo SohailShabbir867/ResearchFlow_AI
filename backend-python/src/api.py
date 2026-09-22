@@ -1499,6 +1499,15 @@ async def upload_document(file: UploadFile = File(...)):
 
     os.makedirs(DOCS_FOLDER, exist_ok=True)
 
+    # Claim this filename+hash as "handled" BEFORE writing the file. Writing it
+    # fires a filesystem event that watcher.py (if running as a separate daemon)
+    # also observes; without an early claim, the watcher can win the race and
+    # embed the same file a second time before this request finishes, producing
+    # duplicate Qdrant points. If this request fails below, the claim is rolled
+    # back in the except blocks so the file can be legitimately retried.
+    from src import doc_state
+    doc_state.mark_processed(safe_filename, content_hash)
+
     with open(save_path, "wb") as f:
         f.write(content)
 
@@ -1512,6 +1521,7 @@ async def upload_document(file: UploadFile = File(...)):
         pages = load_document(save_path)
         if not pages:
             os.remove(save_path)
+            doc_state.clear_processed(safe_filename)
             raise HTTPException(
                 status_code=422,
                 detail="No text could be extracted from the file. Is it a scanned PDF?"
@@ -1557,6 +1567,7 @@ async def upload_document(file: UploadFile = File(...)):
     except Exception as e:
         if os.path.exists(save_path):
             os.remove(save_path)
+        doc_state.clear_processed(safe_filename)
         raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}")
 
 
@@ -1566,6 +1577,7 @@ async def upload_document(file: UploadFile = File(...)):
 def delete_document(source: str):
     """Delete a research document and all its vector chunks from Qdrant."""
     from src.vector_store import delete_document_by_source
+    from src import doc_state
 
     safe_source, file_path = _sanitize_doc_path(source)
 
@@ -1581,6 +1593,11 @@ def delete_document(source: str):
 
     # Incremental BM25 Remove
     remove_chunks_from_bm25(safe_source)
+
+    # Clear the dedup claim so a future re-upload/re-drop of the same filename
+    # (even with identical content) is actually re-embedded instead of being
+    # skipped by the watcher as "already indexed".
+    doc_state.clear_processed(safe_source)
 
     return {
         "status":               "ok",

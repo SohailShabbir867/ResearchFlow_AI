@@ -4,6 +4,9 @@ watcher.py — Auto-Embedding File Watcher Daemon
 Watches backend-python/data/documents/ for new or modified files.
 When a supported file is detected:
   1. SHA-256 deduplication — already-indexed files are skipped instantly.
+     Dedup state is shared with the /upload API (see doc_state.py) so a file
+     uploaded through the API is not re-embedded a second time when the
+     watcher observes the resulting filesystem event.
   2. The file is queued and processed serially (no parallel embed storms).
   3. Uses the same chunker → embedder → vector_store pipeline as the API.
   4. Results are written to PM2 logs (stdout/stderr).
@@ -41,13 +44,17 @@ log = logging.getLogger("watcher")
 SRC_DIR   = Path(__file__).parent                          # backend-python/src/
 BASE_DIR  = SRC_DIR.parent                                 # backend-python/
 DOCS_DIR  = BASE_DIR / "data" / "documents"
-STATE_FILE = BASE_DIR / "data" / ".watcher_state.json"     # persists processed hashes
+FAILED_FILE = BASE_DIR / "data" / ".watcher_failed.json"   # dead-letter log
 
 SUPPORTED = {".pdf", ".txt", ".docx", ".md"}
 
-# How long to wait after a file event before trying to read it
-# (avoids reading a half-written file during large copies)
-SETTLE_DELAY = 3.0   # seconds
+# How long to wait, at most, for a file to stop growing before reading it
+# (avoids reading a half-written file during large copies). We poll the
+# file size instead of a fixed sleep so small files embed immediately and
+# large/slow copies aren't read before they're actually done.
+SETTLE_POLL_INTERVAL = 0.5   # seconds between size checks
+SETTLE_STABLE_CHECKS = 3     # consecutive unchanged reads required
+SETTLE_MAX_WAIT      = 60.0  # give up waiting and try anyway after this long
 
 MAX_RETRIES  = 3
 RETRY_DELAY  = 10.0  # seconds between retries
@@ -59,27 +66,7 @@ embed_queue: "queue.Queue[Path]" = queue.Queue()
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-
-# ─── Processed-hash persistence ───────────────────────────────────────────────
-
-def _load_state() -> dict:
-    """Return {filename: sha256_hex} mapping of already-processed files."""
-    try:
-        if STATE_FILE.exists():
-            with open(STATE_FILE) as f:
-                return json.load(f)
-    except Exception as e:
-        log.warning(f"Could not load watcher state ({e}); starting fresh.")
-    return {}
-
-
-def _save_state(state: dict) -> None:
-    try:
-        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(STATE_FILE, "w") as f:
-            json.dump(state, f, indent=2)
-    except Exception as e:
-        log.warning(f"Could not save watcher state: {e}")
+from src import doc_state  # noqa: E402  (needs sys.path set up above)
 
 
 def _file_sha256(path: Path) -> str:
@@ -90,9 +77,45 @@ def _file_sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def _wait_until_settled(path: Path) -> None:
+    """Poll file size until it stops changing (copy/rsync finished) or we time out."""
+    start = time.time()
+    last_size = -1
+    stable_count = 0
+    while time.time() - start < SETTLE_MAX_WAIT:
+        try:
+            size = path.stat().st_size
+        except FileNotFoundError:
+            return
+        if size == last_size:
+            stable_count += 1
+            if stable_count >= SETTLE_STABLE_CHECKS:
+                return
+        else:
+            stable_count = 0
+            last_size = size
+        time.sleep(SETTLE_POLL_INTERVAL)
+    log.warning(f"{path.name}: size still changing after {SETTLE_MAX_WAIT:.0f}s — reading anyway.")
+
+
+def _record_failure(filename: str, error: str) -> None:
+    """Best-effort dead-letter log so permanently-failed files are visible, not just logged."""
+    try:
+        failures = {}
+        if FAILED_FILE.exists():
+            with open(FAILED_FILE) as f:
+                failures = json.load(f)
+        failures[filename] = {"error": error, "failed_at": datetime.now().isoformat()}
+        FAILED_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(FAILED_FILE, "w") as f:
+            json.dump(failures, f, indent=2)
+    except Exception as e:
+        log.warning(f"Could not write dead-letter record for {filename}: {e}")
+
+
 # ─── Core embed logic (mirrors api.py upload_document) ────────────────────────
 
-def _embed_file(path: Path, state: dict) -> bool:
+def _embed_file(path: Path) -> bool:
     """
     Embed a single file into Qdrant.
     Returns True on success, False on recoverable failure.
@@ -100,18 +123,23 @@ def _embed_file(path: Path, state: dict) -> bool:
     """
     filename = path.name
 
-    # Wait for file to fully settle (copy / rsync completion)
-    time.sleep(SETTLE_DELAY)
+    # Wait for the file to stop growing (copy / rsync / API write completion)
+    _wait_until_settled(path)
 
     if not path.exists():
         log.warning(f"File disappeared before embedding: {filename}")
         return True  # nothing to do
 
+    if path.stat().st_size == 0:
+        log.warning(f"Empty file — skipping: {filename}")
+        return True
+
     file_hash = _file_sha256(path)
 
-    # Skip if same content was already indexed
-    if state.get(filename) == file_hash:
-        log.info(f"SKIP (unchanged)  {filename}  [{file_hash[:8]}]")
+    # Skip if the API already embedded this exact content (shared cross-process
+    # state — see doc_state.py) or if the watcher itself indexed it before.
+    if doc_state.is_processed(filename, file_hash):
+        log.info(f"SKIP (already indexed)  {filename}  [{file_hash[:8]}]")
         return True
 
     log.info(f"START embedding   {filename}  [{file_hash[:8]}]  ({path.stat().st_size / 1024:.1f} KB)")
@@ -166,14 +194,13 @@ def _embed_file(path: Path, state: dict) -> bool:
         f"in {elapsed:.1f}s"
     )
 
-    state[filename] = file_hash
-    _save_state(state)
+    doc_state.mark_processed(filename, file_hash)
     return True
 
 
 # ─── Worker thread ────────────────────────────────────────────────────────────
 
-def _worker(state: dict) -> None:
+def _worker() -> None:
     """
     Pulls files from embed_queue one at a time and embeds them.
     Retries up to MAX_RETRIES times on failure.
@@ -184,11 +211,14 @@ def _worker(state: dict) -> None:
         path: Path = embed_queue.get()
         log.info(f"Dequeued: {path.name}  (queue size: {embed_queue.qsize()})")
 
+        last_error = None
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                _embed_file(path, state)
+                _embed_file(path)
+                last_error = None
                 break
             except Exception as e:
+                last_error = e
                 if attempt < MAX_RETRIES:
                     log.error(
                         f"Embed attempt {attempt}/{MAX_RETRIES} failed for "
@@ -200,6 +230,9 @@ def _worker(state: dict) -> None:
                         f"FAILED after {MAX_RETRIES} attempts — "
                         f"{path.name}: {e}"
                     )
+
+        if last_error is not None:
+            _record_failure(path.name, str(last_error))
 
         embed_queue.task_done()
 
@@ -269,13 +302,14 @@ class DocHandler(FileSystemEventHandler):
 
 # ─── Startup: index any existing unprocessed files ───────────────────────────
 
-def _scan_existing(state: dict) -> None:
+def _scan_existing() -> None:
     """
     On startup, queue any files in DOCS_DIR that haven't been embedded yet
     or whose content has changed since last embed.
     """
     if not DOCS_DIR.exists():
         return
+    state = doc_state.load_state()
     queued = 0
     for p in sorted(DOCS_DIR.iterdir()):
         if p.is_file() and p.suffix.lower() in SUPPORTED and not p.name.startswith("."):
@@ -296,19 +330,17 @@ def main() -> None:
     log.info("=" * 60)
     log.info("  ResearchFlow AI — Auto-Embedding Watcher")
     log.info(f"  Watching: {DOCS_DIR}")
-    log.info(f"  State:    {STATE_FILE}")
+    log.info(f"  State:    {doc_state.STATE_FILE}")
     log.info("=" * 60)
 
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
 
-    state = _load_state()
-
     # Start the embed worker thread (serializes all embedding work)
-    worker_thread = threading.Thread(target=_worker, args=(state,), daemon=True, name="embed-worker")
+    worker_thread = threading.Thread(target=_worker, daemon=True, name="embed-worker")
     worker_thread.start()
 
     # Queue any pre-existing unindexed files
-    _scan_existing(state)
+    _scan_existing()
 
     # Start watchdog observer
     handler  = DocHandler()
