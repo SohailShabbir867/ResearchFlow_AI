@@ -453,25 +453,6 @@ async def stream_llm_tokens(
         except Exception as e:
             _handle_groq_error(e)
 
-# ─── Gemini async client (google-generativeai) ────────────────────────────────
-_gemini_client = None
-_gemini_available = False
-
-def _get_gemini_client():
-    global _gemini_client, _gemini_available
-    if _gemini_client is not None:
-        return _gemini_client
-    if not GEMINI_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY is not set.")
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_API_KEY)
-        _gemini_client = genai
-        _gemini_available = True
-        return _gemini_client
-    except ImportError:
-        raise RuntimeError("google-generativeai not installed.")
-
 def _is_gemini_model(model_name: str) -> bool:
     return model_name in SUPPORTED_GEMINI_MODELS
 
