@@ -98,6 +98,10 @@ jobs:
             if [ -d "backend-node" ]; then
               echo "Updating Node backend..."
               cd backend-node
+              # Force the Node backend onto 5050. food-garden-server already
+              # owns port 5000, and the NODE_ENV_FILE secret still pins
+              # PORT=5000, so any deploy would otherwise crash with EADDRINUSE.
+              grep -q '^PORT=' .env && sed -i 's/^PORT=.*/PORT=5050/' .env || echo 'PORT=5050' >> .env
               npm install --omit=dev
               pm2 delete medresearch-node 2>/dev/null || true
               pm2 start src/server.js --name "medresearch-node"
