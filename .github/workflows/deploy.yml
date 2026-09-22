@@ -122,12 +122,20 @@ jobs:
               cd ..
             fi
 
-            # 4. Build Frontend
+            # 4. Build Frontend and publish it where nginx actually serves it
+            # from. nginx's `medresearch` site root is /var/www/medresearch-frontend
+            # (see /etc/nginx/sites-available/medresearch), which is a different
+            # path from frontend/dist inside the repo checkout - without this
+            # sync step, `npm run build` produces a fresh build that nginx never
+            # sees, and the live site keeps serving whatever was last manually
+            # placed there.
             if [ -d "frontend" ]; then
               echo "Building Frontend..."
               cd frontend
               npm install
               npm run build
+              echo "Publishing frontend build to nginx web root..."
+              rsync -a --delete dist/ /var/www/medresearch-frontend/
               cd ..
             fi
 
@@ -147,7 +155,7 @@ jobs:
               # bare failing curl here would abort the script instantly on the
               # first unready attempt instead of letting the loop retry.
               # `|| true` keeps each check's exit status 0 no matter the result.
-              curl -sf http://localhost:5000/health > /dev/null 2>&1 && NODE_OK=true || true
+              curl -sf http://localhost:5050/health > /dev/null 2>&1 && NODE_OK=true || true
               curl -sf http://localhost:8000/health > /dev/null 2>&1 && PYTHON_OK=true || true
               if [ "$NODE_OK" = true ] && [ "$PYTHON_OK" = true ]; then
                 break
